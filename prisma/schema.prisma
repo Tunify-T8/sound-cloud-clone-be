@@ -1,0 +1,53 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+enum LoginMethod {
+  LOCAL
+  GOOGLE
+  FACEBOOK
+  APPLE
+  GITHUB
+}
+
+enum UserType {
+  LISTENER
+  ARTIST
+  ADMIN
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  FOLLOWERS_ONLY
+}
+
+enum OAuthProvider {
+  GOOGLE
+  FACEBOOK
+  APPLE
+  GITHUB
+  TWITTER
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  YOUTUBE
+  SPOTIFY
+  TIKTOK
+  SOUNDCLOUD
+  TWITTER
+}
+
+id String @id @default(uuid())
+created_at DateTime @default(now())
+updated_at DateTime @updatedAt
+deleted_at DateTime? 
