@@ -1,14 +1,116 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+
 }
 
+model User {
+  id                        String                   @id @default(uuid())
+  username                  String                   @unique
+  display_name              String?
+  email                     String                   @unique
+  pass_hash                 String?
+  login_method              LoginMethod
+  user_type                 UserType
+  bio                       String?
+  location                  String?
+  avatar_url                String?
+  cover_url                 String?
+  is_verified               Boolean                  @default(false)
+  is_active                 Boolean                  @default(true)
+  is_suspended              Boolean                  @default(false)
+  is_banned                 Boolean                  @default(false)
+  created_at                DateTime                 @default(now())
+  updated_at                DateTime                 @updatedAt
+  deleted_at                DateTime?
+  suspended_until           DateTime?
+  suspended_by_id           String?
+  banned_by_id              String?
+  last_login_at             DateTime?
+  visibility                Visibility               @default(PUBLIC)
+  email_verification_tokens EmailVerificationToken[]
+  oauth_accounts            OAuthAccount[]
+  password_reset_tokens     PasswordResetToken[]
+  refresh_tokens            RefreshToken[]
+  banned_by                 User?                    @relation("UserBans", fields: [banned_by_id], references: [id])
+  banned_users              User[]                   @relation("UserBans")
+  suspended_by              User?                    @relation("UserSuspensions", fields: [suspended_by_id], references: [id])
+  suspended_users           User[]                   @relation("UserSuspensions")
+  social_links              UserSocialLink[]
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  token      String    @unique
+  expires_at DateTime
+  created_at DateTime  @default(now())
+  revoked_at DateTime?
+  is_active  Boolean   @default(true)
+  user       User      @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  token      String    @unique
+  expires_at DateTime
+  used       Boolean   @default(false)
+  created_at DateTime  @default(now())
+  revoked_at DateTime?
+  user       User      @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  token      String    @unique
+  expires_at DateTime
+  used       Boolean   @default(false)
+  created_at DateTime  @default(now())
+  revoked_at DateTime?
+  deleted_at DateTime?
+  user       User      @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model OAuthAccount {
+  id               String        @id @default(uuid())
+  user_id          String
+  provider         OAuthProvider
+  provider_user_id String
+  access_token     String        @unique
+  refresh_token    String?
+  expires_at       DateTime?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+  deleted_at       DateTime?
+  user             User          @relation(fields: [user_id], references: [id])
+
+  @@unique([provider, provider_user_id])
+  @@index([user_id])
+}
+
+model UserSocialLink {
+  id         String         @id @default(uuid())
+  user_id    String
+  platform   SocialPlatform
+  url        String
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+  deleted_at DateTime?
+  user       User           @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
 
 enum LoginMethod {
   LOCAL
@@ -46,8 +148,3 @@ enum SocialPlatform {
   SOUNDCLOUD
   TWITTER
 }
-
-id String @id @default(uuid())
-created_at DateTime @default(now())
-updated_at DateTime @updatedAt
-deleted_at DateTime? 
