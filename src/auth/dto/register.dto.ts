@@ -1,5 +1,7 @@
 import {
+  IsDate,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -8,6 +10,8 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Gender } from '@prisma/client';
 
 export class RegisterDto {
   @IsString()
@@ -32,6 +36,15 @@ export class RegisterDto {
       'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
   })
   password: string;
+
+  @IsEnum(Gender)
+  @IsNotEmpty()
+  gender: Gender;
+
+  @IsDate()
+  @IsNotEmpty()
+  @Type(() => Date)
+  date_of_birth: Date;
 
   @IsOptional()
   @IsUrl()

@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -12,6 +13,9 @@ import { MailerService } from '../mailer/mailer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { StringValue } from 'ms';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { CheckEmailDto } from './dto/check-email.dto';
+
 
 @Injectable()
 export class AuthService {
@@ -88,6 +92,8 @@ private generateRefreshToken(userId: string): string {
           login_method: 'LOCAL',
           role: 'LISTENER',
           is_verified: false,
+          gender: dto.gender,
+          date_of_birth: dto.date_of_birth,
         },
       });
     } catch (error) {
@@ -127,4 +133,72 @@ private generateRefreshToken(userId: string): string {
       },
     };
   }
+
+
+
+// ─── Verify Email ────────────────────────────────────────────────
+async verifyEmail(dto: VerifyEmailDto) {
+  // 1. Find the token in DB
+  const verificationToken = await this.prisma.emailVerificationToken.findUnique({
+    where: { token: dto.token },
+  });
+
+  // 2. If not found, expired, or already used → same error for security
+  if (
+    !verificationToken ||
+    verificationToken.used ||
+    verificationToken.expires_at < new Date()
+  ) {
+    throw new UnauthorizedException('Invalid or expired verification token');
+  }
+
+  // 3. Mark token as used
+  await this.prisma.emailVerificationToken.update({
+    where: { id: verificationToken.id },
+    data: { used: true },
+  });
+
+  // 4. Mark user as verified
+  await this.prisma.user.update({
+    where: { id: verificationToken.user_id },
+    data: { is_verified: true },
+  });
+
+  this.logger.log(`User ${verificationToken.user_id} verified their email`);
+
+  // 5. Return success
+  return {
+    message: 'Email verified successfully',
+    user: {
+      id: verificationToken.user_id,
+      isVerified: true,
+    },
+  };
+}
+
+
+
+// ─── Check Email ─────────────────────────────────────────────────
+// Checks if email exists before registration
+// If exists → tell user to sign in (don't reveal sensitive info)
+// If not → give green light to continue registration
+async checkEmail(dto: CheckEmailDto) {
+  const existing = await this.prisma.user.findUnique({
+    where: { email: dto.email },
+  });
+
+  if (existing) {
+    return {
+      exists: true,
+      message: 'Welcome back! Please sign in.',
+    };
+  }
+
+  return {
+    exists: false,
+    message: 'Email available. Please continue with registration.',
+  };
+}
+
+
 }
