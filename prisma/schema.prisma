@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-
 }
 
 model User {
@@ -14,7 +13,7 @@ model User {
   email                     String                   @unique
   pass_hash                 String?
   login_method              LoginMethod
-  user_type                 UserType
+  role                      UserType
   bio                       String?
   location                  String?
   avatar_url                String?
@@ -40,6 +39,42 @@ model User {
   suspended_by              User?                    @relation("UserSuspensions", fields: [suspended_by_id], references: [id])
   suspended_users           User[]                   @relation("UserSuspensions")
   social_links              UserSocialLink[]
+  suspensionReason          String?
+
+  followers Follow[]    @relation("Following")
+  following Follow[]    @relation("Follower")
+  blocking  UserBlock[] @relation("Blocker")
+  blockedBy UserBlock[] @relation("Blocked")
+
+  tracks       Track[]       @relation("TrackOwner")
+  trackArtists TrackArtist[]
+
+  trackLikes      TrackLike[]
+  reposts         Repost[]
+  collectionLikes CollectionLike[]
+  comments        Comment[]
+  collections     Collection[]
+
+  conversations1 Conversation[] @relation("ConversationUser1")
+  conversations2 Conversation[] @relation("ConversationUser2")
+  sentMessages   Message[]
+
+  notificationsReceived   Notification[]           @relation("NotificationRecipient")
+  notificationsTriggered  Notification[]           @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
+
+  submittedReports Report[]  @relation("Reporter")
+  reviewedReports  Report[]  @relation("ReviewedBy")
+  tracksHidden     Track[]   @relation("TrackHiddenBy")
+  tracksDeleted    Track[]   @relation("TrackDeletedBy")
+  commentsHidden   Comment[] @relation("CommentHiddenBy")
+  commentsDeleted  Comment[] @relation("CommentDeletedBy")
+
+  playHistory   PlayHistory[]
+  trackProgress UserTrackProgress[]
+
+  subscriptions Subscription[]
+  payments      Payment[]
 }
 
 model RefreshToken {
@@ -112,6 +147,388 @@ model UserSocialLink {
   @@index([user_id])
 }
 
+model Genre {
+  id    String @id @default(uuid())
+  label String @unique
+
+  tracks Track[]
+
+  @@index([label])
+}
+
+model Track {
+  id      String @id @default(uuid())
+  userId  String
+  genreId String
+
+  // Core metadata
+  title       String
+  description String?
+  releaseDate DateTime?
+
+  // Audio
+  audioUrl          String // raw CDN path, never exposed directly
+  durationSeconds   Int
+  waveformUrl       String?
+  fileFormat        FileFormat
+  fileSizeBytes     Int?
+  transcodingStatus TranscodingStatus @default(processing)
+
+  // Artwork
+  coverUrl String?
+
+  // Visibility & access (Module 5)
+  isPublic        Boolean @default(true)
+  privateToken    String?
+  requiresPremium Boolean @default(false)
+
+  // Preview (Module 5)
+  previewEnabled  Boolean @default(false)
+  previewStart    Int?
+  previewDuration Int?
+
+  // Content
+  contentWarning Boolean @default(false)
+
+  // Module 11 — Moderation fields
+  isHidden  Boolean   @default(false)
+  hiddenAt  DateTime?
+  hiddenBy  String?
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ── Relations ───────────────────────────────────────────────
+  user          User   @relation("TrackOwner", fields: [userId], references: [id])
+  genre         Genre? @relation(fields: [genreId], references: [id])
+  hiddenByUser  User?  @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
+  deletedByUser User?  @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
+
+  trackArtists       TrackArtist[]
+  regionRestrictions TrackRegionRestriction[]
+  likes              TrackLike[]
+  reposts            Repost[]
+  comments           Comment[]
+  collectionTracks   CollectionTrack[]
+  playHistory        PlayHistory[]
+  userProgress       UserTrackProgress[]
+
+  @@index([userId])
+  @@index([genreId])
+  @@index([isPublic, isDeleted, isHidden])
+}
+
+model TrackArtist {
+  trackId String
+  userId  String
+  role    ArtistRole
+
+  track Track @relation(fields: [trackId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@id([trackId, userId])
+}
+
+model TrackRegionRestriction {
+  id          String @id @default(uuid())
+  trackId     String
+  countryCode String @db.Char(2)
+
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@index([trackId])
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Follower", fields: [followerId], references: [id])
+  following User @relation("Following", fields: [followingId], references: [id])
+
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model UserBlock {
+  id             String   @id @default(uuid())
+  blockerId      String
+  blockedId      String
+  removeComments Boolean  @default(false)
+  reportSpam     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id])
+  blocked User @relation("Blocked", fields: [blockedId], references: [id])
+
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+model PlayHistory {
+  id       String   @id @default(uuid())
+  userId   String
+  trackId  String
+  playedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@index([userId])
+  @@index([trackId])
+  @@index([playedAt])
+}
+
+model UserTrackProgress {
+  userId          String
+  trackId         String
+  progressSeconds Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@id([userId, trackId])
+}
+
+model TrackLike {
+  id        String   @id @default(uuid())
+  userId    String
+  trackId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@index([userId])
+  @@index([trackId])
+}
+
+model Repost {
+  id        String   @id @default(uuid())
+  userId    String
+  trackId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@index([userId])
+  @@index([trackId])
+}
+
+model CollectionLike {
+  id           String   @id @default(uuid())
+  userId       String
+  collectionId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  collection Collection @relation(fields: [collectionId], references: [id])
+
+  @@index([userId])
+  @@index([collectionId])
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  userId          String
+  trackId         String
+  parentCommentId String?
+  content         String   @db.VarChar(500)
+  timestamp       Int // position in track in seconds
+  isEdited        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  // Module 11 — Moderation fields
+  // hide = reversible soft hide by admin
+  // delete = irreversible removal, shows [comment removed] to preserve thread context
+  isHidden  Boolean   @default(false)
+  hiddenAt  DateTime?
+  hiddenBy  String?
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  deletedBy String?
+
+  user          User      @relation(fields: [userId], references: [id])
+  track         Track     @relation(fields: [trackId], references: [id])
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+  hiddenByUser  User?     @relation("CommentHiddenBy", fields: [hiddenBy], references: [id])
+  deletedByUser User?     @relation("CommentDeletedBy", fields: [deletedBy], references: [id])
+
+  @@index([userId])
+  @@index([trackId])
+  @@index([parentCommentId])
+}
+
+model Collection {
+  id          String         @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  coverUrl    String?
+  type        CollectionType
+  isPublic    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  isDeleted   Boolean        @default(false) // added for consistency with other soft-delete patterns
+  deletedAt   DateTime?
+
+  user   User              @relation(fields: [userId], references: [id])
+  tracks CollectionTrack[]
+  likes  CollectionLike[]
+
+  @@index([userId])
+}
+
+model CollectionTrack {
+  id           String   @id @default(uuid())
+  collectionId String
+  trackId      String
+  position     Int // track order within the collection
+  addedAt      DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id])
+  track      Track      @relation(fields: [trackId], references: [id])
+
+  @@index([collectionId])
+  @@index([trackId])
+}
+
+model Conversation {
+  id        String             @id @default(uuid())
+  user1Id   String
+  user2Id   String
+  status    ConversationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+
+  user1    User      @relation("ConversationUser1", fields: [user1Id], references: [id])
+  user2    User      @relation("ConversationUser2", fields: [user2Id], references: [id])
+  messages Message[]
+
+  @@index([user1Id])
+  @@index([user2Id])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  recipientId   String
+  actorId       String? // null for system notifications
+  type          NotificationType
+  referenceType ReferenceType? // null for system/subscription notifications
+  referenceId   String? // null for system/subscription notifications
+  isRead        Boolean          @default(false)
+  readAt        DateTime? // set when isRead flips to true
+  createdAt     DateTime         @default(now())
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@index([recipientId])
+  @@index([actorId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  userId         String
+  channel        Channel
+  trackLiked     Boolean @default(true)
+  trackCommented Boolean @default(true)
+  trackReposted  Boolean @default(true)
+  userFollowed   Boolean @default(true)
+  newRelease     Boolean @default(true)
+  newMessage     Boolean @default(true)
+  system         Boolean @default(true)
+  subscription   Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([userId, channel])
+}
+
+model ReportReason {
+  id         String              @id // e.g. 'hate_speech' — readable string PK
+  label      String              @unique
+  entityType ReportedEntityType? // null means applies to all entity types
+
+  reports Report[]
+}
+
+model Report {
+  id          String             @id @default(uuid())
+  reporterId  String
+  targetType  ReportedEntityType
+  targetId    String
+  reasonId    String // FK → ReportReason.id
+  description String?
+  status      ReportStatus       @default(PENDING)
+  createdAt   DateTime           @default(now())
+
+  // Admin review fields — set when status changes from PENDING
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  adminNote   String?
+  adminAction AdminAction? // what action was taken on the reported entity
+
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id])
+  reviewedByUser User?        @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  reason         ReportReason @relation(fields: [reasonId], references: [id])
+
+  @@index([reporterId])
+  @@index([targetId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id        String           @id @default(uuid())
+  userId    String
+  planType  SubscriptionPlan
+  startedAt DateTime         @default(now())
+  endedAt   DateTime?
+
+  user     User      @relation(fields: [userId], references: [id])
+  payments Payment[]
+
+  @@index([userId])
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  userId         String
+  subscriptionId String
+  amount         Decimal       @db.Decimal(10, 2)
+  status         PaymentStatus
+  paidAt         DateTime      @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([userId])
+  @@index([subscriptionId])
+}
+
 enum LoginMethod {
   LOCAL
   GOOGLE
@@ -147,4 +564,89 @@ enum SocialPlatform {
   TIKTOK
   SOUNDCLOUD
   TWITTER
+}
+
+enum TranscodingStatus {
+  processing
+  finished
+  failed
+}
+
+enum FileFormat {
+  mp3
+  wav
+}
+
+enum ArtistRole {
+  featured
+  producer
+  remixer
+}
+
+enum NotificationType {
+  track_liked
+  track_commented
+  track_reposted
+  user_followed
+  new_release
+  new_message
+  system
+  subscription
+}
+
+enum ReferenceType {
+  track
+  user
+  conversation
+  comment
+}
+
+enum Channel {
+  push
+  email
+}
+
+enum CollectionType {
+  PLAYLIST
+  ALBUM
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ReportedEntityType {
+  TRACK
+  COMMENT
+  USER
+  COLLECTION
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+enum AdminAction {
+  NONE
+  HIDE
+  REMOVE
+  SUSPEND_USER
+  BAN_USER
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  GOPLUS
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
 }

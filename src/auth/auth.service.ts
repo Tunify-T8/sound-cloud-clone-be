@@ -86,7 +86,7 @@ private generateRefreshToken(userId: string): string {
           pass_hash: passHash,
           avatar_url: dto.avatarUrl ?? null,
           login_method: 'LOCAL',
-          user_type: 'LISTENER',
+          role: 'LISTENER',
           is_verified: false,
         },
       });
