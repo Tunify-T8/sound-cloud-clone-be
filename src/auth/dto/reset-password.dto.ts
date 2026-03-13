@@ -1,6 +1,19 @@
-import { IsNotEmpty, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class ResetPasswordDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
   @IsString()
   @IsNotEmpty()
   token: string;
@@ -14,4 +27,12 @@ export class ResetPasswordDto {
       'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
   })
   newPassword: string;
+
+  @IsString()
+  @IsNotEmpty()
+  confirmPassword: string;
+
+  @IsBoolean()
+  @IsOptional()
+  signoutAll?: boolean; // defaults to true in service if not provided
 }
