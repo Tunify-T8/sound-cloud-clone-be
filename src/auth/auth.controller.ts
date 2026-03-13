@@ -15,10 +15,13 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UserType } from '@prisma/client';
 
 
-
-
+import { Get, UseGuards } from '@nestjs/common';
+import { JwtAccessGuard } from './guards/jwt-access.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 
 
 @Controller('auth')
@@ -124,6 +127,33 @@ async resetPassword(@Body() dto: ResetPasswordDto) {
 
 
 
+
+
+// ─── GET /auth/test-auth ──────────────────────────────────────────
+// Temporary — remove after testing guards
+@Get('test-auth')
+@UseGuards(JwtAccessGuard)
+testAuth() {
+  return { message: 'You are authenticated' };
+}
+
+// ─── GET /auth/test-admin ─────────────────────────────────────────
+// Temporary — remove after testing guards
+@Get('test-admin')
+@UseGuards(JwtAccessGuard, RolesGuard)
+@Roles(UserType.ADMIN)
+testAdmin() {
+  return { message: 'You are an admin' };
+}
+
+// ─── GET /auth/test-artist ────────────────────────────────────────
+// Temporary — remove after testing guards
+@Get('test-artist')
+@UseGuards(JwtAccessGuard, RolesGuard)
+@Roles(UserType.ARTIST)
+testArtist() {
+  return { message: 'You are an artist or admin' };
+}
 
 
 
