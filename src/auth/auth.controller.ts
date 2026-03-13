@@ -4,6 +4,10 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Delete, 
+  Request,
+ UseGuards,
+ Get
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -17,9 +21,11 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UserType } from '@prisma/client';
 
-
-import { Get, UseGuards } from '@nestjs/common';
 import { JwtAccessGuard } from './guards/jwt-access.guard';
+import { DeleteAccountDto } from './dto/delete-account.dto';
+
+
+
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 
@@ -123,6 +129,18 @@ async forgotPassword(@Body() dto: ForgotPasswordDto) {
 @HttpCode(HttpStatus.OK)
 async resetPassword(@Body() dto: ResetPasswordDto) {
   return this.authService.resetPassword(dto);
+}
+
+
+
+
+// ─── DELETE /auth/delete-account ─────────────────────────────────
+// Soft deletes the authenticated user's account
+@Delete('delete-account')
+@HttpCode(HttpStatus.OK)
+@UseGuards(JwtAccessGuard)
+async deleteAccount(@Request() req, @Body() dto: DeleteAccountDto) {
+  return this.authService.deleteAccount(req.user.userId, dto);
 }
 
 

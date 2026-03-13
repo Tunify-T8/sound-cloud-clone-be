@@ -42,6 +42,7 @@ model User {
   suspended_users           User[]                   @relation("UserSuspensions")
   social_links              UserSocialLink[]
   suspensionReason          String?
+   is_deleted              Boolean                   @default(false)  
 
   followers Follow[]    @relation("Following")
   following Follow[]    @relation("Follower")

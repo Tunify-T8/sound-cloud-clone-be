@@ -24,6 +24,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @Injectable()
 export class AuthService {
@@ -306,7 +307,11 @@ async login(dto: LoginDto) {
   if (!user) {
     throw new UnauthorizedException('Invalid credentials');
   }
-
+  // Check account is not deleted
+  if (user.is_deleted || !user.is_active) {
+    throw new UnauthorizedException('Invalid credentials');
+  }
+   
   // 2. Check login method FIRST — before touching password
   if (user.login_method !== 'LOCAL' && !user.pass_hash) {
     // Pure OAuth user, never set a password
@@ -627,7 +632,66 @@ async forgotPassword(dto: ForgotPasswordDto) {
 
 
 
+// ─── Delete Account ───────────────────────────────────────────────
+async deleteAccount(userId: string, dto: DeleteAccountDto) {
+  // 1. Fetch user from DB
+  const user = await this.prisma.user.findUnique({
+    where: { id: userId },
+  });
 
+  if (!user) {
+    throw new UnauthorizedException('User not found');
+  }
+
+  // 2. Banned users cannot delete their account
+  if (user.is_banned) {
+    throw new ForbiddenException(
+      'Banned accounts cannot be deleted. Please contact support.',
+    );
+  }
+
+  // 3. Password check
+  // LOCAL user or OAuth user who set a password → must verify password
+  if (user.pass_hash) {
+    if (!dto.password) {
+      throw new BadRequestException('Password is required to delete your account');
+    }
+    const isPasswordValid = await bcrypt.compare(dto.password, user.pass_hash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid password');
+    }
+  }
+  // Pure OAuth user (no pass_hash) → skip password check entirely
+
+  // 4. Soft delete
+  await this.prisma.user.update({
+    where: { id: userId },
+    data: {
+      is_deleted: true,
+      is_active: false,
+      deleted_at: new Date(),
+    },
+  });
+
+
+  // 5. Revoke all active refresh tokens — kill all sessions immediately
+  await this.prisma.refreshToken.updateMany({
+    where: {
+      user_id: userId,
+      is_active: true,
+    },
+    data: {
+      is_active: false,
+      revoked_at: new Date(),
+    },
+  });
+
+  this.logger.log(`User ${userId} deleted their account`);
+
+  return {
+    message: 'Your account has been deleted successfully.',
+  };
+}
 
 
 
