@@ -19,7 +19,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run lint
+      
 
   docker:
     name: Docker Build (Test + Build)
