@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
+import { AudioModule } from './audio/audio.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { StorageModule } from './storage/storage.module';
     AuthModule,
     TracksModule,
     StorageModule,
+    AudioModule,
   ],
   controllers: [AppController],
   providers: [AppService],
