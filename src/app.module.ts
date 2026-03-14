@@ -4,6 +4,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { TracksModule } from './tracks/tracks.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -11,6 +13,8 @@ import { PrismaModule } from './prisma/prisma.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    TracksModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [AppService],
