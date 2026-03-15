@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
@@ -17,6 +18,12 @@ import { AudioModule } from './audio/audio.module';
     TracksModule,
     StorageModule,
     AudioModule,
+    BullModule.forRoot({
+      redis: {
+        host: 'localhost',
+        port: 6379,
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
