@@ -6,7 +6,6 @@ import * as os from 'os';
 
 @Injectable()
 export class AudioService {
-
   private writeTempFile(buffer: Buffer, extension: string): string {
     const tempPath = path.join(os.tmpdir(), `audio-${Date.now()}.${extension}`);
     fs.writeFileSync(tempPath, buffer);
@@ -22,6 +21,30 @@ export class AudioService {
         if (err) return reject(err);
         resolve(Math.floor(metadata.format.duration ?? 0));
       });
+    });
+  }
+
+  transcodeToMp3(buffer: Buffer): Promise<Buffer<ArrayBuffer>> {
+    return new Promise((resolve, reject) => {
+      const tempInput = this.writeTempFile(buffer, 'wav');
+      const tempOutput = path.join(os.tmpdir(), `transcoded-${Date.now()}.mp3`);
+
+      ffmpeg(tempInput)
+        .audioCodec('libmp3lame')
+        .audioBitrate(320)
+        .format('mp3')
+        .output(tempOutput)
+        .on('end', () => {
+          const mp3Buffer = fs.readFileSync(tempOutput);
+          fs.unlinkSync(tempInput);
+          fs.unlinkSync(tempOutput);
+          resolve(mp3Buffer);
+        })
+        .on('error', (err) => {
+          fs.unlinkSync(tempInput);
+          reject(err);
+        })
+        .run();
     });
   }
 

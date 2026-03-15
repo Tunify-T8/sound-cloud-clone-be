@@ -1,4 +1,4 @@
-import { Process, Processor} from '@nestjs/bull';
+import { Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,7 +7,6 @@ import { AudioService } from '../audio/audio.service';
 
 @Processor('tracks')
 export class TracksProcessor {
-
   private readonly logger = new Logger(TracksProcessor.name);
 
   constructor(
@@ -24,14 +23,54 @@ export class TracksProcessor {
 
     const fileBuffer = Buffer.from(job.data.fileBuffer);
 
-    try {
-      // 1. generate waveform peaks
-      const peaks = await this.audio.generateWaveform(fileBuffer, extension);
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      select: { audioUrl: true },
+    });
 
-      // 2. upload waveform JSON to storage
+    if (!track) throw new Error(`Track ${trackId} not found`);
+
+    try {
+      let finalBuffer = fileBuffer;
+      let finalExtension = extension;
+
+      // transcode WAV to MP3
+      if (extension === 'wav') {
+        finalBuffer = await this.audio.transcodeToMp3(fileBuffer);
+        finalExtension = 'mp3';
+
+        // re-upload as MP3 replacing the WAV
+        const mp3File = {
+          buffer: finalBuffer,
+          originalname: `${trackId}.mp3`,
+          mimetype: 'audio/mpeg',
+          size: finalBuffer.length,
+        } as Express.Multer.File;
+
+        const newAudioUrl = await this.storage.uploadAudio(mp3File);
+
+        // delete the original WAV from Supabase
+        const wavFilename = track.audioUrl.split('/').pop(); // extract filename from URL
+        console.log('Attempting to delete:', wavFilename);
+        await this.storage.deleteFile('audio', wavFilename ?? '');
+
+        // update audioUrl and fileFormat in DB
+        await this.prisma.track.update({
+          where: { id: trackId },
+          data: {
+            audioUrl: newAudioUrl,
+            fileFormat: 'mp3',
+          },
+        });
+      }
+
+      // generate waveform from final buffer
+      const peaks = await this.audio.generateWaveform(
+        finalBuffer,
+        finalExtension,
+      );
       const waveformUrl = await this.storage.uploadWaveform(peaks, trackId);
 
-      // 3. update track as finished
       await this.prisma.track.update({
         where: { id: trackId },
         data: {
@@ -39,9 +78,7 @@ export class TracksProcessor {
           transcodingStatus: 'finished',
         },
       });
-
     } catch (error) {
-      // if anything fails mark track as failed
       this.logger.error('Processing failed:', error);
       await this.prisma.track.update({
         where: { id: trackId },

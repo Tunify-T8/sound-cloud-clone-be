@@ -25,9 +25,7 @@ export class StorageService {
 
     if (error) throw new Error(`Audio upload failed: ${error.message}`);
 
-    const { data } = this.supabase.storage
-      .from('audio')
-      .getPublicUrl(filename);
+    const { data } = this.supabase.storage.from('audio').getPublicUrl(filename);
 
     return data.publicUrl;
   }
@@ -50,5 +48,17 @@ export class StorageService {
       .getPublicUrl(filename);
 
     return data.publicUrl;
+  }
+
+  async deleteFile(bucket: string, filename: string): Promise<void> {
+    console.log(`Deleting ${filename} from ${bucket}`);
+
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .remove([filename]);
+
+    console.log('Delete result:', data, error);
+
+    if (error) throw new Error(`Delete failed: ${error.message}`);
   }
 }
