@@ -1,40 +1,54 @@
 import { Injectable } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class StorageService {
-  private readonly uploadDir = path.join(process.cwd(), 'uploads');
+  private supabase: SupabaseClient;
 
-  constructor() {
-    // create uploads folder if it doesn't exist
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
-
-    if (!fs.existsSync(path.join(this.uploadDir, 'audio'))) {
-      fs.mkdirSync(path.join(this.uploadDir, 'audio'));
-    }
-
-    if (!fs.existsSync(path.join(this.uploadDir, 'waveforms'))) {
-      fs.mkdirSync(path.join(this.uploadDir, 'waveforms'));
-    }
+  constructor(private config: ConfigService) {
+    this.supabase = createClient(
+      this.config.get('SUPABASE_URL') ?? '',
+      this.config.get('SUPABASE_KEY') ?? '',
+    );
   }
 
   async uploadAudio(file: Express.Multer.File): Promise<string> {
     const filename = `${Date.now()}-${file.originalname}`;
-    const filePath = path.join(this.uploadDir, 'audio', filename);
-    fs.writeFileSync(filePath, file.buffer);
 
-    // return a local URL your backend can serve
-    return `/uploads/audio/${filename}`;
+    const { error } = await this.supabase.storage
+      .from('audio')
+      .upload(filename, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (error) throw new Error(`Audio upload failed: ${error.message}`);
+
+    const { data } = this.supabase.storage
+      .from('audio')
+      .getPublicUrl(filename);
+
+    return data.publicUrl;
   }
 
   async uploadWaveform(peaks: number[], trackId: string): Promise<string> {
     const filename = `${trackId}.json`;
-    const filePath = path.join(this.uploadDir, 'waveforms', filename);
-    fs.writeFileSync(filePath, JSON.stringify({ peaks }));
+    const body = JSON.stringify({ peaks });
 
-    return `/uploads/waveforms/${filename}`;
+    const { error } = await this.supabase.storage
+      .from('waveforms')
+      .upload(filename, body, {
+        contentType: 'application/json',
+        upsert: true, // overwrite if exists since trackId is unique
+      });
+
+    if (error) throw new Error(`Waveform upload failed: ${error.message}`);
+
+    const { data } = this.supabase.storage
+      .from('waveforms')
+      .getPublicUrl(filename);
+
+    return data.publicUrl;
   }
 }
