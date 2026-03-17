@@ -15,5 +15,13 @@ export class UsersController {
     return this.usersService.getCurrentUser(user.sub);
   }
 
+  // ─── GET /users/:id ───────────────────────────────────────
+  //returns profile from id
+  @Get(':id')
+  getUser(
+    @Param() id: string,
+    @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getUser(id, user?.sub);
   }
 }
