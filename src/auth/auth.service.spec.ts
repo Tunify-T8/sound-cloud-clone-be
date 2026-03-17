@@ -101,10 +101,13 @@ describe('AuthService', () => {
 
         // ─── Config mock — returns fake secret for any config key ────
         {
-          provide: ConfigService,
-          useValue: {
-            get: jest.fn().mockReturnValue('mock_secret'),
-          },
+        provide: ConfigService,
+        useValue: {
+            get: jest.fn().mockImplementation((key: string) => {
+            if (key === 'NODE_ENV') return 'development';
+            return 'mock_secret';
+            }),
+         },
         },
 
         // ─── Mailer mock — no real emails sent during tests ──────────
@@ -140,6 +143,27 @@ describe('AuthService', () => {
       gender: 'MALE' as any,
       date_of_birth: new Date('2000-01-01'),
     };
+
+    it('should skip CAPTCHA verification in development', async () => {
+    // In development NODE_ENV, captchaToken can be undefined — no error thrown
+    prisma.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+    prisma.user.create.mockResolvedValue({ ...mockUser, is_verified: false });
+    prisma.emailVerificationToken.create.mockResolvedValue({} as any);
+
+    // No captchaToken provided — should still work in dev
+    const result = await service.register({
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'Password123!',
+        gender: 'MALE' as any,
+        date_of_birth: new Date('2000-01-01'),
+        // captchaToken intentionally omitted
+    });
+
+    expect(result.message).toBe('Registration successful. Please verify your email.');
+    });
 
     it('should register a new user successfully', async () => {
       // email check → not found, username check → not found

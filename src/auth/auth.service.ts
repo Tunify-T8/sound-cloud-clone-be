@@ -70,6 +70,10 @@ private generateRefreshToken(userId: string, email: string): string {
 }
   // ─── Register ────────────────────────────────────────────────────
   async register(dto: RegisterDto) {
+
+    // 0. Verify CAPTCHA — reject bots before touching the DB
+    await this.verifyCaptcha(dto.captchaToken);
+
     // 1. Check if email already exists
     const existingEmail = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -146,6 +150,37 @@ private generateRefreshToken(userId: string, email: string): string {
         isVerified: user.is_verified,
       },
     };
+  }
+
+
+
+
+
+  private async verifyCaptcha(token: string | undefined): Promise<void> {
+    // Skip CAPTCHA verification in development — remove this check in production
+    if (this.configService.get<string>('NODE_ENV') !== 'production') {
+      return;
+    }
+
+    if (!token) {
+      throw new BadRequestException('CAPTCHA token is required.');
+    }
+
+    const secretKey = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
+    const minScore = parseFloat(
+      this.configService.get<string>('RECAPTCHA_MIN_SCORE') ?? '0.5',
+    );
+
+    const response = await fetch(
+      `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`,
+      { method: 'POST' },
+    );
+
+    const data = await response.json();
+
+    if (!data.success || data.score < minScore) {
+      throw new BadRequestException('CAPTCHA verification failed. Please try again.');
+    }
   }
 
 // ─── Verify Email ───────────────────────────────────────────────
