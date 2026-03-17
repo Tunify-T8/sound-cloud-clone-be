@@ -9,6 +9,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  Put,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -45,4 +46,29 @@ export class TracksController {
   getStatus(@Param('id') trackId: string) {
     return this.tracksService.getStatus(trackId);
   }
+
+  @Get(':id')
+  async getTrack(@Param('id') trackId: string) {
+    const track = await this.tracksService.getTrack(trackId);
+    if(!track){
+      return {message: 'Track not found', statusCode: 404};
+    }
+    else{
+      return {track, statusCode: 200};
+    }
+    // na2es ashoof bs el user authorized wla la (hasaal alfred)
+  }
+
+  // @Put(':id')
+  // async updateTrack(@Param('id') trackId: string, @Body() dto: UpdateTrackDto) {
+  //   const track = await this.tracksService.updateTrack(trackId, dto);
+  //   if(!track){
+  //     return {message: 'Track not found', statusCode: 404};
+  //   }
+  //   else{
+  //     return {track, statusCode: 200};
+  //   }
+  // }
+
+  //sswd
 }

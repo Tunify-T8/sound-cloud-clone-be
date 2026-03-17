@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "Track" ADD COLUMN     "allowComments" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "allowDownloads" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "allowOffline" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "bitrateKbps" INTEGER NOT NULL DEFAULT 320,
+ADD COLUMN     "displayEmbedCode" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "enableAppPlayback" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "includeInRSS" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "isrc" TEXT,
+ADD COLUMN     "pLine" TEXT,
+ADD COLUMN     "publisher" TEXT,
+ADD COLUMN     "recordLabel" TEXT,
+ADD COLUMN     "sampleRateHz" INTEGER NOT NULL DEFAULT 44100,
+ADD COLUMN     "showCommentsPublic" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "showInsightsPublic" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "tags" TEXT[];
