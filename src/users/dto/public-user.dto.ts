@@ -1,58 +1,26 @@
-import {
-  IsBoolean,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsDate,
-  IsInt,
-} from 'class-validator';
-
 export class PublicUserDto {
-  @IsNotEmpty()
-  @IsString()
   id: string;
-
-  @IsNotEmpty()
-  @IsString()
   username: string;
+  displayName: string | null;
 
-  @IsNotEmpty()
-  @IsString()
-  displayName: string;
+  role: string;
+  bio: string | null;
+  location: string | null;
 
-  @IsOptional()
-  @IsString()
-  bio?: string;
+  avatarUrl: string | null;
+  coverUrl: string | null;
 
-  @IsOptional()
-  @IsString()
-  location?: string;
-
-  @IsOptional()
-  @IsString()
-  avatarUrl?: string;
-
-  @IsNotEmpty()
-  @IsInt()
   tracksCount: number;
 
-  @IsNotEmpty()
-  @IsInt()
   followersCount: number;
 
-  @IsNotEmpty()
-  @IsInt()
   followingCount: number;
 
-  @IsNotEmpty()
-  @IsInt()
   likesReceived: number;
 
-  @IsNotEmpty()
-  @IsBoolean()
   isFollowing: boolean;
+  isActive: boolean;
+  isVerified: boolean;
 
-  @IsNotEmpty()
-  @IsDate()
   createdAt: Date;
 }
