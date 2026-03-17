@@ -1,40 +1,18 @@
-import {
-  IsBoolean,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsDate,
-} from 'class-validator';
-
 export class PrivateUserDto {
-  @IsNotEmpty()
-  @IsString()
   id: string;
-
-  @IsNotEmpty()
-  @IsString()
   username: string;
+  displayName: string | null;
 
-  @IsNotEmpty()
-  @IsString()
-  displayName: string;
+  role: string;
+  bio: string | null;
+  location: string | null;
 
-  @IsOptional()
-  @IsString()
-  bio?: string;
+  avatarUrl: string | null;
+  coverUrl: string | null;
 
-  @IsOptional()
-  @IsString()
-  location?: string;
-
-  @IsOptional()
-  @IsString()
-  avatarUrl?: string;
-
-  @IsNotEmpty()
-  @IsBoolean()
   isFollowing: boolean;
-  @IsNotEmpty()
-  @IsDate()
+  isActive: boolean;
+  isVerified: boolean;
+
   createdAt: Date;
 }
