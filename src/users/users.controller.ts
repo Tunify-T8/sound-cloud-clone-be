@@ -9,7 +9,11 @@ export class UsersController {
   //returns the user currently signed in
   @Get('me')
   @UseGuards(JwtAccessGuard)
-  getCurrentUser(@CurrentUserId() userId: string) {
-    return this.usersService.getCurrentUser(userId);
+  getCurrentUser(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getCurrentUser(user.sub);
+  }
+
   }
 }
