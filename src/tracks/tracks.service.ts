@@ -91,6 +91,7 @@ export class TracksService {
       select: {
         id: true,
         transcodingStatus: true,
+        audioUrl: true,
         waveformUrl: true,
       },
     });

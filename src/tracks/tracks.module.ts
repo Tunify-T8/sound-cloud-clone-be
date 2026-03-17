@@ -5,9 +5,10 @@ import { StorageModule } from '../storage/storage.module';
 import { AudioModule } from '../audio/audio.module';
 import { TracksProcessor } from './tracks.processor';
 import { BullModule } from '@nestjs/bull';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [StorageModule , AudioModule, BullModule.registerQueue({ name: 'tracks' })],
+  imports: [AuthModule,StorageModule , AudioModule, BullModule.registerQueue({ name: 'tracks' })],
   controllers: [TracksController],
   providers: [TracksService, TracksProcessor]
 })
