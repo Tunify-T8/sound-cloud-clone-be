@@ -50,6 +50,31 @@ export class StorageService {
     return data.publicUrl;
   }
 
+  async uploadImage(file: Express.Multer.File): Promise<string | null> {
+    try {
+      const filename = `${Date.now()}-${file.originalname}`;
+
+      const { error } = await this.supabase.storage
+        .from('artwork')
+        .upload(filename, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false,
+        });
+
+      if (error) {
+        console.warn(`Image upload warning: ${error.message}`);
+        return null; // Return null instead of throwing
+      }
+
+      const { data } = this.supabase.storage.from('artwork').getPublicUrl(filename);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.warn(`Image upload failed: ${error.message}`);
+      return null; // Return null on error instead of throwing
+    }
+  }
+
   async deleteFile(bucket: string, filename: string): Promise<void> {
     console.log(`Deleting ${filename} from ${bucket}`);
 

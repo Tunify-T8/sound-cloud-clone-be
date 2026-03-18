@@ -30,7 +30,7 @@ model User {
   banned_by_id              String?
   last_login_at             DateTime?
   visibility                Visibility               @default(PUBLIC)
-  gender                     Gender
+  gender                    Gender
   date_of_birth             DateTime
   email_verification_tokens EmailVerificationToken[]
   oauth_accounts            OAuthAccount[]
@@ -42,7 +42,7 @@ model User {
   suspended_users           User[]                   @relation("UserSuspensions")
   social_links              UserSocialLink[]
   suspensionReason          String?
-   is_deleted              Boolean                   @default(false)  
+  is_deleted                Boolean                  @default(false)
 
   followers Follow[]    @relation("Following")
   following Follow[]    @relation("Follower")
@@ -50,7 +50,7 @@ model User {
   blockedBy UserBlock[] @relation("Blocked")
 
   tracks       Track[]       @relation("TrackOwner")
-  trackArtists TrackArtist[]
+  trackArtists trackArtist[]
 
   trackLikes      TrackLike[]
   reposts         Repost[]
@@ -151,41 +151,60 @@ model UserSocialLink {
 }
 
 model Genre {
-  id    String @id @default(uuid())
-  label String @unique
-
-  tracks Track[]
+  id        String     @id @default(uuid())
+  label     String     @unique
+  tracks    Track[]
+  subgenres subGenre[]
 
   @@index([label])
 }
 
-model Track {
-  id      String @id @default(uuid())
-  userId  String
+model subGenre {
+  id      String  @id @default(uuid())
+  name    String
   genreId String
+  genre   Genre   @relation(fields: [genreId], references: [id])
+  tracks  Track[]
+
+  @@unique([genreId, name])
+  @@index([genreId])
+}
+
+model Track {
+  id         String  @id @default(uuid())
+  userId     String
+  genreId    String
+  subGenreId String?
 
   // Core metadata
   title       String
   description String?
   releaseDate DateTime?
+  tags        String[]
+  recordLabel String?
+  publisher   String?
+  isrc        String?
+  pLine       String?
 
   // Audio
-  audioUrl          String // raw CDN path, never exposed directly
+  audioUrl          String
   durationSeconds   Int
   waveformUrl       String?
   fileFormat        FileFormat
   fileSizeBytes     Int?
   transcodingStatus TranscodingStatus @default(processing)
+  bitrateKbps       Int               @default(320)
+  sampleRateHz      Int               @default(44100)
 
   // Artwork
   coverUrl String?
 
-  // Visibility & access (Module 5)
+  // Visibility & access
   isPublic        Boolean @default(true)
   privateToken    String?
   requiresPremium Boolean @default(false)
 
-  // Preview (Module 5)
+  // Preview
   previewEnabled  Boolean @default(false)
   previewStart    Int?
   previewDuration Int?
@@ -193,7 +212,17 @@ model Track {
   // Content
   contentWarning Boolean @default(false)
 
-  // Module 11 — Moderation fields
+  // Permissions
+  allowDownloads     Boolean @default(false)
+  allowOffline       Boolean @default(false)
+  includeInRSS       Boolean @default(true)
+  displayEmbedCode   Boolean @default(true)
+  enableAppPlayback  Boolean @default(true)
+  allowComments      Boolean @default(true)
+  showCommentsPublic Boolean @default(true)
+  showInsightsPublic Boolean @default(false)
+
+  // Moderation fields
   isHidden  Boolean   @default(false)
   hiddenAt  DateTime?
   hiddenBy  String?
@@ -204,13 +233,14 @@ model Track {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ── Relations ───────────────────────────────────────────────
-  user          User   @relation("TrackOwner", fields: [userId], references: [id])
-  genre         Genre? @relation(fields: [genreId], references: [id])
-  hiddenByUser  User?  @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
-  deletedByUser User?  @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
+  // Relations
+  user          User      @relation("TrackOwner", fields: [userId], references: [id])
+  genre         Genre?    @relation(fields: [genreId], references: [id])
+  subgenre      subGenre? @relation(fields: [subGenreId], references: [id])
+  hiddenByUser  User?     @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
+  deletedByUser User?     @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
 
-  trackArtists       TrackArtist[]
+  trackArtists       trackArtist[]
   regionRestrictions TrackRegionRestriction[]
   likes              TrackLike[]
   reposts            Repost[]
@@ -221,10 +251,11 @@ model Track {
 
   @@index([userId])
   @@index([genreId])
+  @@index([subGenreId])
   @@index([isPublic, isDeleted, isHidden])
 }
 
-model TrackArtist {
+model trackArtist {
   trackId String
   userId  String
   role    ArtistRole
@@ -344,13 +375,10 @@ model Comment {
   trackId         String
   parentCommentId String?
   content         String   @db.VarChar(500)
-  timestamp       Int // position in track in seconds
+  timestamp       Int
   isEdited        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
-  // Module 11 — Moderation fields
-  // hide = reversible soft hide by admin
-  // delete = irreversible removal, shows [comment removed] to preserve thread context
   isHidden  Boolean   @default(false)
   hiddenAt  DateTime?
   hiddenBy  String?
@@ -380,7 +408,7 @@ model Collection {
   isPublic    Boolean        @default(true)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
-  isDeleted   Boolean        @default(false) // added for consistency with other soft-delete patterns
+  isDeleted   Boolean        @default(false)
   deletedAt   DateTime?
 
   user   User              @relation(fields: [userId], references: [id])
@@ -394,7 +422,7 @@ model CollectionTrack {
   id           String   @id @default(uuid())
   collectionId String
   trackId      String
-  position     Int // track order within the collection
+  position     Int
   addedAt      DateTime @default(now())
 
   collection Collection @relation(fields: [collectionId], references: [id])
@@ -436,12 +464,12 @@ model Message {
 model Notification {
   id            String           @id @default(uuid())
   recipientId   String
-  actorId       String? // null for system notifications
+  actorId       String?
   type          NotificationType
-  referenceType ReferenceType? // null for system/subscription notifications
-  referenceId   String? // null for system/subscription notifications
+  referenceType ReferenceType?
+  referenceId   String?
   isRead        Boolean          @default(false)
-  readAt        DateTime? // set when isRead flips to true
+  readAt        DateTime?
   createdAt     DateTime         @default(now())
 
   recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
@@ -471,9 +499,9 @@ model NotificationPreference {
 }
 
 model ReportReason {
-  id         String              @id // e.g. 'hate_speech' — readable string PK
+  id         String              @id
   label      String              @unique
-  entityType ReportedEntityType? // null means applies to all entity types
+  entityType ReportedEntityType?
 
   reports Report[]
 }
@@ -483,16 +511,15 @@ model Report {
   reporterId  String
   targetType  ReportedEntityType
   targetId    String
-  reasonId    String // FK → ReportReason.id
+  reasonId    String
   description String?
   status      ReportStatus       @default(PENDING)
   createdAt   DateTime           @default(now())
 
-  // Admin review fields — set when status changes from PENDING
   reviewedAt  DateTime?
   reviewedBy  String?
   adminNote   String?
-  adminAction AdminAction? // what action was taken on the reported entity
+  adminAction AdminAction?
 
   reporter       User         @relation("Reporter", fields: [reporterId], references: [id])
   reviewedByUser User?        @relation("ReviewedBy", fields: [reviewedBy], references: [id])
@@ -653,7 +680,6 @@ enum PaymentStatus {
   CANCELLED
   REFUNDED
 }
-
 
 enum Gender {
   MALE
