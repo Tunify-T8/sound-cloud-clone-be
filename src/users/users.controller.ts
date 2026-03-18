@@ -25,6 +25,17 @@ export class UsersController {
   ) {
     return this.usersService.getSocialLinks(user.userId);
   }
+  //─── GET /me/tracks ───────────────────────────────────────
+  //returns my tracks
+  @Get('me/tracks')
+  @UseGuards(JwtAccessGuard)
+  getTracks(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getTracks(user.userId, page, limit);
+  }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
