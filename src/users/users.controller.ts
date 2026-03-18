@@ -13,24 +13,26 @@ export class UsersController {
   getCurrentUser(
     @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
   ) {
-    return this.usersService.getCurrentUser(user.sub);
+    return this.usersService.getCurrentUser(user.userId);
+  }
+
+  // ─── GET /me/social-links ───────────────────────────────────────
+  //returns my social links
+  @Get('me/social-links')
+  @UseGuards(JwtAccessGuard)
+  getSocialLinks(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getSocialLinks(user.userId);
   }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
   @Get(':id')
   getUser(
-    @Param() id: string,
+    @Param('id') id: string,
     @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
   ) {
-    return this.usersService.getUser(id, user?.sub);
-  }
-
-  @Get('me/social-links')
-  @UseGuards(JwtAccessGuard)
-  getSocialLinks(
-    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
-  ) {
-    return this.usersService.getSocialLinks(user.sub);
+    return this.usersService.getUser(id, user?.userId);
   }
 }
