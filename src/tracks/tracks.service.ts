@@ -4,6 +4,7 @@ import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bull';
 import { CreateTrackDto } from './dto/create-track.dto';
+import { UpdateTrackDto } from './dto/update-track.dto';
 import type { Queue } from 'bull';
 
 @Injectable()
@@ -109,24 +110,30 @@ export class TracksService {
       },
     });
 
-    if (!track)
-    {
+    if (!track) {
       return null;
     }
 
-    const genre = await this.prisma.genre.findUnique({where: { id: track.genreId }});
-    const subgenre = track.subGenreId ? await this.prisma.subGenre.findUnique({where: { id: track.subGenreId }}) : null;
+    const genre = await this.prisma.genre.findUnique({
+      where: { id: track.genreId },
+    });
+    const subgenre = track.subGenreId
+      ? await this.prisma.subGenre.findUnique({
+          where: { id: track.subGenreId },
+        })
+      : null;
 
-    
     const filteredTrack = {
       trackId: track.id,
       status: track.transcodingStatus,
       title: track.title,
       description: track.description || null,
-      genre: genre ? {
-        category: genre.label,
-        subGenre: subgenre?.name || null,
-      } : null,
+      genre: genre
+        ? {
+            category: genre.label,
+            subGenre: subgenre?.name || null,
+          }
+        : null,
       tags: track.tags || [],
       artists: track.trackArtists,
       durationSeconds: track.durationSeconds,
@@ -134,7 +141,7 @@ export class TracksService {
       scheduledReleaseDate: track.releaseDate?.toISOString() || null,
       availability: {
         type: 'worldwide',
-        regions: track.regionRestrictions?.map(r => r.countryCode) || [],
+        regions: track.regionRestrictions?.map((r) => r.countryCode) || [],
       },
       licensing: {
         type: 'creative_commons',
@@ -173,72 +180,190 @@ export class TracksService {
     return filteredTrack;
   }
 
-//   async updateTrack(trackId: string, dto: UpdateTrackDto) {
-//     const track = await this.prisma.track.findUnique({
-//       where: { id: trackId },
-//     });
+  async updateTrack(trackId: string, userId: string, dto: UpdateTrackDto) {
+    // 1. Find the track
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        trackArtists: true,
+        regionRestrictions: true,
+      },
+    });
 
-//     if (!track) {
-//       return null;
-//     }
-//     //request body will have those fields
-//     /*trackId *
-// string($uuid)
-// title *
-// string
-// genre
-// string
-// Web sends genre as a flat string. Grouped by category for UI display.
+    // 2. Check if track exists
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
 
-// tags
-// array<string>
-// description
-// string
-// privacy
-// string
-// public — Searchable & visible on profile; private — Accessible only via direct link
+    // 3. Check ownership
+    if (track.userId !== userId) {
+      throw new ForbiddenException('You can only update your own tracks');
+    }
 
-// artwork
-// string($binary)
-// artists
-// array<string>
-// recordLabel
-// string
-// publisher
-// string
-// isrc
-// string
-// pLine
-// string
-// contentWarning
-// boolean
-// scheduledReleaseDate
-// string($date-time)
-// availability
-// object
-// licensing
-// object
-// permissions
-// object*/
+    // 4. Prepare update data
+    const updateData: any = {};
 
-//     track.title = dto.title;
-//     track.genreId = dto.genre;
-//     track.tags = dto.tags;
-//     track.description = dto.description;
-//     track.isPublic = dto.privacy === 'public';
-//     track.coverUrl = dto.artwork ? await this.storage.uploadImage(dto.artwork) : track.coverUrl;
-//     track.trackArtists = dto.artists ? dto.artists.map(name => ({ name })) : track.trackArtists;
-//     track.recordLabel = dto.recordLabel;
-//     track.publisher = dto.publisher;
-//     track.isrc = dto.isrc;
-//     track.pLine = dto.pLine;
-//     track.contentWarning = dto.contentWarning ?? false;
-//     track.releaseDate = dto.scheduledReleaseDate
-//       ? new Date(dto.scheduledReleaseDate)
-//       : null;
-//     track.reigionRestrictions = dto.availability?.regions ? dto.availability.regions.map((code) => ({ countryCode: code })) : track.regionRestrictions;
-//     track.
-//    }
+    // Update title if provided
+    if (dto.title !== undefined) {
+      updateData.title = dto.title;
+    }
+
+    // Update genre if provided and exists
+    if (dto.genre) {
+      const genreExists = await this.prisma.genre.findUnique({
+        where: { id: dto.genre },
+      });
+      if (genreExists) {
+        updateData.genreId = dto.genre;
+      }
+    }
+
+    // Update optional string fields
+    if (dto.description !== undefined) {
+      updateData.description = dto.description;
+    }
+
+    if (dto.recordLabel !== undefined) {
+      updateData.recordLabel = dto.recordLabel;
+    }
+
+    if (dto.publisher !== undefined) {
+      updateData.publisher = dto.publisher;
+    }
+
+    if (dto.isrc !== undefined) {
+      updateData.isrc = dto.isrc;
+    }
+
+    if (dto.pLine !== undefined) {
+      updateData.pLine = dto.pLine;
+    }
+
+    // Update privacy
+    if (dto.privacy !== undefined) {
+      updateData.isPublic = dto.privacy === 'public';
+    }
+
+    // Update content warning
+    if (dto.contentWarning !== undefined) {
+      updateData.contentWarning = dto.contentWarning;
+    }
+
+    // Update tags
+    if (dto.tags !== undefined) {
+      updateData.tags = dto.tags;
+    }
+
+    // Update scheduled release date
+    if (dto.scheduledReleaseDate !== undefined) {
+      updateData.releaseDate = new Date(dto.scheduledReleaseDate);
+    }
+
+    // Update permissions fields
+    if (dto.permissions) {
+      if (dto.permissions.enableDirectDownloads !== undefined) {
+        updateData.allowDownloads = dto.permissions.enableDirectDownloads;
+      }
+      if (dto.permissions.enableOfflineListening !== undefined) {
+        updateData.allowOffline = dto.permissions.enableOfflineListening;
+      }
+      if (dto.permissions.includeInRSS !== undefined) {
+        updateData.includeInRSS = dto.permissions.includeInRSS;
+      }
+      if (dto.permissions.displayEmbedCode !== undefined) {
+        updateData.displayEmbedCode = dto.permissions.displayEmbedCode;
+      }
+      if (dto.permissions.enableAppPlayback !== undefined) {
+        updateData.enableAppPlayback = dto.permissions.enableAppPlayback;
+      }
+      if (dto.permissions.allowComments !== undefined) {
+        updateData.allowComments = dto.permissions.allowComments;
+      }
+      if (dto.permissions.showCommentsPublic !== undefined) {
+        updateData.showCommentsPublic = dto.permissions.showCommentsPublic;
+      }
+      if (dto.permissions.showInsightsPublic !== undefined) {
+        updateData.showInsightsPublic = dto.permissions.showInsightsPublic;
+      }
+    }
+
+    // 5. Update the track
+    const updatedTrack = await this.prisma.track.update({
+      where: { id: trackId },
+      data: updateData,
+      include: {
+        trackArtists: true,
+        regionRestrictions: true,
+      },
+    });
+
+    // 6. Update artists if provided
+    if (dto.artists && dto.artists.length > 0) {
+      // Delete existing artists for this track
+      await this.prisma.trackArtist.deleteMany({
+        where: { trackId },
+      });
+
+      // Validate artists exist before creating relationships
+      const validArtists = await Promise.all(
+        dto.artists.map(async (userId) => {
+          const userExists = await this.prisma.user.findUnique({
+            where: { id: userId },
+          });
+          return userExists ? userId : null;
+        }),
+      );
+
+      // Create new artist relationships only for valid users
+      const validArtistIds = validArtists.filter((id) => id !== null);
+      if (validArtistIds.length > 0) {
+        await Promise.all(
+          validArtistIds.map((userId) =>
+            this.prisma.trackArtist.create({
+              data: {
+                trackId,
+                userId,
+                role: 'featured', // Default role; adjust as needed
+              },
+            }),
+          ),
+        );
+      }
+    }
+
+    // 7. Update region restrictions if provided via availability
+    if (dto.availability && dto.availability.regions) {
+      // Delete existing region restrictions
+      await this.prisma.trackRegionRestriction.deleteMany({
+        where: { trackId },
+      });
+
+      // Create new restrictions
+      if (dto.availability.regions.length > 0) {
+        await Promise.all(
+          dto.availability.regions.map((countryCode) =>
+            this.prisma.trackRegionRestriction.create({
+              data: {
+                trackId,
+                countryCode,
+              },
+            }),
+          ),
+        );
+      }
+    }
+
+    // 8. Re-fetch the track with all relations to return updated data
+    const updatedTrackFinal = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        trackArtists: true,
+        regionRestrictions: true,
+      },
+    });
+
+    return updatedTrackFinal;
+  }
 
   
 }

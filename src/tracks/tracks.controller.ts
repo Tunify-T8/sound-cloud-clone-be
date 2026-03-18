@@ -10,10 +10,12 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   Put,
+  Patch,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTrackDto } from './dto/create-track.dto';
+import { UpdateTrackDto } from './dto/update-track.dto';
 
 @Controller('tracks')
 export class TracksController {
@@ -59,16 +61,11 @@ export class TracksController {
     // na2es ashoof bs el user authorized wla la (hasaal alfred)
   }
 
-  // @Put(':id')
-  // async updateTrack(@Param('id') trackId: string, @Body() dto: UpdateTrackDto) {
-  //   const track = await this.tracksService.updateTrack(trackId, dto);
-  //   if(!track){
-  //     return {message: 'Track not found', statusCode: 404};
-  //   }
-  //   else{
-  //     return {track, statusCode: 200};
-  //   }
-  // }
-
-  //sswd
+  @Patch(':id')
+  async updateTrack(@Param('id') trackId: string, @Body() dto: UpdateTrackDto) {
+    const userId = 'b712d133-03c6-4229-b07e-6da113d23bb8';
+    const track = await this.tracksService.updateTrack(trackId, userId, dto);
+    return { track, statusCode: 200 };
+  }
+   
 }

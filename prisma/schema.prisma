@@ -50,7 +50,7 @@ model User {
   blockedBy UserBlock[] @relation("Blocked")
 
   tracks       Track[]       @relation("TrackOwner")
-  trackArtists TrackArtist[]
+  trackArtists trackArtist[]
 
   trackLikes      TrackLike[]
   reposts         Repost[]
@@ -240,7 +240,7 @@ model Track {
   hiddenByUser  User?     @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
   deletedByUser User?     @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
 
-  trackArtists       TrackArtist[]
+  trackArtists       trackArtist[]
   regionRestrictions TrackRegionRestriction[]
   likes              TrackLike[]
   reposts            Repost[]
@@ -255,7 +255,7 @@ model Track {
   @@index([isPublic, isDeleted, isHidden])
 }
 
-model TrackArtist {
+model trackArtist {
   trackId String
   userId  String
   role    ArtistRole
