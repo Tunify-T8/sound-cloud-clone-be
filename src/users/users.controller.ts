@@ -25,4 +25,12 @@ export class UsersController {
   ) {
     return this.usersService.getUser(id, user?.sub);
   }
+
+  @Get('me/social-links')
+  @UseGuards(JwtAccessGuard)
+  getSocialLinks(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getSocialLinks(user.sub);
+  }
 }
