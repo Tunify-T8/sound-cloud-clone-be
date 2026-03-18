@@ -47,6 +47,39 @@ export class UsersController {
   ) {
     return this.usersService.getReposts(user.userId, page, limit);
   }
+  //─── GET /me/albums ───────────────────────────────────────
+  //returns my albums
+  @Get('me/albums')
+  @UseGuards(JwtAccessGuard)
+  getAlbums(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getCollections(
+      user.userId,
+      CollectionType.ALBUM,
+      page,
+      limit,
+    );
+  }
+
+  //─── GET /me/playlists ───────────────────────────────────────
+  //returns my playlists
+  @Get('me/playlists')
+  @UseGuards(JwtAccessGuard)
+  getPlaylists(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getCollections(
+      user.userId,
+      CollectionType.PLAYLIST,
+      page,
+      limit,
+    );
+  }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
