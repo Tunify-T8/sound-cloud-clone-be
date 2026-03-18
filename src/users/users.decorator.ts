@@ -2,7 +2,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { Request } from 'express';
 
 export interface JwtPayload {
-  sub: string;
+  userId: string;
   email: string;
   role: string;
 }
