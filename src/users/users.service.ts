@@ -164,4 +164,59 @@ export class UsersService {
 
     return user.social_links;
   }
+  async getTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserTracksDto> {
+    const skip = (page - 1) * limit;
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: {
+          userId: userId,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          audioUrl: true,
+          coverUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+              reposts: true,
+            },
+          },
+        },
+      }),
+      this.prisma.track.count({
+        where: { userId, isDeleted: false, isHidden: false },
+      }),
+    ]);
+
+    return {
+      data: tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        description: track.description,
+        audioUrl: track.audioUrl,
+        coverUrl: track.coverUrl,
+        duration: track.durationSeconds,
+        likesCount: track._count.likes,
+        commentsCount: track._count.comments,
+        repostsCount: track._count.reposts,
+        createdAt: track.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+    };
+  }
+
 }
