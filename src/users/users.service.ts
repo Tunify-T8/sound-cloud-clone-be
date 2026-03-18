@@ -278,4 +278,54 @@ export class UsersService {
       hasMore: skip + reposts.length < total,
     };
   }
+  async getCollections(
+    userId: string,
+    type: CollectionType,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserCollectionsDto> {
+    const skip = (page - 1) * limit;
+
+    const [collections, total] = await Promise.all([
+      this.prisma.collection.findMany({
+        where: { userId, type, isDeleted: false },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          coverUrl: true,
+          isPublic: true,
+          createdAt: true,
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
+            },
+          },
+        },
+      }),
+      this.prisma.collection.count({
+        where: { userId, type, isDeleted: false },
+      }),
+    ]);
+
+    return {
+      data: collections.map((c) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        coverUrl: c.coverUrl,
+        isPublic: c.isPublic,
+        tracksCount: c._count.tracks,
+        likesCount: c._count.likes,
+        createdAt: c.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + collections.length < total,
+    };
+  }
 }
