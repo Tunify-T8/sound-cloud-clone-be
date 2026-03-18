@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bull';
 import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackDto } from './dto/update-track.dto';
+import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 
 @Injectable()
@@ -180,8 +181,12 @@ export class TracksService {
     return filteredTrack;
   }
 
-  async updateTrack(trackId: string, userId: string, dto: UpdateTrackDto) {
-    // 1. Find the track
+  async updateTrack(
+    userId: string,
+    dto: UpdateTrackMultipartDto,
+    artworkFile?: Express.Multer.File,
+  ) {
+    const trackId = dto.trackId;
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
@@ -218,15 +223,27 @@ export class TracksService {
       }
     }
 
-    // Update optional string fields
+    // Update tags
+    if (dto.tags !== undefined) {
+      updateData.tags = dto.tags;
+    }
+
+    // Update description
     if (dto.description !== undefined) {
       updateData.description = dto.description;
     }
 
+    // Update privacy
+    if (dto.privacy !== undefined) {
+      updateData.isPublic = dto.privacy === 'public';
+    }
+
+    // Update record label
     if (dto.recordLabel !== undefined) {
       updateData.recordLabel = dto.recordLabel;
     }
 
+    // Update publisher
     if (dto.publisher !== undefined) {
       updateData.publisher = dto.publisher;
     }
@@ -239,24 +256,25 @@ export class TracksService {
       updateData.pLine = dto.pLine;
     }
 
-    // Update privacy
-    if (dto.privacy !== undefined) {
-      updateData.isPublic = dto.privacy === 'public';
-    }
+
 
     // Update content warning
     if (dto.contentWarning !== undefined) {
       updateData.contentWarning = dto.contentWarning;
     }
 
-    // Update tags
-    if (dto.tags !== undefined) {
-      updateData.tags = dto.tags;
-    }
 
     // Update scheduled release date
     if (dto.scheduledReleaseDate !== undefined) {
       updateData.releaseDate = new Date(dto.scheduledReleaseDate);
+    }
+
+    // Update artwork if provided
+    if (artworkFile) {
+      const artworkUrl = await this.storage.uploadImage(artworkFile);
+      if (artworkUrl) {
+        updateData.coverUrl = artworkUrl;
+      }
     }
 
     // Update permissions fields
@@ -362,8 +380,33 @@ export class TracksService {
       },
     });
 
-    return updatedTrackFinal;
+    // Check if track was found after update
+    if (!updatedTrackFinal) {
+      throw new NotFoundException('Track not found after update');
+    }
+
+    // 9. Get genre info for response
+    const genre = await this.prisma.genre.findUnique({
+      where: { id: updatedTrackFinal.genreId },
+    });
+
+    // 10. Return simplified response format
+    return {
+      trackId: updatedTrackFinal.id,
+      status: updatedTrackFinal.transcodingStatus,
+      audioUrl: updatedTrackFinal.audioUrl,
+      waveformUrl: updatedTrackFinal.waveformUrl || null,
+      title: updatedTrackFinal.title,
+      genre: genre?.label || null,
+      tags: updatedTrackFinal.tags || [],
+      description: updatedTrackFinal.description || null,
+      scheduledReleaseDate: updatedTrackFinal.releaseDate?.toISOString() || null,
+      privacy: updatedTrackFinal.isPublic ? 'public' : 'private',
+      artworkUrl: updatedTrackFinal.coverUrl || null,
+    };
   }
+
+  
 
   
 }
