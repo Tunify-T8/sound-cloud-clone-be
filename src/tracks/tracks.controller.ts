@@ -25,7 +25,8 @@ import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 export class TracksController {
   constructor(private readonly tracksService: TracksService) {}
 
-  @Post()
+  
+  @Post() 
   @UseGuards(JwtAccessGuard)
   create(@Request() req, @Body() dto: CreateTrackDto) {
     return this.tracksService.create(req.user.userId, dto);
@@ -34,7 +35,7 @@ export class TracksController {
 
   @Post(':id/audio')
   @UseGuards(JwtAccessGuard)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'))            
   uploadAudio(
     @Request() req,
     @Param('id') trackId: string,
@@ -58,6 +59,7 @@ export class TracksController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAccessGuard)
   async getTrack(@Param('id') trackId: string) {
     const track = await this.tracksService.getTrack(trackId);
     if(!track){
@@ -70,6 +72,7 @@ export class TracksController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
     @Body() dto: UpdateTrackMultipartDto,
