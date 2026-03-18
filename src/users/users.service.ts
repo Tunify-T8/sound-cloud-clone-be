@@ -98,4 +98,19 @@ export class UsersService {
       createdAt: user.created_at,
     };
   }
+
+  async getSocialLinks(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        social_links: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.social_links;
+  }
 }
