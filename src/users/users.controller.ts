@@ -36,6 +36,17 @@ export class UsersController {
   ) {
     return this.usersService.getTracks(user.userId, page, limit);
   }
+  //─── GET /me/reposts ───────────────────────────────────────
+  //returns my reposts
+  @Get('me/reposts')
+  @UseGuards(JwtAccessGuard)
+  getReposts(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getReposts(user.userId, page, limit);
+  }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
