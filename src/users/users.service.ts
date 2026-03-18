@@ -219,4 +219,63 @@ export class UsersService {
     };
   }
 
+  async getReposts(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserRepostsDto> {
+    const skip = (page - 1) * limit;
+    const [reposts, total] = await Promise.all([
+      this.prisma.repost.findMany({
+        where: { userId: userId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          track: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              audioUrl: true,
+              coverUrl: true,
+              durationSeconds: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.repost.count({ where: { userId } }),
+    ]);
+    return {
+      data: reposts.map((repost) => ({
+        repostId: repost.id,
+        repostedAt: repost.createdAt,
+        track: {
+          id: repost.track.id,
+          title: repost.track.title,
+          description: repost.track.description,
+          audioUrl: repost.track.audioUrl,
+          coverUrl: repost.track.coverUrl,
+          duration: repost.track.durationSeconds,
+          likesCount: repost.track._count.likes,
+          commentsCount: repost.track._count.comments,
+          repostsCount: repost.track._count.reposts,
+          createdAt: repost.track.createdAt,
+        },
+      })),
+      page,
+      limit,
+      hasMore: skip + reposts.length < total,
+    };
+  }
 }
