@@ -78,10 +78,12 @@ export class TracksService {
     });
 
     // 8. add job to queue — don't await, return immediately
-    await this.tracksQueue.add('process-track', {
+    this.tracksQueue.add('process-track', {
       trackId,
       fileBuffer: file.buffer,
       extension,
+    }).catch((error) => {
+      console.error('Failed to queue track processing:', error);
     });
 
     return updatedTrack;
@@ -479,11 +481,13 @@ export class TracksService {
       },
     });
 
-    // 9. Add job to queue for processing
-    await this.tracksQueue.add('process-track', {
+    // 9. Add job to queue for processing (don't await - fire and forget)
+    this.tracksQueue.add('process-track', {
       trackId,
       fileBuffer: file.buffer,
       extension,
+    }).catch((error) => {
+      console.error('Failed to queue track processing:', error);
     });
 
     // 10. Return formatted response

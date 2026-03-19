@@ -113,6 +113,23 @@ export class TracksController {
     return {trackId, ...result};
   }
    
-
+  @Post(':id/audio/replace')
+  @UseGuards(JwtAccessGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async replaceAudio(
+    @Request() req,
+    @Param('id') trackId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /audio\/(mpeg|wav)/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tracksService.replaceAudio(trackId, req.user.userId, file);
+  }
 
 }
