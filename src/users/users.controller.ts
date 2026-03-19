@@ -1,7 +1,8 @@
-import { Controller, Get, UseGuards, Request, Param } from '@nestjs/common';
+import { Controller, Get, UseGuards, Param, Query } from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import { UsersService } from './users.service';
 import * as usersDecorator from './users.decorator';
+import { CollectionType } from '@prisma/client';
 
 @Controller('users')
 export class UsersController {
@@ -25,6 +26,7 @@ export class UsersController {
   ) {
     return this.usersService.getSocialLinks(user.userId);
   }
+
   //─── GET /me/tracks ───────────────────────────────────────
   //returns my tracks
   @Get('me/tracks')
@@ -36,6 +38,7 @@ export class UsersController {
   ) {
     return this.usersService.getTracks(user.userId, page, limit);
   }
+
   //─── GET /me/reposts ───────────────────────────────────────
   //returns my reposts
   @Get('me/reposts')
@@ -47,6 +50,7 @@ export class UsersController {
   ) {
     return this.usersService.getReposts(user.userId, page, limit);
   }
+
   //─── GET /me/albums ───────────────────────────────────────
   //returns my albums
   @Get('me/albums')
@@ -80,6 +84,7 @@ export class UsersController {
       limit,
     );
   }
+
   // ─── GET /me/liked-tracks ───────────────────────────────────────
   //returns my liked tracks
   @Get('me/liked-tracks')
@@ -92,6 +97,27 @@ export class UsersController {
     return this.usersService.getLikedTracks(user.userId, page, limit);
   }
 
+  // ─── GET /me/followers───────────────────────────────────────
+  //returns my followers
+  @UseGuards(JwtAccessGuard)
+  @Get('me/followers')
+  getMyFollowers(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    return this.usersService.getFollowerList(user.userId, +page, +limit);
+  }
+
+  @UseGuards(JwtAccessGuard)
+  @Get('me/following')
+  getMyFollowing(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    return this.usersService.getFollowingList(user.userId, +page, +limit);
+  }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
@@ -103,12 +129,25 @@ export class UsersController {
     return this.usersService.getUser(id, user?.userId);
   }
 
+  // ─── GET /:id/followers ───────────────────────────────────────
+  //gets follower list of a user
   @Get(':id/followers')
   getFollowers(
     @Param('id') id: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
   ) {
-    return this.usersService.getFollowers(id, page, limit);
+    return this.usersService.getFollowerList(id, page, limit);
+  }
+
+  // ─── GET /:id/following ───────────────────────────────────────
+  //gets following list of a user
+  @Get(':id/following')
+  getFollowing(
+    @Param('id') id: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.usersService.getFollowingList(id, page, limit);
   }
 }
