@@ -3,6 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
 import { UserDto } from './dto/user.dto';
+import { UserTracksDto, LikedTracksDto } from './dto/user-tracks.dto';
+import { UserRepostsDto } from './dto/user-reposts.dto';
+import { UserCollectionsDto } from './dto/user-collections.dto';
+import { CollectionType } from '@prisma/client';
+import { FollowListDto } from './dto/user-follow.dto';
 
 @Injectable()
 export class UsersService {
@@ -387,5 +392,58 @@ export class UsersService {
       limit,
       hasMore: skip + likes.length < total,
     };
+  }
+
+  async getFollowList(
+    userId: string,
+    direction: 'followers' | 'following',
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<FollowListDto> {
+    const skip = (page - 1) * limit;
+    const whereClause =
+      direction === 'followers'
+        ? { following: { some: { followingId: userId } } }
+        : { followers: { some: { followerId: userId } } };
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { ...whereClause, is_deleted: false, is_active: true },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          username: true,
+          display_name: true,
+          avatar_url: true,
+          _count: { select: { followers: true } },
+        },
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.user.count({
+        where: { ...whereClause, is_deleted: false, is_active: true },
+      }),
+    ]);
+
+    return {
+      data: users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.display_name,
+        avatarUrl: u.avatar_url,
+        followersCount: u._count.followers,
+      })),
+      page,
+      limit,
+      hasMore: skip + users.length < total,
+    };
+  }
+
+  async getFollowerList(userId: string, page: number, limit: number) {
+    return this.getFollowList(userId, 'followers', page, limit);
+  }
+
+  async getFollowingList(userId: string, page: number, limit: number) {
+    return this.getFollowList(userId, 'following', page, limit);
   }
 }
