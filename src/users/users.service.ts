@@ -328,4 +328,64 @@ export class UsersService {
       hasMore: skip + collections.length < total,
     };
   }
+
+  async getLikedTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<LikedTracksDto> {
+    const skip = (page - 1) * limit;
+    const [likes, total] = await Promise.all([
+      this.prisma.trackLike.findMany({
+        where: { userId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          track: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              audioUrl: true,
+              coverUrl: true,
+              durationSeconds: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.trackLike.count({ where: { userId } }),
+    ]);
+
+    return {
+      data: likes.map((like) => ({
+        likedAt: like.createdAt,
+        track: {
+          id: like.track.id,
+          title: like.track.title,
+          description: like.track.description,
+          audioUrl: like.track.audioUrl,
+          coverUrl: like.track.coverUrl,
+          duration: like.track.durationSeconds,
+          likesCount: like.track._count.likes,
+          commentsCount: like.track._count.comments,
+          repostsCount: like.track._count.reposts,
+          createdAt: like.track.createdAt,
+        },
+      })),
+      page,
+      limit,
+      hasMore: skip + likes.length < total,
+    };
+  }
 }
