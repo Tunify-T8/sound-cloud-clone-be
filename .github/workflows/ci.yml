@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI
 
 on:
   pull_request:
@@ -19,7 +19,9 @@ jobs:
           cache: npm
 
       - run: npm ci
-      
+
+      - name: Run ESLint
+        run: npm run lint
 
   docker:
     name: Docker Build (Test + Build)
@@ -31,43 +33,34 @@ jobs:
       - name: Build Docker image
         run: docker build -t soundcloud-backend .
 
-  push:
-    name: Push to Docker Hub
+  sync:
+    name: Sync to Monorepo
     needs: docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          path: backend-source
 
-      - name: Build and push Docker image
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          repository: Tunify-T8/Sound_Cloud_Clone-Team8
+          token: ${{ secrets.MONOREPO_PAT }}
+          path: monorepo
+
+      - name: Sync backend into monorepo
         run: |
-          docker build \
-            -t amirdiaa/soundcloud-backend:latest \
-            -t amirdiaa/soundcloud-backend:${{ github.sha }} .
-          docker push amirdiaa/soundcloud-backend:latest
-          docker push amirdiaa/soundcloud-backend:${{ github.sha }}
+          rm -rf monorepo/backend
+          rsync -av --exclude='.git' backend-source/ monorepo/backend/
 
-  deploy:
-    name: Deploy to Azure
-    needs: push
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_AZURE == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: soundcloud-t8-backend
-          images: amirdiaa/soundcloud-backend:${{ github.sha }}
+      - name: Commit and push to monorepo
+        run: |
+          cd monorepo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/
+          git diff --cached --quiet || git commit -m "Sync backend from ${{ github.sha }}"
+          git push
