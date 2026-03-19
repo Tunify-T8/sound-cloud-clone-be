@@ -17,3 +17,15 @@ export class UserTracksDto {
   limit: number;
   hasMore: boolean;
 }
+
+export class LikedTrackDto {
+  likedAt: Date;
+  track: TrackItemDto;
+}
+
+export class LikedTracksDto {
+  data: LikedTrackDto[];
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
