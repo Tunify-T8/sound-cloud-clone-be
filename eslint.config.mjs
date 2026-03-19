@@ -10,7 +10,9 @@ export default tseslint.config(
   },
   eslintPluginPrettierRecommended,
   {
+    files: ['**/*.ts', '**/*.js'],
     languageOptions: {
+      parser: tseslint.parser,
       globals: {
         ...globals.node,
         ...globals.jest,
@@ -21,8 +23,6 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-  },
-  {
     rules: {
       // Disable formatting errors completely
       "prettier/prettier": "off",
