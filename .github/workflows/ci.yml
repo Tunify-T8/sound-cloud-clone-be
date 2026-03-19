@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  docker:
+    name: Docker Build (Test + Build)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t soundcloud-backend .
+
+  sync:
+    name: Sync to Monorepo
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout backend repo
+        uses: actions/checkout@v4
+        with:
+          path: backend-source
+
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          repository: Tunify-T8/Sound_Cloud_Clone-Team8
+          token: ${{ secrets.MONOREPO_PAT }}
+          path: monorepo
+
+      - name: Sync backend into monorepo
+        run: |
+          rm -rf monorepo/backend
+          rsync -av --exclude='.git' backend-source/ monorepo/backend/
+
+      - name: Commit and push to monorepo
+        run: |
+          cd monorepo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/
+          git diff --cached --quiet || git commit -m "Sync backend from ${{ github.sha }}"
+          git push
