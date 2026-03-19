@@ -102,4 +102,13 @@ export class UsersController {
   ) {
     return this.usersService.getUser(id, user?.userId);
   }
+
+  @Get(':id/followers')
+  getFollowers(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getFollowers(id, page, limit);
+  }
 }
