@@ -25,7 +25,7 @@ export class MailerService {
   }): Promise<void> {
     try {
       await this.transporter.sendMail({
-        from: `"SoundCloud Clone" <${this.configService.get<string>('MAIL_USER')}>`,
+        from: `"Tunify" <${this.configService.get<string>('MAIL_USER')}>`,
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -38,6 +38,7 @@ export class MailerService {
   }
 
   // ─── Email Verification ──────────────────────────────────────────
+ // ─── Email Verification ──────────────────────────────────────────
   async sendVerificationEmail(
     to: string,
     username: string,
@@ -45,7 +46,7 @@ export class MailerService {
   ): Promise<void> {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #f50;">Welcome to SoundCloud Clone, ${username}!</h2>
+        <h2 style="color: #f50;">Welcome to Tunify, ${username}!</h2>
         <p>Thanks for signing up. Please verify your email address using the token below.</p>
         <div style="background: #f4f4f4; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
           <h1 style="color: #333; letter-spacing: 4px;">${token}</h1>
@@ -57,7 +58,7 @@ export class MailerService {
 
     await this.sendMail({
       to,
-      subject: 'Verify your email - SoundCloud Clone',
+      subject: 'Verify your email - Tunify',
       html,
     });
   }
@@ -76,13 +77,13 @@ export class MailerService {
           <h1 style="color: #333; letter-spacing: 4px;">${token}</h1>
         </div>
         <p>Copy this token and paste it in the password reset page.</p>
-        <p style="color: #999; font-size: 12px;">This token expires in 1 hour. If you didn't request a password reset, ignore this email.</p>
+        <p style="color: #999; font-size: 12px;">This token expires in 3 hours. If you didn't request a password reset, ignore this email.</p>
       </div>
     `;
 
     await this.sendMail({
       to,
-      subject: 'Reset your password - SoundCloud Clone',
+      subject: 'Reset your password - Tunify',
       html,
     });
   }
