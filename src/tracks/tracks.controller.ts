@@ -13,6 +13,7 @@ import {
   Request,
   Put,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -75,6 +76,8 @@ export class TracksController {
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
+    @Request() req,
+    @Param('id') trackId: string,
     @Body() dto: UpdateTrackMultipartDto,
     @UploadedFile(
       new ParseFilePipe({
@@ -87,8 +90,8 @@ export class TracksController {
     )
     artworkFile?: Express.Multer.File,
   ) {
-    const userId = 'b712d133-03c6-4229-b07e-6da113d23bb8';
-    const result = await this.tracksService.updateTrack(userId, dto, artworkFile);
+    const userId = req.user.userId;
+    const result = await this.tracksService.updateTrack(trackId, userId, dto, artworkFile);
     return result;
   }
 
@@ -102,5 +105,14 @@ export class TracksController {
   //   const track = await this.tracksService.updateTrackJson(trackId, userId, dto);
   //   return { track, statusCode: 200 };
   // }
+
+  @Delete(':id')
+  @UseGuards(JwtAccessGuard)
+  async deleteTrack(@Request() req, @Param('id') trackId: string) {
+    const result = await this.tracksService.deleteTrack(trackId, req.user.userId);
+    return {trackId, ...result};
+  }
    
+
+
 }
