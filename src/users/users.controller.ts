@@ -80,6 +80,18 @@ export class UsersController {
       limit,
     );
   }
+  // ─── GET /me/liked-tracks ───────────────────────────────────────
+  //returns my liked tracks
+  @Get('me/liked-tracks')
+  @UseGuards(JwtAccessGuard)
+  getLikedTracks(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getLikedTracks(user.userId, page, limit);
+  }
+
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
