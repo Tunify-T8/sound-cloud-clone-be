@@ -111,22 +111,6 @@ async googleLink(@Body() dto: GoogleLinkDto) {
 
 
 
-  // ─── POST /auth/refresh-token ─────────────────────────────────────
-  // Rotates refresh token and returns new access + refresh tokens
-  @Post('refresh-token')
-  @HttpCode(HttpStatus.OK)
-  async refreshToken(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshToken(dto);
-  }
-
-  // ─── POST /auth/signout ───────────────────────────────────────────
-  // Revokes current device's refresh token
-  @Post('signout')
-  @HttpCode(HttpStatus.OK)
-  async signout(@Body() dto: LogoutDto) {
-    return this.authService.signout(dto);
-  }
-
   // ─── POST /auth/signout-all ───────────────────────────────────────
   // Revokes all refresh tokens for this user across all devices
   @Post('signout-all')

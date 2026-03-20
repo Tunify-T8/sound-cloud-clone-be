@@ -544,7 +544,7 @@ export class UsersService {
         role: true,
         isVerified: true,
         gender: true,
-        date_of_birth: true,
+        dateOfBirth: true,
         createdAt: true,
         updatedAt: true,
       },
