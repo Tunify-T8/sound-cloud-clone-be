@@ -298,7 +298,6 @@ describe('UsersService', () => {
       // verify it queried with correct type
       expect(mockPrisma.collection.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           where: expect.objectContaining({ type: CollectionType.PLAYLIST }),
         }),
       );
@@ -345,10 +344,11 @@ describe('UsersService', () => {
       expect(result.data[0].followersCount).toBe(10);
       expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          where: expect.objectContaining({
+          where: {
             following: { some: { followingId: 'user-123' } },
-          }),
+            is_deleted: false,
+            is_active: true,
+          },
         }),
       );
     });
@@ -361,10 +361,11 @@ describe('UsersService', () => {
 
       expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          where: expect.objectContaining({
+          where: {
             followers: { some: { followerId: 'user-123' } },
-          }),
+            is_deleted: false,
+            is_active: true,
+          },
         }),
       );
     });
