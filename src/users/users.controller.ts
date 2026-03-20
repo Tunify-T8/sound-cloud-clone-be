@@ -130,6 +130,15 @@ export class UsersController {
   ) {
     return this.usersService.getFollowingList(user.userId, +page, +limit);
   }
+  //─── GET /me/favorite-genres ───────────────────────────────────────
+  // returns my social links
+  @Get('me/favorite-genres')
+  @UseGuards(JwtAccessGuard)
+  getFavoriteGenres(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getFavoriteGenres(user.userId);
+  }
 
   // ─── GET /users/:id ───────────────────────────────────────
   //returns profile from id
