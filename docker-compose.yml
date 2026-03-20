@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: soundcloud_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: soundcloud_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d soundcloud_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      target: production
+    container_name: soundcloud_be_api
+    restart: always
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    command: sh -c "npx prisma db push && node dist/src/main.js"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
