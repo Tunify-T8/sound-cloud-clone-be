@@ -555,7 +555,7 @@ model SubscriptionPlan {
   monthlyPrice          Float    @default(0)
   
   // Upload Features
-  monthlyUploadQuotaMB  Int?     // null = unlimited
+  monthlyUploadMinutes  Int?     // null = unlimited
   maxTrackDurationMin   Int      @default(180)
   maxTrackSizeGB        Float?
   
