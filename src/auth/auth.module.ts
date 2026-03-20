@@ -9,6 +9,7 @@ import { AuthService } from './auth.service';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
 import { JwtAccessGuard } from './guards/jwt-access.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { GoogleAuthService } from './google-auth.service';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { RolesGuard } from './guards/roles.guard';
   controllers: [AuthController],
   providers: [
     AuthService,
-    JwtAccessStrategy, // strategy must be a provider so Passport can find it
+    GoogleAuthService,
+    JwtAccessStrategy,  // strategy must be a provider so Passport can find it
     JwtAccessGuard,
     RolesGuard,
   ],
