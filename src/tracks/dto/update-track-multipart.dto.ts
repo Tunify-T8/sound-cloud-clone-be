@@ -76,7 +76,6 @@ class PermissionsDto {
 }
 
 export class UpdateTrackMultipartDto {
-
   @IsOptional()
   @IsString()
   title?: string;

@@ -1,4 +1,13 @@
-import { IsString, IsBoolean, IsOptional, IsArray, IsIn, IsDateString, ValidateNested,IsNotEmpty} from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsArray,
+  IsIn,
+  IsDateString,
+  ValidateNested,
+  IsNotEmpty,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AvailabilityDto {

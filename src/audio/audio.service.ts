@@ -4,18 +4,26 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+type FFStaticModule = { path?: string } | string;
+
 @Injectable()
 export class AudioService {
   constructor() {
     // Set the paths to ffmpeg and ffprobe binaries
     try {
-      const ffmpegStatic = require('ffmpeg-static');
-      const ffprobeStatic = require('ffprobe-static');
-      
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+      const ffmpegStatic: FFStaticModule = require('ffmpeg-static');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+      const ffprobeStatic: FFStaticModule = require('ffprobe-static');
+
       // These packages export objects with a .path property
-      const ffmpegBinaryPath = ffmpegStatic.path || ffmpegStatic;
-      const ffprobeBinaryPath = ffprobeStatic.path || ffprobeStatic;
-      
+      const ffmpegBinaryPath: string | undefined =
+        (ffmpegStatic as FFStaticModule & { path?: string }).path ||
+        (typeof ffmpegStatic === 'string' ? ffmpegStatic : undefined);
+      const ffprobeBinaryPath: string | undefined =
+        (ffprobeStatic as FFStaticModule & { path?: string }).path ||
+        (typeof ffprobeStatic === 'string' ? ffprobeStatic : undefined);
+
       if (typeof ffmpegBinaryPath === 'string') {
         ffmpeg.setFfmpegPath(ffmpegBinaryPath);
       }
@@ -24,7 +32,12 @@ export class AudioService {
       }
     } catch (error) {
       // If ffmpeg-static is not available, the system ffmpeg will be used
-      console.warn('ffmpeg-static or ffprobe-static not properly configured:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.warn(
+        'ffmpeg-static or ffprobe-static not properly configured:',
+        errorMessage,
+      );
     }
   }
 
@@ -40,7 +53,10 @@ export class AudioService {
 
       ffprobe(tempPath, (err, metadata) => {
         fs.unlinkSync(tempPath);
-        if (err) return reject(err);
+        if (err) {
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+          return reject(err);
+        }
         resolve(Math.floor(metadata.format.duration ?? 0));
       });
     });

@@ -8,10 +8,10 @@ import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bull';
 import { CreateTrackDto } from './dto/create-track.dto';
-import { UpdateTrackDto } from './dto/update-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
+import type { Prisma, FileFormat } from '@prisma/client';
 
 @Injectable()
 export class TracksService {
@@ -119,23 +119,26 @@ export class TracksService {
     const extension = file.originalname.split('.').pop();
 
     // 5. update track in DB
+
     await this.prisma.track.update({
       where: { id: trackId },
       data: {
-        fileFormat: extension !== 'mp3' ? (extension as any) : 'mp3',
+        fileFormat: extension !== 'mp3' ? (extension as FileFormat) : 'mp3',
         fileSizeBytes: file.size,
         transcodingStatus: 'processing',
       },
     });
 
     // 8. add job to queue — don't await, return immediately
-    this.tracksQueue.add('process-track', {
-      trackId,
-      fileBuffer: file.buffer,
-      extension,
-    }).catch((error) => {
-      console.error('Failed to queue track processing:', error);
-    });
+    this.tracksQueue
+      .add('process-track', {
+        trackId,
+        fileBuffer: file.buffer,
+        extension,
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to queue track processing:', error);
+      });
 
     return { message: 'Audio upload received, processing in background' };
   }
@@ -264,7 +267,8 @@ export class TracksService {
     }
 
     // 4. Prepare update data
-    const updateData: any = {};
+
+    const updateData: Prisma.TrackUpdateInput = {};
 
     // Update title if provided
     if (dto.title !== undefined) {
@@ -277,7 +281,7 @@ export class TracksService {
         where: { id: dto.genre },
       });
       if (genreExists) {
-        updateData.genreId = dto.genre;
+        updateData.genre = { connect: { id: dto.genre } };
       }
     }
 
@@ -370,7 +374,8 @@ export class TracksService {
     }
 
     // 5. Update the track
-    const updatedTrack = await this.prisma.track.update({
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _updatedTrack = await this.prisma.track.update({
       where: { id: trackId },
       data: updateData,
       include: {
@@ -476,7 +481,6 @@ export class TracksService {
 
   //-------------PATCH LOGIC SHOULD BE ADDED HERE IF WE USE IT----------------//
 
-
   async deleteTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
@@ -490,15 +494,18 @@ export class TracksService {
       throw new ForbiddenException('You can only delete your own tracks');
     }
 
-    
     await this.prisma.track.delete({
       where: { id: trackId },
     });
 
-    return {message: 'Track deleted successfully' };
+    return { message: 'Track deleted successfully' };
   }
 
-  async replaceAudio(trackId: string, userId: string, file: Express.Multer.File) {
+  async replaceAudio(
+    trackId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ) {
     // 1. Check if user has PRO subscription
     const userSubscription = await this.prisma.subscription.findFirst({
       where: {
@@ -508,7 +515,9 @@ export class TracksService {
     });
 
     if (!userSubscription) {
-      throw new ForbiddenException('Only PRO and GOPLUS subscribers can replace audio');
+      throw new ForbiddenException(
+        'Only PRO and GOPLUS subscribers can replace audio',
+      );
     }
 
     // 2. Find track
@@ -520,7 +529,10 @@ export class TracksService {
     if (!track) throw new NotFoundException('Track not found');
 
     // 4. Check ownership
-    if (track.userId !== userId) throw new ForbiddenException('You can only replace audio on your own tracks');
+    if (track.userId !== userId)
+      throw new ForbiddenException(
+        'You can only replace audio on your own tracks',
+      );
 
     // 5. Get file extension
     const extension = file.originalname.split('.').pop();
@@ -547,13 +559,15 @@ export class TracksService {
     });
 
     // 9. Add job to queue for processing (don't await - fire and forget)
-    this.tracksQueue.add('process-track', {
-      trackId,
-      fileBuffer: file.buffer,
-      extension,
-    }).catch((error) => {
-      console.error('Failed to queue track processing:', error);
-    });
+    this.tracksQueue
+      .add('process-track', {
+        trackId,
+        fileBuffer: file.buffer,
+        extension,
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to queue track processing:', error);
+      });
 
     // 10. Return formatted response
     return {
@@ -563,5 +577,4 @@ export class TracksService {
       audioUrl: updatedTrack.audioUrl,
     };
   }
-  
 }

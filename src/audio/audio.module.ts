@@ -3,6 +3,6 @@ import { AudioService } from './audio.service';
 
 @Module({
   providers: [AudioService],
-  exports: [AudioService]
+  exports: [AudioService],
 })
 export class AudioModule {}

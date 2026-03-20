@@ -11,46 +11,52 @@ import {
   FileTypeValidator,
   UseGuards,
   Request,
-  Put,
   Patch,
   Delete,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTrackDto } from './dto/create-track.dto';
-import { UpdateTrackDto } from './dto/update-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
+
+interface AuthRequest extends Request {
+  user?: { userId: string };
+}
 
 @Controller('tracks')
 export class TracksController {
   constructor(private readonly tracksService: TracksService) {}
 
-  
-  @Post() 
+  @Post()
   @UseGuards(JwtAccessGuard)
-  create(@Request() req, @Body() dto: CreateTrackDto) {
-    return this.tracksService.create(req.user.userId, dto);
-    //                                        ↑ userId not id
+  create(@Request() req: AuthRequest, @Body() dto: CreateTrackDto) {
+    return this.tracksService.create(req.user?.userId ?? '', dto);
   }
 
   @Post(':id/audio')
   @UseGuards(JwtAccessGuard)
-  @UseInterceptors(FileInterceptor('file'))            
+  @UseInterceptors(FileInterceptor('file'))
   uploadAudio(
-    @Request() req,
+    @Request() req: AuthRequest,
     @Param('id') trackId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff)/ }),
+          new FileTypeValidator({
+            fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff)/,
+          }),
         ],
       }),
     )
     file: Express.Multer.File,
   ) {
-    return this.tracksService.uploadAudio(trackId, req.user.userId, file);
+    return this.tracksService.uploadAudio(
+      trackId,
+      req.user?.userId ?? '',
+      file,
+    );
   }
 
   @Get(':id/status')
@@ -63,11 +69,10 @@ export class TracksController {
   @UseGuards(JwtAccessGuard)
   async getTrack(@Param('id') trackId: string) {
     const track = await this.tracksService.getTrack(trackId);
-    if(!track){
-      return {message: 'Track not found', statusCode: 404};
-    }
-    else{
-      return {track, statusCode: 200};
+    if (!track) {
+      return { message: 'Track not found', statusCode: 404 };
+    } else {
+      return { track, statusCode: 200 };
     }
     // na2es ashoof bs el user authorized wla la (hasaal alfred)
   }
@@ -76,7 +81,7 @@ export class TracksController {
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
-    @Request() req,
+    @Request() req: AuthRequest,
     @Param('id') trackId: string,
     @Body() dto: UpdateTrackMultipartDto,
     @UploadedFile(
@@ -90,8 +95,13 @@ export class TracksController {
     )
     artworkFile?: Express.Multer.File,
   ) {
-    const userId = req.user.userId;
-    const result = await this.tracksService.updateTrack(trackId, userId, dto, artworkFile);
+    const userId = req.user?.userId ?? '';
+    const result = await this.tracksService.updateTrack(
+      trackId,
+      userId,
+      dto,
+      artworkFile,
+    );
     return result;
   }
 
@@ -108,16 +118,19 @@ export class TracksController {
 
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
-  async deleteTrack(@Request() req, @Param('id') trackId: string) {
-    const result = await this.tracksService.deleteTrack(trackId, req.user.userId);
-    return {trackId, ...result};
+  async deleteTrack(@Request() req: AuthRequest, @Param('id') trackId: string) {
+    const result = await this.tracksService.deleteTrack(
+      trackId,
+      req.user?.userId ?? '',
+    );
+    return { trackId, ...result };
   }
-   
+
   @Post(':id/audio/replace')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('file'))
   async replaceAudio(
-    @Request() req,
+    @Request() req: AuthRequest,
     @Param('id') trackId: string,
     @UploadedFile(
       new ParseFilePipe({
@@ -129,7 +142,10 @@ export class TracksController {
     )
     file: Express.Multer.File,
   ) {
-    return this.tracksService.replaceAudio(trackId, req.user.userId, file);
+    return this.tracksService.replaceAudio(
+      trackId,
+      req.user?.userId ?? '',
+      file,
+    );
   }
-
 }

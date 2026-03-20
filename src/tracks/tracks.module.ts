@@ -8,8 +8,13 @@ import { BullModule } from '@nestjs/bull';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [AuthModule,StorageModule , AudioModule, BullModule.registerQueue({ name: 'tracks' })],
+  imports: [
+    AuthModule,
+    StorageModule,
+    AudioModule,
+    BullModule.registerQueue({ name: 'tracks' }),
+  ],
   controllers: [TracksController],
-  providers: [TracksService, TracksProcessor]
+  providers: [TracksService, TracksProcessor],
 })
 export class TracksModule {}

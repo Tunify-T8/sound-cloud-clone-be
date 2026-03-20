@@ -21,14 +21,14 @@ import { RolesGuard } from './guards/roles.guard';
   controllers: [AuthController],
   providers: [
     AuthService,
-    JwtAccessStrategy,  // strategy must be a provider so Passport can find it
+    JwtAccessStrategy, // strategy must be a provider so Passport can find it
     JwtAccessGuard,
     RolesGuard,
   ],
   exports: [
     AuthService,
-    JwtAccessGuard,  // export so other modules can use @UseGuards(JwtAccessGuard)
-    RolesGuard,      // export so other modules can use @UseGuards(RolesGuard)
+    JwtAccessGuard, // export so other modules can use @UseGuards(JwtAccessGuard)
+    RolesGuard, // export so other modules can use @UseGuards(RolesGuard)
   ],
 })
 export class AuthModule {}

@@ -1,51 +1,54 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class StorageService {
-  private supabase: SupabaseClient;
+  private supabase: SupabaseClient<any, 'public', 'public'>;
 
   constructor(private config: ConfigService) {
-    this.supabase = createClient(
+    this.supabase = createClient<any>(
       this.config.get('SUPABASE_URL') ?? '',
       this.config.get('SUPABASE_KEY') ?? '',
-    );
+    ) as unknown as SupabaseClient<any, 'public', 'public'>;
   }
-  
-async uploadAudio(file: Express.Multer.File): Promise<string> {
-  const filename = `${Date.now()}-${file.originalname}`;
 
-  // normalize content type — Supabase is strict about this
-  const contentTypeMap: Record<string, string> = {
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    flac: 'audio/flac',
-    aac: 'audio/aac',
-    aiff: 'audio/aiff',
-  };
+  async uploadAudio(file: Express.Multer.File): Promise<string> {
+    const filename = `${Date.now()}-${file.originalname}`;
 
-  const extension = file.originalname.split('.').pop()?.toLowerCase() ?? 'mp3';
-  const contentType = contentTypeMap[extension] ?? file.mimetype;
+    // normalize content type — Supabase is strict about this
+    const contentTypeMap: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      flac: 'audio/flac',
+      aac: 'audio/aac',
+      aiff: 'audio/aiff',
+    };
 
-  console.log('Uploading:', filename, 'Content-Type:', contentType);
+    const extension =
+      file.originalname.split('.').pop()?.toLowerCase() ?? 'mp3';
+    const contentType = contentTypeMap[extension] ?? file.mimetype;
 
-  const { error } = await this.supabase.storage
-    .from('audio')
-    .upload(filename, file.buffer, {
-      contentType,
-      upsert: false,
-    });
+    console.log('Uploading:', filename, 'Content-Type:', contentType);
 
-  if (error) throw new Error(`Audio upload failed: ${error.message}`);
+    const { error } = await this.supabase.storage
+      .from('audio')
+      .upload(filename, file.buffer, {
+        contentType,
+        upsert: false,
+      });
 
-  const { data } = this.supabase.storage
-    .from('audio')
-    .getPublicUrl(filename);
+    if (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(`Audio upload failed: ${errorMessage}`);
+    }
 
-  return data.publicUrl;
-}
+    const { data } = this.supabase.storage.from('audio').getPublicUrl(filename);
+
+    return data.publicUrl;
+  }
 
   async uploadWaveform(peaks: number[], trackId: string): Promise<string> {
     const filename = `${trackId}.json`;
@@ -79,14 +82,18 @@ async uploadAudio(file: Express.Multer.File): Promise<string> {
         });
 
       if (error) {
-        console.warn(`Image upload warning: ${error.message}`);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        console.warn(`Image upload warning: ${(error as any).message}`);
         return null; // Return null instead of throwing
       }
 
-      const { data } = this.supabase.storage.from('artwork').getPublicUrl(filename);
+      const { data } = this.supabase.storage
+        .from('artwork')
+        .getPublicUrl(filename);
 
       return data.publicUrl;
     } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       console.warn(`Image upload failed: ${error.message}`);
       return null; // Return null on error instead of throwing
     }

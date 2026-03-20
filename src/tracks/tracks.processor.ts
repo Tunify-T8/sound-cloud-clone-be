@@ -20,7 +20,7 @@ export class TracksProcessor {
     job: Job<{ trackId: string; fileBuffer: any; extension: string }>,
   ) {
     const { trackId, extension } = job.data;
-    const fileBuffer = Buffer.from(job.data.fileBuffer);
+    const fileBuffer = Buffer.from(job.data.fileBuffer) as Buffer;
 
     try {
       let finalBuffer = fileBuffer;
@@ -44,7 +44,8 @@ export class TracksProcessor {
 
       // 2. transcode if not mp3
       if (extension !== 'mp3') {
-        finalBuffer = (await this.audio.transcodeToMp3(fileBuffer)) as Buffer;
+        const transcoded = await this.audio.transcodeToMp3(fileBuffer);
+        finalBuffer = transcoded as Buffer;
         finalExtension = 'mp3';
 
         const mp3File = {
