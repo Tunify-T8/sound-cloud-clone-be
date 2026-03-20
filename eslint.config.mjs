@@ -8,6 +8,8 @@ export default tseslint.config(
   {
     ignores: ['eslint.config.mjs', 'dist', 'node_modules'],
   },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended, // 👈 add this
   eslintPluginPrettierRecommended,
   {
     files: ['**/*.ts', '**/*.js'],
@@ -23,14 +25,12 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-   rules: {
-  '@typescript-eslint/no-explicit-any': 'off',
-
-  '@typescript-eslint/no-floating-promises': 'warn',
-  '@typescript-eslint/no-unsafe-argument': 'warn',
-  '@typescript-eslint/no-unsafe-call': 'warn',
-
-  'prettier/prettier': ['error', { endOfLine: 'auto' }],
-},
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'warn',
+      '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-unsafe-call': 'warn',
+      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+    },
   },
 );
