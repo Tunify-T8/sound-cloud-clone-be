@@ -537,6 +537,8 @@ model Subscription {
   planType  SubscriptionPlan
   startedAt DateTime         @default(now())
   endedAt   DateTime?
+  uploadedMinutes Int              @default(0) // Example field for upload limits based on subscription
+
 
   user     User      @relation(fields: [userId], references: [id])
   payments Payment[]

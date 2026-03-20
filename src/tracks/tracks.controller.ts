@@ -72,7 +72,7 @@ export class TracksController {
     // na2es ashoof bs el user authorized wla la (hasaal alfred)
   }
 
-  @Put(':id')
+  @Patch(':id')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
