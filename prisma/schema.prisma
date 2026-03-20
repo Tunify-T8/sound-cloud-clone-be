@@ -54,7 +54,7 @@ model User {
   blockedBy               UserBlock[]              @relation("Blocked")
 
   tracks                  Track[]                  @relation("TrackOwner")
-  trackArtists            TrackArtist[]
+  trackArtists            trackArtist[]
 
   trackLikes              TrackLike[]
   reposts                 Repost[]
