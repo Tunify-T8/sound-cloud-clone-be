@@ -24,6 +24,8 @@ import { UserType } from '@prisma/client';
 import { JwtAccessGuard } from './guards/jwt-access.guard';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { GoogleAuthService } from './google-auth.service';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { GoogleLinkDto } from './dto/google-link.dto';
 
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -90,6 +92,40 @@ export class AuthController {
   async signout(@Body() dto: LogoutDto) {
     return this.authService.signout(dto);
   }
+// ─── POST /auth/google ────────────────────────────────────────────
+// Main Google OAuth endpoint — handles sign in + register + linking detection
+@Post('google')
+@HttpCode(HttpStatus.OK)
+async googleAuth(@Body() dto: GoogleAuthDto) {
+  return this.googleAuthService.googleAuth(dto);
+}
+
+// ─── POST /auth/google/link ───────────────────────────────────────
+// Completes account linking — verifies password then links Google to LOCAL account
+@Post('google/link')
+@HttpCode(HttpStatus.OK)
+async googleLink(@Body() dto: GoogleLinkDto) {
+  return this.googleAuthService.googleLink(dto);
+}
+
+
+
+
+  // ─── POST /auth/refresh-token ─────────────────────────────────────
+  // Rotates refresh token and returns new access + refresh tokens
+  @Post('refresh-token')
+  @HttpCode(HttpStatus.OK)
+  async refreshToken(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto);
+  }
+
+  // ─── POST /auth/signout ───────────────────────────────────────────
+  // Revokes current device's refresh token
+  @Post('signout')
+  @HttpCode(HttpStatus.OK)
+  async signout(@Body() dto: LogoutDto) {
+    return this.authService.signout(dto);
+  }
 
   // ─── POST /auth/signout-all ───────────────────────────────────────
   // Revokes all refresh tokens for this user across all devices
@@ -120,8 +156,11 @@ export class AuthController {
   @Delete('delete-account')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAccessGuard)
-  async deleteAccount(@Request() req, @Body() dto: DeleteAccountDto) {
-    return this.authService.deleteAccount(req.user.userId, dto);
+  async deleteAccount(
+    @Request() req: Request & { user?: { userId: string } },
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.authService.deleteAccount(req.user?.userId ?? '', dto);
   }
 
   // ─── GET /auth/test-auth ──────────────────────────────────────────

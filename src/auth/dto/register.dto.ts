@@ -51,6 +51,8 @@ export class RegisterDto {
   avatarUrl?: string;
 
   @IsString()
-  @IsOptional()
-  captchaToken?: string;
+@IsOptional()
+captchaToken?: string;
+
+
 }
