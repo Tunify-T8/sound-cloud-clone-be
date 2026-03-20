@@ -4,7 +4,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
 @Injectable()
-export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') {
+export class JwtAccessStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-access',
+) {
   constructor(private readonly configService: ConfigService) {
     super({
       // Extracts Bearer token from Authorization header automatically
@@ -17,7 +20,7 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
 
   // Called automatically by Passport after token is verified
   // Whatever we return here gets attached to req.user
-  async validate(payload: { sub: string; email: string; role: string }) {
+  validate(payload: { sub: string; email: string; role: string }) {
     if (!payload.sub) {
       throw new UnauthorizedException('Invalid token payload');
     }

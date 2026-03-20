@@ -6,8 +6,9 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
-  ForbiddenException
+  ForbiddenException,
 } from '@nestjs/common';
+import type { User } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -43,12 +44,18 @@ export class AuthService {
   }
 
   // ─── Helper: Generate JWT Access Token ───────────────────────────
-  private generateAccessToken(userId: string, email: string, role: string): string {
+  private generateAccessToken(
+    userId: string,
+    email: string,
+    role: string,
+  ): string {
     return this.jwtService.sign(
       { sub: userId, email, role },
       {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') as StringValue,
+        expiresIn: this.configService.get<string>(
+          'JWT_ACCESS_EXPIRES_IN',
+        ) as StringValue,
       },
     );
   }
@@ -117,7 +124,7 @@ export class AuthService {
     const passHash = await bcrypt.hash(dto.password, 12);
 
     // 4. Create the user in DB
-    let user: any;
+    let user: User;
     try {
       user = await this.prisma.user.create({
         data: {
@@ -133,8 +140,15 @@ export class AuthService {
         },
       });
     } catch (error) {
-      if (error.code === 'P2002') {
-        const field = error.meta?.target?.includes('email') ? 'Email' : 'Username';
+      // Re-throw Prisma unique constraint violations properly
+      const prismaError = error as {
+        code?: string;
+        meta?: { target?: string[] };
+      };
+      if (prismaError.code === 'P2002') {
+        const field = prismaError.meta?.target?.includes('email')
+          ? 'Email'
+          : 'Username';
         throw new ConflictException(`${field} already in use`);
       }
       this.logger.error('Failed to create user', error);
@@ -174,7 +188,8 @@ export class AuthService {
     };
   }
 
-  // ─── Verify Email ─────────────────────────────────────────────────
+  // ─── Verify Email ───────────────────────────────────────────────
+
   async verifyEmail(dto: VerifyEmailDto) {
     // 1. Find user by email
     const user = await this.prisma.user.findUnique({
@@ -182,9 +197,10 @@ export class AuthService {
     });
 
     // 2. Find token
-    const verificationToken = await this.prisma.emailVerificationToken.findUnique({
-      where: { token: dto.token },
-    });
+    const verificationToken =
+      await this.prisma.emailVerificationToken.findUnique({
+        where: { token: dto.token },
+      });
 
     // 3. Validate everything — same generic error for all failures (security)
     if (
@@ -203,7 +219,7 @@ export class AuthService {
       data: { used: true },
     });
 
-    // 5. Mark user as verified + update lastLoginAt
+    // 5. Mark user as verified + update last_login_at
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -213,9 +229,12 @@ export class AuthService {
     });
 
     // 6. Generate tokens
-    const accessToken = this.generateAccessToken(user.id, user.email, user.role);
+    const accessToken = this.generateAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
     const refreshTokenRaw = this.generateRefreshToken(user.id, user.email);
-
     // 7. Hash refresh token before saving to DB
     const refreshTokenHash = await bcrypt.hash(refreshTokenRaw, 12);
 
@@ -227,14 +246,13 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
-
     this.logger.log(`User ${user.id} verified email and logged in`);
 
     // 9. Return tokens + user info
     return {
       message: 'Email verified successfully',
       accessToken,
-      refreshToken: refreshTokenRaw,
+      refreshToken: refreshTokenRaw, // raw token goes to client, hash stays in DB
       user: {
         id: user.id,
         username: user.username,
@@ -245,7 +263,10 @@ export class AuthService {
     };
   }
 
-  // ─── Check Email ──────────────────────────────────────────────────
+  // ─── Check Email ─────────────────────────────────────────────────
+  // Checks if email exists before registration
+  // If exists → tell user to sign in (don't reveal sensitive info)
+  // If not → give green light to continue registration
   async checkEmail(dto: CheckEmailDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -635,7 +656,9 @@ export class AuthService {
 
     // 7. Return generic success
     return {
-      message: 'If an account exists with this email, you will receive a password reset link shortly.',
+      // accessToken: newAccessToken,
+      // refreshToken: newRefreshTokenRaw,
+      message: 'temp message lghayet makhod mn alfred'
     };
   }
 

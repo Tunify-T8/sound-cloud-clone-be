@@ -25,7 +25,17 @@ export class RolesGuard implements CanActivate {
     }
 
     // 3. Get user from request — attached by JwtAccessGuard
-    const { user } = context.switchToHttp().getRequest();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const request = context.switchToHttp().getRequest();
+    interface SafeRequest {
+      user?: { role: string };
+    }
+    const safeRequest = request as SafeRequest;
+    const user = safeRequest.user;
+
+    if (!user) {
+      return false;
+    }
 
     // 4. Apply role hierarchy
     // ADMIN can do everything
@@ -34,7 +44,10 @@ export class RolesGuard implements CanActivate {
     }
 
     // ARTIST can do ARTIST-level things
-    if (requiredRoles.includes(UserType.ARTIST) && user.role === UserType.ARTIST) {
+    if (
+      requiredRoles.includes(UserType.ARTIST) &&
+      user.role === UserType.ARTIST
+    ) {
       return true;
     }
 

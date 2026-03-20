@@ -29,8 +29,8 @@ import { GoogleAuthService } from './google-auth.service';
   ],
   exports: [
     AuthService,
-    JwtAccessGuard,  // export so other modules can use @UseGuards(JwtAccessGuard)
-    RolesGuard,      // export so other modules can use @UseGuards(RolesGuard)
+    JwtAccessGuard, // export so other modules can use @UseGuards(JwtAccessGuard)
+    RolesGuard, // export so other modules can use @UseGuards(RolesGuard)
   ],
 })
 export class AuthModule {}
