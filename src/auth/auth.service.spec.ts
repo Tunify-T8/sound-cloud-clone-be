@@ -58,27 +58,27 @@ describe('AuthService', () => {
           provide: PrismaService,
           useValue: {
             user: {
-              findUnique: jest.fn() as jest.Mock,
-              create: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
+              findUnique: jest.fn(),
+              create: jest.fn(),
+              update: jest.fn(),
             },
             emailVerificationToken: {
-              create: jest.fn() as jest.Mock,
-              findUnique: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
-              updateMany: jest.fn() as jest.Mock,
+              create: jest.fn(),
+              findUnique: jest.fn(),
+              update: jest.fn(),
+              updateMany: jest.fn(),
             },
             passwordResetToken: {
-              create: jest.fn() as jest.Mock,
-              findUnique: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
-              updateMany: jest.fn() as jest.Mock,
+              create: jest.fn(),
+              findUnique: jest.fn(),
+              update: jest.fn(),
+              updateMany: jest.fn(),
             },
             refreshToken: {
-              create: jest.fn() as jest.Mock,
-              findMany: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
-              updateMany: jest.fn() as jest.Mock,
+              create: jest.fn(),
+              findMany: jest.fn(),
+              update: jest.fn(),
+              updateMany: jest.fn(),
             },
           } satisfies PrismaMock,
         },
@@ -112,9 +112,9 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    prisma = module.get(PrismaService) as any;
-    jwtService = module.get(JwtService) as jest.Mocked<JwtService>;
-    mailerService = module.get(MailerService) as jest.Mocked<MailerService>;
+    prisma = module.get(PrismaService);
+    jwtService = module.get(JwtService);
+    mailerService = module.get(MailerService);
   });
 
   afterEach(() => {

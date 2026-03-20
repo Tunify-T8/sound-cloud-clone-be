@@ -7,7 +7,7 @@ export class StorageService {
   private supabase: SupabaseClient<any, 'public', 'public'>;
 
   constructor(private config: ConfigService) {
-    this.supabase = createClient<any>(
+    this.supabase = createClient(
       this.config.get('SUPABASE_URL') ?? '',
       this.config.get('SUPABASE_KEY') ?? '',
     ) as unknown as SupabaseClient<any, 'public', 'public'>;

@@ -54,8 +54,8 @@ export class AudioService {
       ffprobe(tempPath, (err, metadata) => {
         fs.unlinkSync(tempPath);
         if (err) {
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-          return reject(err);
+           
+          reject(err); return;
         }
         resolve(Math.floor(metadata.format.duration ?? 0));
       });

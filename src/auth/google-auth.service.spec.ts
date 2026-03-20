@@ -65,18 +65,18 @@ describe('GoogleAuthService', () => {
           provide: PrismaService,
           useValue: {
             user: {
-              findUnique: jest.fn() as jest.Mock,
-              create: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
+              findUnique: jest.fn(),
+              create: jest.fn(),
+              update: jest.fn(),
             },
             oAuthAccount: {
-              findUnique: jest.fn() as jest.Mock,
-              create: jest.fn() as jest.Mock,
+              findUnique: jest.fn(),
+              create: jest.fn(),
             },
             refreshToken: {
-              create: jest.fn() as jest.Mock,
+              create: jest.fn(),
             },
-            $transaction: jest.fn() as jest.Mock,
+            $transaction: jest.fn(),
           } satisfies PrismaMock,
         },
         {
@@ -102,8 +102,8 @@ describe('GoogleAuthService', () => {
     }).compile();
 
     service = module.get<GoogleAuthService>(GoogleAuthService);
-    prisma = module.get(PrismaService) as any;
-    jwtService = module.get(JwtService) as jest.Mocked<JwtService>;
+    prisma = module.get(PrismaService);
+    jwtService = module.get(JwtService);
 
     jest.spyOn(service as any, 'getGoogleUser').mockResolvedValue(mockGooglePayload);
   });
