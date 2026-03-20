@@ -1,8 +1,20 @@
-import { Controller, Get, UseGuards, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  Param,
+  Query,
+  Patch,
+  Body,
+  Delete,
+} from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
+import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UsersService } from './users.service';
 import * as usersDecorator from './users.decorator';
-import { CollectionType } from '@prisma/client';
+import { CollectionType, SocialPlatform } from '@prisma/client';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { ParseSocialPlatformPipe } from './pipes/parse-social-platform.pipe';
 
 @Controller('users')
 export class UsersController {
@@ -149,5 +161,25 @@ export class UsersController {
     @Query('limit') limit: number = 10,
   ) {
     return this.usersService.getFollowingList(id, page, limit);
+  }
+  // ─── PATCH /me/social-links ───────────────────────────────────────
+  //updates social links of user
+  @Patch('me/social-links')
+  @UseGuards(JwtAccessGuard)
+  updateSocialLinks(
+    @Body() input: UpdateSocialLinksDto,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.updateSocialLinks(user.userId, input);
+  }
+  // ─── DELETE /me/social-links/:platform ───────────────────────────────────────
+  //delete a social link
+  @Delete('me/social-links/:platform')
+  @UseGuards(JwtAccessGuard)
+  deleteSocialLink(
+    @Param('platform', ParseSocialPlatformPipe) platform: SocialPlatform,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.deleteSocialLink(user.userId, platform);
   }
 }
