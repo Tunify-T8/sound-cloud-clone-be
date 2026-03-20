@@ -1,36 +1,29 @@
-// @ts-check
 import eslint from '@eslint/js';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
-import tseslint from 'typescript-eslint';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 
-export default tseslint.config(
-  {
-    ignores: ['eslint.config.mjs', 'dist', 'node_modules'],
-  },
-  eslint.configs.recommended,
-  ...tseslint.configs.recommended, // 👈 add this
-  eslintPluginPrettierRecommended,
-  {
-    files: ['**/*.ts', '**/*.js'],
-    languageOptions: {
-      parser: tseslint.parser,
-      globals: {
-        ...globals.node,
-        ...globals.jest,
+export default {
+  ignores: ['eslint.config.mjs', 'dist', 'node_modules'],
+  overrides: [
+    {
+      files: ['**/*.ts', '**/*.js'],
+      parser: tsParser,
+      plugins: {
+        '@typescript-eslint': tsPlugin,
       },
-      sourceType: 'commonjs',
       parserOptions: {
         project: ['./tsconfig.json'],
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir: new URL('.', import.meta.url).pathname,
+      },
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/no-floating-promises': 'warn',
+        '@typescript-eslint/no-unsafe-argument': 'warn',
+        '@typescript-eslint/no-unsafe-call': 'warn',
+        'prettier/prettier': ['error', { endOfLine: 'auto' }],
       },
     },
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      'prettier/prettier': ['error', { endOfLine: 'auto' }],
-    },
-  },
-);
+  ],
+};
