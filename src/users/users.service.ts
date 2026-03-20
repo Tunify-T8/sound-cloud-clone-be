@@ -504,4 +504,24 @@ export class UsersService {
       .map(({ id, label }) => ({ id, label }));
   }
 
+  async updateSocialLinks(userId: string, dto: UpdateSocialLinksDto) {
+    const upserts = dto.links.map((link) =>
+      this.prisma.userSocialLink.upsert({
+        where: {
+          user_id_platform: {
+            user_id: userId,
+            platform: link.platform,
+          },
+        },
+        update: { url: link.url },
+        create: { user_id: userId, platform: link.platform, url: link.url },
+      }),
+    );
+    await this.prisma.$transaction(upserts);
+    return this.prisma.userSocialLink.findMany({
+      where: { user_id: userId, deleted_at: null },
+      select: { platform: true, url: true },
+    });
+  }
+
 }
