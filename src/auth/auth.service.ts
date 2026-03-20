@@ -43,12 +43,18 @@ export class AuthService {
   }
 
   // ─── Helper: Generate JWT Access Token ───────────────────────────
-  private generateAccessToken(userId: string, email: string, role: string): string {
+  private generateAccessToken(
+    userId: string,
+    email: string,
+    role: string,
+  ): string {
     return this.jwtService.sign(
       { sub: userId, email, role },
       {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') as StringValue,
+        expiresIn: this.configService.get<string>(
+          'JWT_ACCESS_EXPIRES_IN',
+        ) as StringValue,
       },
     );
   }
@@ -59,7 +65,9 @@ export class AuthService {
       { sub: userId, email },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') as StringValue,
+        expiresIn: this.configService.get<string>(
+          'JWT_REFRESH_EXPIRES_IN',
+        ) as StringValue,
       },
     );
   }
@@ -88,7 +96,9 @@ export class AuthService {
     const data = await response.json();
 
     if (!data.success || data.score < minScore) {
-      throw new BadRequestException('CAPTCHA verification failed. Please try again.');
+      throw new BadRequestException(
+        'CAPTCHA verification failed. Please try again.',
+      );
     }
   }
 
@@ -184,9 +194,10 @@ export class AuthService {
     });
 
     // 2. Find token
-    const verificationToken = await this.prisma.emailVerificationToken.findUnique({
-      where: { token: dto.token },
-    });
+    const verificationToken =
+      await this.prisma.emailVerificationToken.findUnique({
+        where: { token: dto.token },
+      });
 
     // 3. Validate everything — same generic error for all failures (security)
     if (
@@ -215,7 +226,11 @@ export class AuthService {
     });
 
     // 6. Generate tokens
-    const accessToken = this.generateAccessToken(user.id, user.email, user.role);
+    const accessToken = this.generateAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
     const refreshTokenRaw = this.generateRefreshToken(user.id, user.email);
 
     // 7. Hash refresh token before saving to DB
@@ -397,7 +412,11 @@ export class AuthService {
     }
 
     // 8. Generate tokens
-    const accessToken = this.generateAccessToken(user.id, user.email, user.role);
+    const accessToken = this.generateAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
     const refreshTokenRaw = this.generateRefreshToken(user.id, user.email);
 
     // 9. Hash refresh token → save to DB
@@ -449,7 +468,7 @@ export class AuthService {
     }
 
     // 3. Find matching token via bcrypt compare
-    let matchedToken: typeof activeTokens[0] | null = null;
+    let matchedToken: (typeof activeTokens)[0] | null = null;
     for (const storedToken of activeTokens) {
       const isMatch = await bcrypt.compare(dto.refreshToken, storedToken.token);
       if (isMatch) {
@@ -484,8 +503,15 @@ export class AuthService {
     });
 
     // 7. Generate new tokens
-    const newAccessToken = this.generateAccessToken(payload.sub, payload.email, user.role);
-    const newRefreshTokenRaw = this.generateRefreshToken(payload.sub, payload.email);
+    const newAccessToken = this.generateAccessToken(
+      payload.sub,
+      payload.email,
+      user.role,
+    );
+    const newRefreshTokenRaw = this.generateRefreshToken(
+      payload.sub,
+      payload.email,
+    );
 
     // 8. Hash + save new refresh token
     const newRefreshTokenHash = await bcrypt.hash(newRefreshTokenRaw, 12);
@@ -532,7 +558,7 @@ export class AuthService {
     }
 
     // 4. Find matching token via bcrypt compare
-    let matchedToken: typeof activeTokens[0] | null = null;
+    let matchedToken: (typeof activeTokens)[0] | null = null;
     for (const storedToken of activeTokens) {
       const isMatch = await bcrypt.compare(dto.refreshToken, storedToken.token);
       if (isMatch) {
@@ -601,7 +627,8 @@ export class AuthService {
     // 2. Always return success — never reveal if email exists
     if (!user) {
       return {
-        message: 'If an account exists with this email, you will receive a password reset link shortly.',
+        message:
+          'If an account exists with this email, you will receive a password reset link shortly.',
       };
     }
 
@@ -671,7 +698,9 @@ export class AuthService {
     // 3. Password check
     if (user.passHash) {
       if (!dto.password) {
-        throw new BadRequestException('Password is required to delete your account');
+        throw new BadRequestException(
+          'Password is required to delete your account',
+        );
       }
       const isPasswordValid = await bcrypt.compare(dto.password, user.passHash);
       if (!isPasswordValid) {
@@ -766,7 +795,9 @@ export class AuthService {
       });
     }
 
-    this.logger.log(`Password reset for user ${user.id}. Signout all: ${shouldSignoutAll}`);
+    this.logger.log(
+      `Password reset for user ${user.id}. Signout all: ${shouldSignoutAll}`,
+    );
 
     return {
       message: 'Password reset successfully.',
