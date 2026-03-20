@@ -446,4 +446,62 @@ export class UsersService {
   async getFollowingList(userId: string, page: number, limit: number) {
     return this.getFollowList(userId, 'following', page, limit);
   }
+
+  async getFavoriteGenres(userId: string) {
+    const playHistory = await this.prisma.playHistory.groupBy({
+      by: ['trackId'],
+      where: { userId },
+      _count: { trackId: true },
+    });
+
+    if (!playHistory.length) return [];
+
+    // get trackIds ordered by play count
+    const trackPlayCounts = playHistory
+      .sort((a, b) => b._count.trackId - a._count.trackId)
+      .map((p) => p.trackId);
+
+    // get genres for those tracks, excluding deleted/hidden
+    const tracks = await this.prisma.track.findMany({
+      where: {
+        id: { in: trackPlayCounts },
+        isDeleted: false,
+        isHidden: false,
+        genre: { isNot: null },
+      },
+      select: {
+        genreId: true,
+        genre: { select: { id: true, label: true } },
+      },
+    });
+
+    // count plays per genre
+    const genrePlayCounts = new Map<
+      string,
+      { id: string; label: string; count: number }
+    >();
+
+    for (const track of tracks) {
+      if (!track.genre) continue;
+      const plays =
+        playHistory.find((p) => p.trackId === track.genreId)?._count.trackId ??
+        0;
+      const existing = genrePlayCounts.get(track.genreId);
+      if (existing) {
+        existing.count += plays;
+      } else {
+        genrePlayCounts.set(track.genreId, {
+          id: track.genre.id,
+          label: track.genre.label,
+          count: plays,
+        });
+      }
+    }
+
+    return [...genrePlayCounts.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ id, label }) => ({ id, label }));
+  }
+
 }
