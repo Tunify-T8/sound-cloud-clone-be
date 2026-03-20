@@ -8,19 +8,18 @@ import {
 
 @ValidatorConstraint({ name: 'AtLeastOneField', async: false })
 export class AtLeastOneFieldConstraint implements ValidatorConstraintInterface {
-  validate(_: any, args: ValidationArguments) {
-    const obj = args.object as Record<string, any>;
+  validate(_: unknown, args: ValidationArguments): boolean {
+    const obj = args.object as Record<string, unknown>;
     return Object.values(obj).some((v) => v !== undefined);
   }
 
-  defaultMessage() {
+  defaultMessage(): string {
     return 'At least one field must be provided';
   }
 }
 
 export function AtLeastOneField(validationOptions?: ValidationOptions) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  return function (constructor: Function) {
+  return function (constructor: NewableFunction) {
     registerDecorator({
       name: 'AtLeastOneField',
       target: constructor,
