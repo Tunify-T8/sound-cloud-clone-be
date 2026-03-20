@@ -146,7 +146,7 @@ model UserSocialLink {
   updated_at DateTime       @updatedAt
   deleted_at DateTime?
   user       User           @relation(fields: [user_id], references: [id])
-
+  @@unique([user_id, platform])  
   @@index([user_id])
 }
 
