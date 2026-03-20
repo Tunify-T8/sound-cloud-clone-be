@@ -49,4 +49,11 @@ export class RegisterDto {
   @IsOptional()
   @IsUrl()
   avatarUrl?: string;
+
+
+  @IsString()
+@IsOptional()
+captchaToken?: string;
+
+
 }

@@ -1,8 +1,8 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -12,17 +12,29 @@ async function bootstrap() {
     prefix: '/uploads',
   });
 
-  // Enables DTO validation globally across all endpoints
+  // ─── CORS ──────────────────────────────────────────────────────
+  app.enableCors({
+    origin: [
+      'https://tunify.duckdns.org',   // Azure production
+      'http://localhost:5173',         // Vite dev server
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
+
+  // ─── Global Validation ─────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // strips fields not in DTO
-      forbidNonWhitelisted: true, // throws error if extra fields sent
-      transform: true, // auto-transforms types
+      whitelist: true,       // strip unknown fields
+      forbidNonWhitelisted: true,
+      transform: true,       // auto-transform payloads to DTO types
     }),
   );
 
-  await app.listen(3000);
-  console.log('🚀 Server running on http://localhost:3000');
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  console.log(`Application running on port ${port}`);
 }
 
-void bootstrap();
+bootstrap();

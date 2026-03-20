@@ -23,13 +23,17 @@ import { UserType } from '@prisma/client';
 
 import { JwtAccessGuard } from './guards/jwt-access.guard';
 import { DeleteAccountDto } from './dto/delete-account.dto';
+import { GoogleAuthService } from './google-auth.service';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { GoogleLinkDto } from './dto/google-link.dto';
 
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, 
+    private readonly googleAuthService: GoogleAuthService) {}
 
   // ─── POST /auth/register ──────────────────────────────────────────
   // Registers a new user and sends a verification email
@@ -86,6 +90,26 @@ export class AuthController {
   async signout(@Body() dto: LogoutDto) {
     return this.authService.signout(dto);
   }
+// ─── POST /auth/google ────────────────────────────────────────────
+// Main Google OAuth endpoint — handles sign in + register + linking detection
+@Post('google')
+@HttpCode(HttpStatus.OK)
+async googleAuth(@Body() dto: GoogleAuthDto) {
+  return this.googleAuthService.googleAuth(dto);
+}
+
+// ─── POST /auth/google/link ───────────────────────────────────────
+// Completes account linking — verifies password then links Google to LOCAL account
+@Post('google/link')
+@HttpCode(HttpStatus.OK)
+async googleLink(@Body() dto: GoogleLinkDto) {
+  return this.googleAuthService.googleLink(dto);
+}
+
+
+
+
+
 
   // ─── POST /auth/signout-all ───────────────────────────────────────
   // Revokes all refresh tokens for this user across all devices

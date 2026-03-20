@@ -7,147 +7,151 @@ datasource db {
 }
 
 model User {
-  id                        String                   @id @default(uuid())
-  username                  String                   @unique
-  display_name              String?
-  email                     String                   @unique
-  pass_hash                 String?
-  login_method              LoginMethod
-  role                      UserType
-  bio                       String?
-  location                  String?
-  avatar_url                String?
-  cover_url                 String?
-  is_verified               Boolean                  @default(false)
-  is_active                 Boolean                  @default(true)
-  is_suspended              Boolean                  @default(false)
-  is_banned                 Boolean                  @default(false)
-  created_at                DateTime                 @default(now())
-  updated_at                DateTime                 @updatedAt
-  deleted_at                DateTime?
-  suspended_until           DateTime?
-  suspended_by_id           String?
-  banned_by_id              String?
-  last_login_at             DateTime?
-  visibility                Visibility               @default(PUBLIC)
-  gender                    Gender
-  date_of_birth             DateTime
-  email_verification_tokens EmailVerificationToken[]
-  oauth_accounts            OAuthAccount[]
-  password_reset_tokens     PasswordResetToken[]
-  refresh_tokens            RefreshToken[]
-  banned_by                 User?                    @relation("UserBans", fields: [banned_by_id], references: [id])
-  banned_users              User[]                   @relation("UserBans")
-  suspended_by              User?                    @relation("UserSuspensions", fields: [suspended_by_id], references: [id])
-  suspended_users           User[]                   @relation("UserSuspensions")
-  social_links              UserSocialLink[]
-  suspensionReason          String?
-  is_deleted                Boolean                  @default(false)
+  id                      String                   @id @default(uuid())
+  username                String                   @unique
+  displayName             String?
+  email                   String                   @unique
+  passHash                String?
+  loginMethod             LoginMethod
+  role                    UserType
+  bio                     String?
+  location                String?
+  avatarUrl               String?
+  coverUrl                String?
+  isVerified              Boolean                  @default(false)
+  isActive                Boolean                  @default(true)
+  isSuspended             Boolean                  @default(false)
+  isBanned                Boolean                  @default(false)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  deletedAt               DateTime?
+  suspendedUntil          DateTime?
+  suspendedById           String?
+  bannedById              String?
+  lastLoginAt             DateTime?
+  visibility              Visibility               @default(PUBLIC)
+  gender                  Gender
+  dateOfBirth             DateTime
+  isDeleted               Boolean                  @default(false)
+  suspensionReason        String?
 
-  followers Follow[]    @relation("Following")
-  following Follow[]    @relation("Follower")
-  blocking  UserBlock[] @relation("Blocker")
-  blockedBy UserBlock[] @relation("Blocked")
+  // ── Relations ─────────────────────────────────────────────────
+  emailVerificationTokens EmailVerificationToken[]
+  oauthAccounts           OAuthAccount[]
+  passwordResetTokens     PasswordResetToken[]
+  refreshTokens           RefreshToken[]
 
-  tracks       Track[]       @relation("TrackOwner")
-  trackArtists trackArtist[]
+  bannedBy                User?                    @relation("UserBans", fields: [bannedById], references: [id])
+  bannedUsers             User[]                   @relation("UserBans")
+  suspendedBy             User?                    @relation("UserSuspensions", fields: [suspendedById], references: [id])
+  suspendedUsers          User[]                   @relation("UserSuspensions")
 
-  trackLikes      TrackLike[]
-  reposts         Repost[]
-  collectionLikes CollectionLike[]
-  comments        Comment[]
-  collections     Collection[]
+  socialLinks             UserSocialLink[]
 
-  conversations1 Conversation[] @relation("ConversationUser1")
-  conversations2 Conversation[] @relation("ConversationUser2")
-  sentMessages   Message[]
+  followers               Follow[]                 @relation("Following")
+  following               Follow[]                 @relation("Follower")
+  blocking                UserBlock[]              @relation("Blocker")
+  blockedBy               UserBlock[]              @relation("Blocked")
+
+  tracks                  Track[]                  @relation("TrackOwner")
+  trackArtists            TrackArtist[]
+
+  trackLikes              TrackLike[]
+  reposts                 Repost[]
+  collectionLikes         CollectionLike[]
+  comments                Comment[]
+  collections             Collection[]
+
+  conversations1          Conversation[]           @relation("ConversationUser1")
+  conversations2          Conversation[]           @relation("ConversationUser2")
+  sentMessages            Message[]
 
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationsTriggered  Notification[]           @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
 
-  submittedReports Report[]  @relation("Reporter")
-  reviewedReports  Report[]  @relation("ReviewedBy")
-  tracksHidden     Track[]   @relation("TrackHiddenBy")
-  tracksDeleted    Track[]   @relation("TrackDeletedBy")
-  commentsHidden   Comment[] @relation("CommentHiddenBy")
-  commentsDeleted  Comment[] @relation("CommentDeletedBy")
+  submittedReports        Report[]                 @relation("Reporter")
+  reviewedReports         Report[]                 @relation("ReviewedBy")
+  tracksHidden            Track[]                  @relation("TrackHiddenBy")
+  tracksDeleted           Track[]                  @relation("TrackDeletedBy")
+  commentsHidden          Comment[]                @relation("CommentHiddenBy")
+  commentsDeleted         Comment[]                @relation("CommentDeletedBy")
 
-  playHistory   PlayHistory[]
-  trackProgress UserTrackProgress[]
+  playHistory             PlayHistory[]
+  trackProgress           UserTrackProgress[]
 
-  subscriptions Subscription[]
-  payments      Payment[]
+  subscriptions           Subscription[]
+  payments                Payment[]
 }
 
 model RefreshToken {
-  id         String    @id @default(uuid())
-  user_id    String
-  token      String    @unique
-  expires_at DateTime
-  created_at DateTime  @default(now())
-  revoked_at DateTime?
-  is_active  Boolean   @default(true)
-  user       User      @relation(fields: [user_id], references: [id])
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  isActive  Boolean   @default(true)
+  user      User      @relation(fields: [userId], references: [id])
 
-  @@index([user_id])
+  @@index([userId])
 }
 
 model PasswordResetToken {
-  id         String    @id @default(uuid())
-  user_id    String
-  token      String    @unique
-  expires_at DateTime
-  used       Boolean   @default(false)
-  created_at DateTime  @default(now())
-  revoked_at DateTime?
-  user       User      @relation(fields: [user_id], references: [id])
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id])
 
-  @@index([user_id])
+  @@index([userId])
 }
 
 model EmailVerificationToken {
-  id         String    @id @default(uuid())
-  user_id    String
-  token      String    @unique
-  expires_at DateTime
-  used       Boolean   @default(false)
-  created_at DateTime  @default(now())
-  revoked_at DateTime?
-  deleted_at DateTime?
-  user       User      @relation(fields: [user_id], references: [id])
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  deletedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id])
 
-  @@index([user_id])
+  @@index([userId])
 }
 
 model OAuthAccount {
-  id               String        @id @default(uuid())
-  user_id          String
-  provider         OAuthProvider
-  provider_user_id String
-  access_token     String        @unique
-  refresh_token    String?
-  expires_at       DateTime?
-  created_at       DateTime      @default(now())
-  updated_at       DateTime      @updatedAt
-  deleted_at       DateTime?
-  user             User          @relation(fields: [user_id], references: [id])
+  id              String        @id @default(uuid())
+  userId          String
+  provider        OAuthProvider
+  providerUserId  String
+  accessToken     String        @unique
+  refreshToken    String?
+  expiresAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  user            User          @relation(fields: [userId], references: [id])
 
-  @@unique([provider, provider_user_id])
-  @@index([user_id])
+  @@unique([provider, providerUserId])
+  @@index([userId])
 }
 
 model UserSocialLink {
-  id         String         @id @default(uuid())
-  user_id    String
-  platform   SocialPlatform
-  url        String
-  created_at DateTime       @default(now())
-  updated_at DateTime       @updatedAt
-  deleted_at DateTime?
-  user       User           @relation(fields: [user_id], references: [id])
+  id        String         @id @default(uuid())
+  userId    String
+  platform  SocialPlatform
+  url       String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+  user      User           @relation(fields: [userId], references: [id])
 
-  @@index([user_id])
+  @@index([userId])
 }
 
 model Genre {
@@ -176,7 +180,6 @@ model Track {
   genreId    String?
   subGenreId String?
 
-  // Core metadata
   title       String
   description String?
   releaseDate DateTime?
@@ -196,7 +199,6 @@ model Track {
   bitrateKbps       Int               @default(320)
   sampleRateHz      Int               @default(44100)
 
-  // Artwork
   coverUrl String?
 
   // Visibility & access
@@ -209,7 +211,6 @@ model Track {
   previewStart    Int?
   previewDuration Int?
 
-  // Content
   contentWarning Boolean @default(false)
 
   // Permissions
