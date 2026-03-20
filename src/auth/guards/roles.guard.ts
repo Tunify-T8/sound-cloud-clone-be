@@ -34,7 +34,10 @@ export class RolesGuard implements CanActivate {
     }
 
     // ARTIST can do ARTIST-level things
-    if (requiredRoles.includes(UserType.ARTIST) && user.role === UserType.ARTIST) {
+    if (
+      requiredRoles.includes(UserType.ARTIST) &&
+      user.role === UserType.ARTIST
+    ) {
       return true;
     }
 
