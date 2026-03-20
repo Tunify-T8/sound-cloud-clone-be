@@ -6,8 +6,10 @@ import { UserDto } from './dto/user.dto';
 import { UserTracksDto, LikedTracksDto } from './dto/user-tracks.dto';
 import { UserRepostsDto } from './dto/user-reposts.dto';
 import { UserCollectionsDto } from './dto/user-collections.dto';
-import { CollectionType } from '@prisma/client';
+import { CollectionType, SocialPlatform } from '@prisma/client';
 import { FollowListDto } from './dto/user-follow.dto';
+import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @Injectable()
 export class UsersService {
@@ -169,6 +171,7 @@ export class UsersService {
 
     return user.social_links;
   }
+
   async getTracks(
     userId: string,
     page: number = 1,
@@ -524,4 +527,37 @@ export class UsersService {
     });
   }
 
+  async updateUserProfile(userId: string, dto: UpdateUserProfileDto) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { ...dto },
+      select: {
+        id: true,
+        username: true,
+        display_name: true,
+        email: true,
+        bio: true,
+        location: true,
+        avatar_url: true,
+        cover_url: true,
+        visibility: true,
+        role: true,
+        is_verified: true,
+        gender: true,
+        date_of_birth: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+  }
+
+  async deleteSocialLink(userId: string, platform: SocialPlatform) {
+    return this.prisma.userSocialLink
+      .delete({
+        where: { user_id_platform: { user_id: userId, platform } },
+      })
+      .catch(() => {
+        throw new NotFoundException(`No ${platform.toLowerCase()} link found`);
+      });
+  }
 }
