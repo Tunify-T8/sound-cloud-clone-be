@@ -21,19 +21,19 @@ export class UsersService {
       select: {
         id: true,
         username: true,
-        display_name: true,
+        displayName: true,
         email: true,
         role: true,
         bio: true,
         location: true,
-        avatar_url: true,
-        cover_url: true,
-        created_at: true,
+        avatarUrl: true,
+        coverUrl: true,
+        createdAt: true,
         visibility: true,
-        is_active: true,
-        is_verified: true,
-        updated_at: true,
-        last_login_at: true,
+        isActive: true,
+        isVerified: true,
+        updatedAt: true,
+        lastLoginAt: true,
       },
     });
     if (!user) {
@@ -51,19 +51,19 @@ export class UsersService {
     return {
       id: user.id,
       username: user.username,
-      displayName: user.display_name,
+      displayName: user.displayName,
       email: user.email,
       role: user.role,
       bio: user.bio,
       location: user.location,
-      avatarUrl: user.avatar_url,
-      coverUrl: user.cover_url,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at,
-      lastLogin: user.last_login_at,
+      avatarUrl: user.avatarUrl,
+      coverUrl: user.coverUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLogin: user.lastLoginAt,
       visibility: user.visibility,
-      isActive: user.is_active,
-      isVerified: user.is_verified,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
       tracksCount,
       followersCount,
       followingCount,
@@ -80,16 +80,16 @@ export class UsersService {
       select: {
         id: true,
         username: true,
-        display_name: true,
+        displayName: true,
         role: true,
         bio: true,
         location: true,
-        avatar_url: true,
-        cover_url: true,
-        created_at: true,
+        avatarUrl: true,
+        coverUrl: true,
+        createdAt: true,
         visibility: true,
-        is_active: true,
-        is_verified: true,
+        isActive: true,
+        isVerified: true,
       },
     });
 
@@ -114,16 +114,16 @@ export class UsersService {
       return {
         id: user.id,
         username: user.username,
-        displayName: user.display_name,
+        displayName: user.displayName,
         role: user.role,
         bio: user.bio,
         location: user.location,
-        avatarUrl: user.avatar_url,
-        coverUrl: user.cover_url,
+        avatarUrl: user.avatarUrl,
+        coverUrl: user.coverUrl,
         isFollowing,
-        isActive: user.is_active,
-        isVerified: user.is_verified,
-        createdAt: user.created_at,
+        isActive: user.isActive,
+        isVerified: user.isVerified,
+        createdAt: user.createdAt,
       };
     }
 
@@ -140,20 +140,20 @@ export class UsersService {
     return {
       id: user.id,
       username: user.username,
-      displayName: user.display_name,
+      displayName: user.displayName,
       role: user.role,
       bio: user.bio,
       location: user.location,
-      avatarUrl: user.avatar_url,
-      coverUrl: user.cover_url,
+      avatarUrl: user.avatarUrl,
+      coverUrl: user.coverUrl,
       tracksCount,
       followersCount,
       followingCount,
       likesReceived,
       isFollowing,
-      isActive: user.is_active,
-      isVerified: user.is_verified,
-      createdAt: user.created_at,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      createdAt: user.createdAt,
     };
   }
 
@@ -161,7 +161,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        social_links: true,
+        socialLinks: true,
       },
     });
 
@@ -169,7 +169,7 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user.social_links;
+    return user.socialLinks;
   }
 
   async getTracks(
@@ -411,20 +411,20 @@ export class UsersService {
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
-        where: { ...whereClause, is_deleted: false, is_active: true },
+        where: { ...whereClause, isDeleted: false, isActive: true },
         skip,
         take: limit,
         select: {
           id: true,
           username: true,
-          display_name: true,
-          avatar_url: true,
+          displayName: true,
+          avatarUrl: true,
           _count: { select: { followers: true } },
         },
-        orderBy: { created_at: 'desc' },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.user.count({
-        where: { ...whereClause, is_deleted: false, is_active: true },
+        where: { ...whereClause, isDeleted: false, isActive: true },
       }),
     ]);
 
@@ -432,8 +432,8 @@ export class UsersService {
       data: users.map((u) => ({
         id: u.id,
         username: u.username,
-        displayName: u.display_name,
-        avatarUrl: u.avatar_url,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl,
         followersCount: u._count.followers,
       })),
       page,
@@ -511,18 +511,18 @@ export class UsersService {
     const upserts = dto.links.map((link) =>
       this.prisma.userSocialLink.upsert({
         where: {
-          user_id_platform: {
-            user_id: userId,
+          userId_platform: {
+            userId: userId,
             platform: link.platform,
           },
         },
         update: { url: link.url },
-        create: { user_id: userId, platform: link.platform, url: link.url },
+        create: { userId: userId, platform: link.platform, url: link.url },
       }),
     );
     await this.prisma.$transaction(upserts);
     return this.prisma.userSocialLink.findMany({
-      where: { user_id: userId, deleted_at: null },
+      where: { userId: userId, deletedAt: null },
       select: { platform: true, url: true },
     });
   }
@@ -534,19 +534,19 @@ export class UsersService {
       select: {
         id: true,
         username: true,
-        display_name: true,
+        displayName: true,
         email: true,
         bio: true,
         location: true,
-        avatar_url: true,
-        cover_url: true,
+        avatarUrl: true,
+        coverUrl: true,
         visibility: true,
         role: true,
-        is_verified: true,
+        isVerified: true,
         gender: true,
         date_of_birth: true,
-        created_at: true,
-        updated_at: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
   }
@@ -554,7 +554,7 @@ export class UsersService {
   async deleteSocialLink(userId: string, platform: SocialPlatform) {
     return this.prisma.userSocialLink
       .delete({
-        where: { user_id_platform: { user_id: userId, platform } },
+        where: { userId_platform: { userId: userId, platform } },
       })
       .catch(() => {
         throw new NotFoundException(`No ${platform.toLowerCase()} link found`);
