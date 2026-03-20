@@ -17,29 +17,36 @@ export class TracksProcessor {
 
   @Process('process-track')
   async handleProcessTrack(
-    job: Job<{ trackId: string; fileBuffer: Buffer; extension: string }>,
+    job: Job<{ trackId: string; fileBuffer: any; extension: string }>,
   ) {
     const { trackId, extension } = job.data;
-
     const fileBuffer = Buffer.from(job.data.fileBuffer);
-
-    const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
-      select: { audioUrl: true },
-    });
-
-    if (!track) throw new Error(`Track ${trackId} not found`);
 
     try {
       let finalBuffer = fileBuffer;
       let finalExtension = extension;
 
-      // transcode WAV to MP3
-      if (extension === 'wav') {
-        finalBuffer = await this.audio.transcodeToMp3(fileBuffer);
+      // 1. upload original file to Supabase first
+      const originalFile = {
+        buffer: fileBuffer,
+        originalname: `${trackId}.${extension}`,
+        mimetype: extension === 'mp3' ? 'audio/mpeg' : `audio/${extension}`,
+        size: fileBuffer.length,
+      } as Express.Multer.File;
+
+      const originalAudioUrl = await this.storage.uploadAudio(originalFile);
+
+      // save original URL immediately so track has an audioUrl
+      await this.prisma.track.update({
+        where: { id: trackId },
+        data: { audioUrl: originalAudioUrl },
+      });
+
+      // 2. transcode if not mp3
+      if (extension !== 'mp3') {
+        finalBuffer = (await this.audio.transcodeToMp3(fileBuffer)) as Buffer;
         finalExtension = 'mp3';
 
-        // re-upload as MP3 replacing the WAV
         const mp3File = {
           buffer: finalBuffer,
           originalname: `${trackId}.mp3`,
@@ -49,12 +56,9 @@ export class TracksProcessor {
 
         const newAudioUrl = await this.storage.uploadAudio(mp3File);
 
-        // delete the original WAV from Supabase
-        const wavFilename = track.audioUrl.split('/').pop(); // extract filename from URL
-        console.log('Attempting to delete:', wavFilename);
-        await this.storage.deleteFile('audio', wavFilename ?? '');
+        // delete original non-mp3 file
+        await this.storage.deleteFile('audio', originalAudioUrl);
 
-        // update audioUrl and fileFormat in DB
         await this.prisma.track.update({
           where: { id: trackId },
           data: {
@@ -64,16 +68,24 @@ export class TracksProcessor {
         });
       }
 
-      // generate waveform from final buffer
+      // 3. extract duration
+      const durationSeconds = await this.audio.extractDuration(
+        finalBuffer,
+        finalExtension,
+      );
+
+      // 4. generate waveform
       const peaks = await this.audio.generateWaveform(
         finalBuffer,
         finalExtension,
       );
       const waveformUrl = await this.storage.uploadWaveform(peaks, trackId);
 
+      // 5. final update
       await this.prisma.track.update({
         where: { id: trackId },
         data: {
+          durationSeconds,
           waveformUrl,
           transcodingStatus: 'finished',
         },

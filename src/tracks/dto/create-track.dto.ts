@@ -17,6 +17,7 @@ export class CreateTrackDto {
   title: string;
 
   @IsString()
+  @IsOptional()
   genre: string;
 
   @IsArray()

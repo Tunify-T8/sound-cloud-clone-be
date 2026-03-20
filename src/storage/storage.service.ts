@@ -12,23 +12,40 @@ export class StorageService {
       this.config.get('SUPABASE_KEY') ?? '',
     );
   }
+  
+async uploadAudio(file: Express.Multer.File): Promise<string> {
+  const filename = `${Date.now()}-${file.originalname}`;
 
-  async uploadAudio(file: Express.Multer.File): Promise<string> {
-    const filename = `${Date.now()}-${file.originalname}`;
+  // normalize content type — Supabase is strict about this
+  const contentTypeMap: Record<string, string> = {
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    flac: 'audio/flac',
+    aac: 'audio/aac',
+    aiff: 'audio/aiff',
+  };
 
-    const { error } = await this.supabase.storage
-      .from('audio')
-      .upload(filename, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false,
-      });
+  const extension = file.originalname.split('.').pop()?.toLowerCase() ?? 'mp3';
+  const contentType = contentTypeMap[extension] ?? file.mimetype;
 
-    if (error) throw new Error(`Audio upload failed: ${error.message}`);
+  console.log('Uploading:', filename, 'Content-Type:', contentType);
 
-    const { data } = this.supabase.storage.from('audio').getPublicUrl(filename);
+  const { error } = await this.supabase.storage
+    .from('audio')
+    .upload(filename, file.buffer, {
+      contentType,
+      upsert: false,
+    });
 
-    return data.publicUrl;
-  }
+  if (error) throw new Error(`Audio upload failed: ${error.message}`);
+
+  const { data } = this.supabase.storage
+    .from('audio')
+    .getPublicUrl(filename);
+
+  return data.publicUrl;
+}
 
   async uploadWaveform(peaks: number[], trackId: string): Promise<string> {
     const filename = `${trackId}.json`;

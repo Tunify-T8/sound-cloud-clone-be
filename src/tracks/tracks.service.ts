@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +11,7 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackDto } from './dto/update-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class TracksService {
@@ -18,20 +23,27 @@ export class TracksService {
   ) {}
 
   async create(userId: string, dto: CreateTrackDto) {
+    const genre = dto.genre
+      ? await this.prisma.genre.findUnique({
+          where: { label: dto.genre },
+        })
+      : null;
+
+    const isPublic = dto.privacy === 'public';
+
     const track = await this.prisma.track.create({
       data: {
         userId: userId,
         title: dto.title,
         description: dto.description,
-        genreId: dto.genre,
-        isPublic: dto.privacy === 'public',
+        genreId: genre?.id,
+        isPublic,
+        privateToken: isPublic ? null : randomBytes(16).toString('hex'),
         contentWarning: dto.contentWarning ?? false,
         releaseDate: dto.scheduledReleaseDate
           ? new Date(dto.scheduledReleaseDate)
           : null,
         transcodingStatus: 'processing',
-        // required fields that come from the audio upload step
-        // set temporary values until audio is uploaded
         audioUrl: '',
         durationSeconds: 0,
         fileFormat: 'mp3',
@@ -39,10 +51,59 @@ export class TracksService {
       },
     });
 
-    return track;
+    // save tags if any were provided
+    if (dto.tags && dto.tags.length > 0) {
+      await this.prisma.trackTag.createMany({
+        data: dto.tags.map((tag) => ({
+          trackId: track.id,
+          tag: tag.toLowerCase().trim(), // normalize tags
+        })),
+      });
+    }
+
+    if (dto.artists && dto.artists.length > 0) {
+      await Promise.all(
+        dto.artists.map((artistUserId) =>
+          this.prisma.trackArtist.create({
+            data: {
+              trackId: track.id,
+              userId: artistUserId,
+              role: 'featured',
+            },
+          }),
+        ),
+      );
+    }
+
+    if (
+      dto.availability?.type === 'specific_regions' &&
+      dto.availability.regions.length > 0
+    ) {
+      await this.prisma.trackRegionRestriction.createMany({
+        data: dto.availability.regions.map((countryCode) => ({
+          trackId: track.id,
+          countryCode,
+        })),
+      });
+    }
+
+    const trackWithRelations = await this.prisma.track.findUnique({
+      where: { id: track.id },
+      include: {
+        trackArtists: true,
+        regionRestrictions: true,
+        tags: true,
+      },
+    });
+
+    return trackWithRelations;
   }
 
-  async uploadAudio(trackId: string, userId: string, file: Express.Multer.File) {
+  async uploadAudio(
+    trackId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ) {
     // 1. find track
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
@@ -57,34 +118,24 @@ export class TracksService {
     // 4. get extension
     const extension = file.originalname.split('.').pop();
 
-    // 5. upload file to storage
-    const audioUrl = await this.storage.uploadAudio(file);
-
-    // 6. extract duration
-    const durationSeconds = await this.audio.extractDuration(
-      file.buffer,
-      extension ?? '',
-    );
-
-    // 7. update track in DB
-    const updatedTrack = await this.prisma.track.update({
+    // 5. update track in DB
+    await this.prisma.track.update({
       where: { id: trackId },
       data: {
-        audioUrl,
-        durationSeconds,
-        fileFormat: extension === 'wav' ? 'wav' : 'mp3',
+        fileFormat: extension !== 'mp3' ? (extension as any) : 'mp3',
         fileSizeBytes: file.size,
+        transcodingStatus: 'processing',
       },
     });
 
-    // 8. add job to queue — don't await, return immediately
+    // 7. add job to queue — don't await, return immediately
     await this.tracksQueue.add('process-track', {
       trackId,
       fileBuffer: file.buffer,
       extension,
     });
 
-    return updatedTrack;
+    return { message: 'Audio upload received, processing in background' };
   }
 
   async getStatus(trackId: string) {
@@ -93,6 +144,7 @@ export class TracksService {
       select: {
         id: true,
         transcodingStatus: true,
+        durationSeconds: true,
         audioUrl: true,
         waveformUrl: true,
       },
@@ -109,16 +161,19 @@ export class TracksService {
       include: {
         trackArtists: true,
         regionRestrictions: true,
+        tags: true,
       },
     });
 
     if (!track) {
-      return null;
+      throw new NotFoundException('Track not found');
     }
 
-    const genre = await this.prisma.genre.findUnique({
-      where: { id: track.genreId },
-    });
+    const genre = track.genreId
+      ? await this.prisma.genre.findUnique({
+          where: { id: track.genreId },
+        })
+      : null;
     const subgenre = track.subGenreId
       ? await this.prisma.subGenre.findUnique({
           where: { id: track.subGenreId },
@@ -136,7 +191,7 @@ export class TracksService {
             subGenre: subgenre?.name || null,
           }
         : null,
-      tags: track.tags || [],
+      tags: track.tags.map((t) => t.tag),
       artists: track.trackArtists,
       durationSeconds: track.durationSeconds,
       privacy: track.isPublic ? 'public' : 'private',
@@ -226,7 +281,16 @@ export class TracksService {
 
     // Update tags
     if (dto.tags !== undefined) {
-      updateData.tags = dto.tags;
+      await this.prisma.trackTag.deleteMany({ where: { trackId } });
+
+      if (dto.tags.length > 0) {
+        await this.prisma.trackTag.createMany({
+          data: dto.tags.map((tag) => ({
+            trackId,
+            tag: tag.toLowerCase().trim(),
+          })),
+        });
+      }
     }
 
     // Update description
@@ -257,13 +321,10 @@ export class TracksService {
       updateData.pLine = dto.pLine;
     }
 
-
-
     // Update content warning
     if (dto.contentWarning !== undefined) {
       updateData.contentWarning = dto.contentWarning;
     }
-
 
     // Update scheduled release date
     if (dto.scheduledReleaseDate !== undefined) {
@@ -378,6 +439,7 @@ export class TracksService {
       include: {
         trackArtists: true,
         regionRestrictions: true,
+        tags: true,
       },
     });
 
@@ -387,9 +449,11 @@ export class TracksService {
     }
 
     // 9. Get genre info for response
-    const genre = await this.prisma.genre.findUnique({
-      where: { id: updatedTrackFinal.genreId },
-    });
+    const genre = updatedTrackFinal.genreId
+      ? await this.prisma.genre.findUnique({
+          where: { id: updatedTrackFinal.genreId },
+        })
+      : null;
 
     // 10. Return simplified response format
     return {
@@ -399,15 +463,12 @@ export class TracksService {
       waveformUrl: updatedTrackFinal.waveformUrl || null,
       title: updatedTrackFinal.title,
       genre: genre?.label || null,
-      tags: updatedTrackFinal.tags || [],
+      tags: updatedTrackFinal.tags.map((t) => t.tag),
       description: updatedTrackFinal.description || null,
-      scheduledReleaseDate: updatedTrackFinal.releaseDate?.toISOString() || null,
+      scheduledReleaseDate:
+        updatedTrackFinal.releaseDate?.toISOString() || null,
       privacy: updatedTrackFinal.isPublic ? 'public' : 'private',
       artworkUrl: updatedTrackFinal.coverUrl || null,
     };
   }
-
-  
-
-  
 }

@@ -43,7 +43,7 @@ export class TracksController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: /audio\/(mpeg|wav)/ }),
+          new FileTypeValidator({ fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff)/ }),
         ],
       }),
     )

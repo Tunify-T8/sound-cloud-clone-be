@@ -173,14 +173,14 @@ model subGenre {
 model Track {
   id         String  @id @default(uuid())
   userId     String
-  genreId    String
+  genreId    String?
   subGenreId String?
 
   // Core metadata
   title       String
   description String?
   releaseDate DateTime?
-  tags        String[]
+  tags        TrackTag[]
   recordLabel String?
   publisher   String?
   isrc        String?
@@ -274,6 +274,15 @@ model TrackRegionRestriction {
   track Track @relation(fields: [trackId], references: [id])
 
   @@index([trackId])
+}
+
+model TrackTag {
+  trackId String
+  tag     String
+
+  track Track @relation(fields: [trackId], references: [id])
+
+  @@id([trackId, tag])
 }
 
 model Follow {
@@ -605,6 +614,10 @@ enum TranscodingStatus {
 enum FileFormat {
   mp3
   wav
+  flac
+  aiff
+  ogg
+  aac
 }
 
 enum ArtistRole {
