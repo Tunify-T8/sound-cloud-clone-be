@@ -30,7 +30,7 @@ export class UpdateUserProfileDto {
   @IsOptional()
   @MinLength(3)
   @MaxLength(30)
-  display_name?: string;
+  displayName?: string;
 
   @IsEnum(UserType)
   @IsOptional()
@@ -46,9 +46,9 @@ export class UpdateUserProfileDto {
 
   @IsUrl()
   @IsOptional()
-  avatar_url?: string;
+  avatarUrl?: string;
 
   @IsUrl()
   @IsOptional()
-  cover_url?: string;
+  coverUrl?: string;
 }
