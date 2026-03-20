@@ -541,19 +541,80 @@ model Report {
   @@index([createdAt])
 }
 
+model SubscriptionPlan {
+  id                    String   @id @default(cuid())
+  
+  // Basic Info
+  name                  String   @unique  // "Free", "Pro", "Pro Plus", etc.
+  description           String?
+  displayOrder          Int      @default(0)
+  isActive              Boolean  @default(true)
+  
+  // Pricing
+  monthlyPrice          Float    @default(0)
+  
+  // Upload Features
+  monthlyUploadQuotaMB  Int?     // null = unlimited
+  maxTrackDurationMin   Int      @default(180)
+  maxTrackSizeGB        Float?
+  
+  // Listeners & Reach
+  monthlyListenersCap   Int?
+  allowedDownloads      Int      @default(0)
+  
+  // Monetization & Visibility
+  enableMonetization    Boolean  @default(false)
+  enablePlaylistMonetization Boolean @default(false)
+  minRevenueShare       Float?
+  
+  // Features
+  allowReplace          Boolean  @default(false)
+  allowAdvancedTabAccess Boolean  @default(false)
+  allowScheduledRelease Boolean  @default(false)
+  allowDirectDownload   Boolean  @default(false)
+  allowOfflineListening Boolean  @default(false)
+  adFree                Boolean  @default(false)
+  analytics             Boolean  @default(false)
+  advancedAnalytics     Boolean  @default(false)
+  
+  // Collaboration & Pro Features
+  allowCollaborativeTrack Boolean @default(false)
+  releaseScheduling     Boolean  @default(false)
+  premiumStatistics     Boolean  @default(false)
+  
+  // Support
+  prioritySupport       Boolean  @default(false)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  subscriptions         Subscription[]
+}
+
 model Subscription {
-  id        String           @id @default(uuid())
-  userId    String
-  planType  SubscriptionPlan
-  startedAt DateTime         @default(now())
-  endedAt   DateTime?
-  uploadedMinutes Int              @default(0) // Example field for upload limits based on subscription
+  id              String   @id @default(uuid())
+  userId          String
+  planId          String?
+  
+  startedAt       DateTime @default(now())
+  endedAt         DateTime?
+  renewalDate     DateTime?
+  uploadedMinutes  Int      @default(0)
 
+  billingCycle    String   @default("monthly")
+  status          String   @default("active")
+  autoRenew       Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id])
-  payments Payment[]
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan? @relation(fields: [planId], references: [id])
+  payments        Payment[]
 
   @@index([userId])
+  @@index([planId])
 }
 
 model Payment {
@@ -681,12 +742,6 @@ enum AdminAction {
   REMOVE
   SUSPEND_USER
   BAN_USER
-}
-
-enum SubscriptionPlan {
-  FREE
-  PRO
-  GOPLUS
 }
 
 enum PaymentStatus {

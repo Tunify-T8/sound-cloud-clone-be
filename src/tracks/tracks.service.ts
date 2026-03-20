@@ -510,7 +510,12 @@ export class TracksService {
     const userSubscription = await this.prisma.subscription.findFirst({
       where: {
         userId: userId,
-        planType: { in: ['PRO', 'GOPLUS'] },
+        plan: {
+          name: { in: ['PRO', 'GOPLUS'] },
+        },
+      },
+      include: {
+        plan: true,
       },
     });
 

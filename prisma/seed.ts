@@ -10,7 +10,7 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Starting database seed...');
 
-  const userId = '0d346be6-b321-4bab-af7e-97e1cf27096e';
+  const userId = '84677602-3a5f-4da0-9b3a-af09bb74a145';
 
   // Check if the user exists
   const user = await prisma.user.findUnique({
@@ -64,19 +64,73 @@ async function main() {
 
   console.log(`\nSuccessfully created ${createdTracks.length} tracks for user ${userId}`);
   
-  // Create all 3 subscriptions for the user
-  const subscriptionPlans = ['FREE', 'PRO', 'GOPLUS'] as const;
-  const createdSubscriptions: Awaited<ReturnType<typeof prisma.subscription.create>>[] = [];
+  // Create all 3 subscription plans
+  const subscriptionPlanConfigs = [
+    {
+      name: 'FREE',
+      description: 'Free tier with basic features',
+      monthlyPrice: 0,
+      monthlyUploadQuotaMB: 100,
+      maxTrackDurationMin: 30,
+      allowedDownloads: 0,
+      enableMonetization: false,
+    },
+    {
+      name: 'PRO',
+      description: 'Professional tier with advanced features',
+      monthlyPrice: 9.99,
+      monthlyUploadQuotaMB: 5000,
+      maxTrackDurationMin: 180,
+      allowedDownloads: -1,
+      enableMonetization: true,
+      allowDirectDownload: true,
+      allowOfflineListening: true,
+      adFree: true,
+      analytics: true,
+      releaseScheduling: true,
+    },
+    {
+      name: 'GOPLUS',
+      description: 'Premium tier with all features',
+      monthlyPrice: 19.99,
+      monthlyUploadQuotaMB: null, // unlimited
+      maxTrackDurationMin: 180,
+      allowedDownloads: -1,
+      enableMonetization: true,
+      allowDirectDownload: true,
+      allowOfflineListening: true,
+      adFree: true,
+      analytics: true,
+      advancedAnalytics: true,
+      releaseScheduling: true,
+      prioritySupport: true,
+    },
+  ];
 
-  for (const planType of subscriptionPlans) {
+  const createdPlans: Awaited<ReturnType<typeof prisma.subscriptionPlan.upsert>>[] = [];
+  for (const planConfig of subscriptionPlanConfigs) {
+    const plan = await prisma.subscriptionPlan.upsert({
+      where: { name: planConfig.name },
+      update: {},
+      create: planConfig,
+    });
+    createdPlans.push(plan);
+    console.log(`Created/found ${planConfig.name} plan:`, plan.id);
+  }
+
+  // Create subscriptions for the user
+  const createdSubscriptions: Awaited<ReturnType<typeof prisma.subscription.create>>[] = [];
+  for (const plan of createdPlans) {
     const subscription = await prisma.subscription.create({
       data: {
         userId: userId,
-        planType: planType,
+        planId: plan.id,
+        status: 'active',
+        billingCycle: 'monthly',
       },
     });
     createdSubscriptions.push(subscription);
-    console.log(`Created ${planType} subscription:`, subscription.id);
+    console.log(`Created ${plan.name} subscription:`, subscription.id);
   }
 
   console.log(`\nSuccessfully created ${createdSubscriptions.length} subscriptions for user ${userId}`);
