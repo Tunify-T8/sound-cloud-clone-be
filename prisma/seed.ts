@@ -70,7 +70,7 @@ async function main() {
       name: 'FREE',
       description: 'Free tier with basic features',
       monthlyPrice: 0,
-      monthlyUploadQuotaMB: 100,
+      monthlyUploadMinutes: 100,
       maxTrackDurationMin: 30,
       allowedDownloads: 0,
       enableMonetization: false,
@@ -79,7 +79,7 @@ async function main() {
       name: 'PRO',
       description: 'Professional tier with advanced features',
       monthlyPrice: 9.99,
-      monthlyUploadQuotaMB: 5000,
+      monthlyUploadMinutes: 5000,
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
@@ -93,7 +93,7 @@ async function main() {
       name: 'GOPLUS',
       description: 'Premium tier with all features',
       monthlyPrice: 19.99,
-      monthlyUploadQuotaMB: null, // unlimited
+      monthlyUploadMinutes: null, // unlimited
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
