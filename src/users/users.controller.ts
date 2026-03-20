@@ -130,6 +130,7 @@ export class UsersController {
   ) {
     return this.usersService.getFollowingList(user.userId, +page, +limit);
   }
+
   //─── GET /me/favorite-genres ───────────────────────────────────────
   // returns my social links
   @Get('me/favorite-genres')
@@ -171,6 +172,7 @@ export class UsersController {
   ) {
     return this.usersService.getFollowingList(id, page, limit);
   }
+
   // ─── PATCH /me/social-links ───────────────────────────────────────
   //updates social links of user
   @Patch('me/social-links')
@@ -181,6 +183,18 @@ export class UsersController {
   ) {
     return this.usersService.updateSocialLinks(user.userId, input);
   }
+
+  // ─── PATCH /me/profile ───────────────────────────────────────
+  //updates user profile
+  @Patch('me/profile')
+  @UseGuards(JwtAccessGuard)
+  updateProfile(
+    @Body() input: UpdateUserProfileDto,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.updateUserProfile(user.userId, input);
+  }
+
   // ─── DELETE /me/social-links/:platform ───────────────────────────────────────
   //delete a social link
   @Delete('me/social-links/:platform')
