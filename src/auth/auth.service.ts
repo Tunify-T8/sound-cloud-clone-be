@@ -8,6 +8,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import type { User } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -127,7 +128,7 @@ export class AuthService {
     const passHash = await bcrypt.hash(dto.password, 12);
 
     // 4. Create the user in DB
-    let user: any;
+    let user: User;
     try {
       user = await this.prisma.user.create({
         data: {
@@ -143,8 +144,13 @@ export class AuthService {
         },
       });
     } catch (error) {
-      if (error.code === 'P2002') {
-        const field = error.meta?.target?.includes('email')
+      // Re-throw Prisma unique constraint violations properly
+      const prismaError = error as {
+        code?: string;
+        meta?: { target?: string[] };
+      };
+      if (prismaError.code === 'P2002') {
+        const field = prismaError.meta?.target?.includes('email')
           ? 'Email'
           : 'Username';
         throw new ConflictException(`${field} already in use`);
@@ -186,7 +192,8 @@ export class AuthService {
     };
   }
 
-  // ─── Verify Email ─────────────────────────────────────────────────
+  // ─── Verify Email ───────────────────────────────────────────────
+
   async verifyEmail(dto: VerifyEmailDto) {
     // 1. Find user by email
     const user = await this.prisma.user.findUnique({
@@ -216,7 +223,7 @@ export class AuthService {
       data: { used: true },
     });
 
-    // 5. Mark user as verified + update lastLoginAt
+    // 5. Mark user as verified + update last_login_at
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -232,7 +239,6 @@ export class AuthService {
       user.role,
     );
     const refreshTokenRaw = this.generateRefreshToken(user.id, user.email);
-
     // 7. Hash refresh token before saving to DB
     const refreshTokenHash = await bcrypt.hash(refreshTokenRaw, 12);
 
@@ -244,14 +250,13 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
-
     this.logger.log(`User ${user.id} verified email and logged in`);
 
     // 9. Return tokens + user info
     return {
       message: 'Email verified successfully',
       accessToken,
-      refreshToken: refreshTokenRaw,
+      refreshToken: refreshTokenRaw, // raw token goes to client, hash stays in DB
       user: {
         id: user.id,
         username: user.username,
@@ -262,7 +267,10 @@ export class AuthService {
     };
   }
 
-  // ─── Check Email ──────────────────────────────────────────────────
+  // ─── Check Email ─────────────────────────────────────────────────
+  // Checks if email exists before registration
+  // If exists → tell user to sign in (don't reveal sensitive info)
+  // If not → give green light to continue registration
   async checkEmail(dto: CheckEmailDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -664,16 +672,9 @@ export class AuthService {
 
     // 7. Return generic success
     return {
-      accessToken,
-      refreshToken: refreshTokenRaw,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        isVerified: user.is_verified,
-        avatar_url: user.avatar_url,
-      },
+      // accessToken: newAccessToken,
+      // refreshToken: newRefreshTokenRaw,
+      message: 'temp message lghayet makhod mn alfred'
     };
   }
 

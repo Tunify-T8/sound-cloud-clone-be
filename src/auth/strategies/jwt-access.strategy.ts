@@ -20,7 +20,7 @@ export class JwtAccessStrategy extends PassportStrategy(
 
   // Called automatically by Passport after token is verified
   // Whatever we return here gets attached to req.user
-  async validate(payload: { sub: string; email: string; role: string }) {
+  validate(payload: { sub: string; email: string; role: string }) {
     if (!payload.sub) {
       throw new UnauthorizedException('Invalid token payload');
     }
