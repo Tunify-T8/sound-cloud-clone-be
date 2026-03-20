@@ -128,11 +128,13 @@ export class TracksService {
       },
     });
 
-    // 7. add job to queue — don't await, return immediately
-    await this.tracksQueue.add('process-track', {
+    // 8. add job to queue — don't await, return immediately
+    this.tracksQueue.add('process-track', {
       trackId,
       fileBuffer: file.buffer,
       extension,
+    }).catch((error) => {
+      console.error('Failed to queue track processing:', error);
     });
 
     return { message: 'Audio upload received, processing in background' };
@@ -238,11 +240,11 @@ export class TracksService {
   }
 
   async updateTrack(
+    trackId: string,
     userId: string,
     dto: UpdateTrackMultipartDto,
     artworkFile?: Express.Multer.File,
   ) {
-    const trackId = dto.trackId;
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
@@ -471,4 +473,95 @@ export class TracksService {
       artworkUrl: updatedTrackFinal.coverUrl || null,
     };
   }
+
+  //-------------PATCH LOGIC SHOULD BE ADDED HERE IF WE USE IT----------------//
+
+
+  async deleteTrack(trackId: string, userId: string) {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    if (track.userId !== userId) {
+      throw new ForbiddenException('You can only delete your own tracks');
+    }
+
+    
+    await this.prisma.track.delete({
+      where: { id: trackId },
+    });
+
+    return {message: 'Track deleted successfully' };
+  }
+
+  async replaceAudio(trackId: string, userId: string, file: Express.Multer.File) {
+    // 1. Check if user has PRO subscription
+    const userSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId: userId,
+        planType: { in: ['PRO', 'GOPLUS'] },
+      },
+    });
+
+    if (!userSubscription) {
+      throw new ForbiddenException('Only PRO and GOPLUS subscribers can replace audio');
+    }
+
+    // 2. Find track
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    // 3. Check track exists
+    if (!track) throw new NotFoundException('Track not found');
+
+    // 4. Check ownership
+    if (track.userId !== userId) throw new ForbiddenException('You can only replace audio on your own tracks');
+
+    // 5. Get file extension
+    const extension = file.originalname.split('.').pop();
+
+    // 6. Upload new audio file to storage
+    const audioUrl = await this.storage.uploadAudio(file);
+
+    // 7. Extract duration from new audio
+    const durationSeconds = await this.audio.extractDuration(
+      file.buffer,
+      extension ?? '',
+    );
+
+    // 8. Update track with new audio
+    const updatedTrack = await this.prisma.track.update({
+      where: { id: trackId },
+      data: {
+        audioUrl,
+        durationSeconds,
+        fileFormat: extension === 'wav' ? 'wav' : 'mp3',
+        fileSizeBytes: file.size,
+        transcodingStatus: 'processing',
+      },
+    });
+
+    // 9. Add job to queue for processing (don't await - fire and forget)
+    this.tracksQueue.add('process-track', {
+      trackId,
+      fileBuffer: file.buffer,
+      extension,
+    }).catch((error) => {
+      console.error('Failed to queue track processing:', error);
+    });
+
+    // 10. Return formatted response
+    return {
+      trackId: updatedTrack.id,
+      status: updatedTrack.transcodingStatus,
+      waveformUrl: updatedTrack.waveformUrl || '',
+      audioUrl: updatedTrack.audioUrl,
+    };
+  }
+  
 }

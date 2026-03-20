@@ -6,6 +6,28 @@ import * as os from 'os';
 
 @Injectable()
 export class AudioService {
+  constructor() {
+    // Set the paths to ffmpeg and ffprobe binaries
+    try {
+      const ffmpegStatic = require('ffmpeg-static');
+      const ffprobeStatic = require('ffprobe-static');
+      
+      // These packages export objects with a .path property
+      const ffmpegBinaryPath = ffmpegStatic.path || ffmpegStatic;
+      const ffprobeBinaryPath = ffprobeStatic.path || ffprobeStatic;
+      
+      if (typeof ffmpegBinaryPath === 'string') {
+        ffmpeg.setFfmpegPath(ffmpegBinaryPath);
+      }
+      if (typeof ffprobeBinaryPath === 'string') {
+        ffmpeg.setFfprobePath(ffprobeBinaryPath);
+      }
+    } catch (error) {
+      // If ffmpeg-static is not available, the system ffmpeg will be used
+      console.warn('ffmpeg-static or ffprobe-static not properly configured:', error);
+    }
+  }
+
   private writeTempFile(buffer: Buffer, extension: string): string {
     const tempPath = path.join(os.tmpdir(), `audio-${Date.now()}.${extension}`);
     fs.writeFileSync(tempPath, buffer);

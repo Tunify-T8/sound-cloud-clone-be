@@ -13,6 +13,7 @@ import {
   Request,
   Put,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -71,10 +72,12 @@ export class TracksController {
     // na2es ashoof bs el user authorized wla la (hasaal alfred)
   }
 
-  @Put(':id')
+  @Patch(':id')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
+    @Request() req,
+    @Param('id') trackId: string,
     @Body() dto: UpdateTrackMultipartDto,
     @UploadedFile(
       new ParseFilePipe({
@@ -87,8 +90,8 @@ export class TracksController {
     )
     artworkFile?: Express.Multer.File,
   ) {
-    const userId = 'b712d133-03c6-4229-b07e-6da113d23bb8';
-    const result = await this.tracksService.updateTrack(userId, dto, artworkFile);
+    const userId = req.user.userId;
+    const result = await this.tracksService.updateTrack(trackId, userId, dto, artworkFile);
     return result;
   }
 
@@ -102,5 +105,31 @@ export class TracksController {
   //   const track = await this.tracksService.updateTrackJson(trackId, userId, dto);
   //   return { track, statusCode: 200 };
   // }
+
+  @Delete(':id')
+  @UseGuards(JwtAccessGuard)
+  async deleteTrack(@Request() req, @Param('id') trackId: string) {
+    const result = await this.tracksService.deleteTrack(trackId, req.user.userId);
+    return {trackId, ...result};
+  }
    
+  @Post(':id/audio/replace')
+  @UseGuards(JwtAccessGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async replaceAudio(
+    @Request() req,
+    @Param('id') trackId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /audio\/(mpeg|wav)/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.tracksService.replaceAudio(trackId, req.user.userId, file);
+  }
+
 }
