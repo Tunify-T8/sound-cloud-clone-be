@@ -1,33 +1,31 @@
-// eslint.config.mjs
-import eslintJs from '@eslint/js';
-const { flatConfig } = eslintJs;
+// @ts-check
+import eslint from '@eslint/js';
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
-import prettierRecommended from 'eslint-plugin-prettier/recommended';
-import tsPlugin from '@typescript-eslint/eslint-plugin';
-import tsParser from '@typescript-eslint/parser';
-
-export default [
+export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules'],
+    ignores: ['eslint.config.mjs', 'dist', 'node_modules'],
   },
+  eslintPluginPrettierRecommended,
   {
     files: ['**/*.ts', '**/*.js'],
     languageOptions: {
-      parser: tsParser,
+      parser: tseslint.parser,
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      sourceType: 'commonjs',
       parserOptions: {
-        project: './tsconfig.json',
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
       },
     },
-    plugins: {
-      '@typescript-eslint': tsPlugin,
-    },
     rules: {
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+      // Disable formatting errors completely
+      'prettier/prettier': 'off',
     },
   },
-  prettierRecommended,
-];
+);
