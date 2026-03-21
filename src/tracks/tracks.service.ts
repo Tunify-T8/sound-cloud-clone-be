@@ -99,6 +99,52 @@ export class TracksService {
     return trackWithRelations;
   }
 
+  async getMyTracks(userId: string) {
+    const tracks = await this.prisma.track.findMany({
+      where: {
+        userId,
+        isDeleted: false,
+      },
+      include: {
+        tags: true,
+        user: {
+          select: { username: true },
+        },
+        genre: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            reposts: true,
+            playHistory: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return tracks.map((track) => ({
+      id: track.id,
+      title: track.title,
+      artist: track.user.username,
+      genre: track.genre?.label ?? null,
+      tags: track.tags.map((t) => t.tag),
+      status: track.transcodingStatus,
+      visibility: track.isPublic ? 'public' : 'private',
+      audioUrl: track.audioUrl,
+      description: track.description ?? null,
+      waveformUrl: track.waveformUrl ?? null,
+      duration: track.durationSeconds,
+      date: track.createdAt.toISOString(),
+      likes: track._count.likes,
+      comments: track._count.comments,
+      reposts: track._count.reposts,
+      plays: track._count.playHistory,
+      isPrivate: !track.isPublic,
+      thumbnailUrl: track.coverUrl ?? null,
+    }));
+  }
+
   async uploadAudio(
     trackId: string,
     userId: string,
@@ -135,6 +181,9 @@ export class TracksService {
         trackId,
         fileBuffer: file.buffer,
         extension,
+      })
+      .then((job) => {
+        console.log('Job added successfully, job id:', job.id);
       })
       .catch((error: unknown) => {
         console.error('Failed to queue track processing:', error);
