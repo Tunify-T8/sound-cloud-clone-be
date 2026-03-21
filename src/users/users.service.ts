@@ -1,0 +1,563 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { PrivateUserDto } from './dto/private-user.dto';
+import { PublicUserDto } from './dto/public-user.dto';
+import { UserDto } from './dto/user.dto';
+import { UserTracksDto, LikedTracksDto } from './dto/user-tracks.dto';
+import { UserRepostsDto } from './dto/user-reposts.dto';
+import { UserCollectionsDto } from './dto/user-collections.dto';
+import { CollectionType, SocialPlatform } from '@prisma/client';
+import { FollowListDto } from './dto/user-follow.dto';
+import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getCurrentUser(userId: string): Promise<UserDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        email: true,
+        role: true,
+        bio: true,
+        location: true,
+        avatarUrl: true,
+        coverUrl: true,
+        createdAt: true,
+        visibility: true,
+        isActive: true,
+        isVerified: true,
+        updatedAt: true,
+        lastLoginAt: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const [tracksCount, followersCount, followingCount, likesReceived] =
+      await Promise.all([
+        this.prisma.track.count({ where: { userId: userId } }),
+        this.prisma.follow.count({ where: { followingId: userId } }),
+        this.prisma.follow.count({ where: { followerId: userId } }),
+        this.prisma.trackLike.count({
+          where: { track: { userId: userId } },
+        }),
+      ]);
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      email: user.email,
+      role: user.role,
+      bio: user.bio,
+      location: user.location,
+      avatarUrl: user.avatarUrl,
+      coverUrl: user.coverUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLogin: user.lastLoginAt,
+      visibility: user.visibility,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      tracksCount,
+      followersCount,
+      followingCount,
+      likesReceived,
+    };
+  }
+
+  async getUser(
+    id: string,
+    userId?: string,
+  ): Promise<PublicUserDto | PrivateUserDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        role: true,
+        bio: true,
+        location: true,
+        avatarUrl: true,
+        coverUrl: true,
+        createdAt: true,
+        visibility: true,
+        isActive: true,
+        isVerified: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    let isFollowing = false;
+
+    if (userId) {
+      const follow = await this.prisma.follow.findFirst({
+        where: {
+          followerId: userId,
+          followingId: id,
+        },
+      });
+
+      isFollowing = !!follow;
+    }
+
+    if (user.visibility === 'PRIVATE' && user.id !== userId && !isFollowing) {
+      return {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        role: user.role,
+        bio: user.bio,
+        location: user.location,
+        avatarUrl: user.avatarUrl,
+        coverUrl: user.coverUrl,
+        isFollowing,
+        isActive: user.isActive,
+        isVerified: user.isVerified,
+        createdAt: user.createdAt,
+      };
+    }
+
+    const [tracksCount, followersCount, followingCount, likesReceived] =
+      await Promise.all([
+        this.prisma.track.count({ where: { userId: id } }),
+        this.prisma.follow.count({ where: { followingId: id } }),
+        this.prisma.follow.count({ where: { followerId: id } }),
+        this.prisma.trackLike.count({
+          where: { track: { userId: id } },
+        }),
+      ]);
+
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+      bio: user.bio,
+      location: user.location,
+      avatarUrl: user.avatarUrl,
+      coverUrl: user.coverUrl,
+      tracksCount,
+      followersCount,
+      followingCount,
+      likesReceived,
+      isFollowing,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      createdAt: user.createdAt,
+    };
+  }
+
+  async getSocialLinks(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        socialLinks: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.socialLinks;
+  }
+
+  async getTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserTracksDto> {
+    const skip = (page - 1) * limit;
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: {
+          userId: userId,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          audioUrl: true,
+          coverUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+              reposts: true,
+            },
+          },
+        },
+      }),
+      this.prisma.track.count({
+        where: { userId, isDeleted: false, isHidden: false },
+      }),
+    ]);
+
+    return {
+      data: tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        description: track.description,
+        audioUrl: track.audioUrl,
+        coverUrl: track.coverUrl,
+        duration: track.durationSeconds,
+        likesCount: track._count.likes,
+        commentsCount: track._count.comments,
+        repostsCount: track._count.reposts,
+        createdAt: track.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+    };
+  }
+
+  async getReposts(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserRepostsDto> {
+    const skip = (page - 1) * limit;
+    const [reposts, total] = await Promise.all([
+      this.prisma.repost.findMany({
+        where: { userId: userId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          track: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              audioUrl: true,
+              coverUrl: true,
+              durationSeconds: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.repost.count({ where: { userId } }),
+    ]);
+    return {
+      data: reposts.map((repost) => ({
+        repostId: repost.id,
+        repostedAt: repost.createdAt,
+        track: {
+          id: repost.track.id,
+          title: repost.track.title,
+          description: repost.track.description,
+          audioUrl: repost.track.audioUrl,
+          coverUrl: repost.track.coverUrl,
+          duration: repost.track.durationSeconds,
+          likesCount: repost.track._count.likes,
+          commentsCount: repost.track._count.comments,
+          repostsCount: repost.track._count.reposts,
+          createdAt: repost.track.createdAt,
+        },
+      })),
+      page,
+      limit,
+      hasMore: skip + reposts.length < total,
+    };
+  }
+  async getCollections(
+    userId: string,
+    type: CollectionType,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<UserCollectionsDto> {
+    const skip = (page - 1) * limit;
+
+    const [collections, total] = await Promise.all([
+      this.prisma.collection.findMany({
+        where: { userId, type, isDeleted: false },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          coverUrl: true,
+          isPublic: true,
+          createdAt: true,
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
+            },
+          },
+        },
+      }),
+      this.prisma.collection.count({
+        where: { userId, type, isDeleted: false },
+      }),
+    ]);
+
+    return {
+      data: collections.map((c) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        coverUrl: c.coverUrl,
+        isPublic: c.isPublic,
+        tracksCount: c._count.tracks,
+        likesCount: c._count.likes,
+        createdAt: c.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + collections.length < total,
+    };
+  }
+
+  async getLikedTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<LikedTracksDto> {
+    const skip = (page - 1) * limit;
+    const [likes, total] = await Promise.all([
+      this.prisma.trackLike.findMany({
+        where: { userId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          track: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              audioUrl: true,
+              coverUrl: true,
+              durationSeconds: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.trackLike.count({ where: { userId } }),
+    ]);
+
+    return {
+      data: likes.map((like) => ({
+        likedAt: like.createdAt,
+        track: {
+          id: like.track.id,
+          title: like.track.title,
+          description: like.track.description,
+          audioUrl: like.track.audioUrl,
+          coverUrl: like.track.coverUrl,
+          duration: like.track.durationSeconds,
+          likesCount: like.track._count.likes,
+          commentsCount: like.track._count.comments,
+          repostsCount: like.track._count.reposts,
+          createdAt: like.track.createdAt,
+        },
+      })),
+      page,
+      limit,
+      hasMore: skip + likes.length < total,
+    };
+  }
+
+  async getFollowList(
+    userId: string,
+    direction: 'followers' | 'following',
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<FollowListDto> {
+    const skip = (page - 1) * limit;
+    const whereClause =
+      direction === 'followers'
+        ? { following: { some: { followingId: userId } } }
+        : { followers: { some: { followerId: userId } } };
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { ...whereClause, isDeleted: false, isActive: true },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+          _count: { select: { followers: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({
+        where: { ...whereClause, isDeleted: false, isActive: true },
+      }),
+    ]);
+
+    return {
+      data: users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl,
+        followersCount: u._count.followers,
+      })),
+      page,
+      limit,
+      hasMore: skip + users.length < total,
+    };
+  }
+
+  async getFollowerList(userId: string, page: number, limit: number) {
+    return this.getFollowList(userId, 'followers', page, limit);
+  }
+
+  async getFollowingList(userId: string, page: number, limit: number) {
+    return this.getFollowList(userId, 'following', page, limit);
+  }
+
+  async getFavoriteGenres(userId: string) {
+    const playHistory = await this.prisma.playHistory.groupBy({
+      by: ['trackId'],
+      where: { userId },
+      _count: { trackId: true },
+    });
+
+    if (!playHistory.length) return [];
+
+    // get trackIds ordered by play count
+    const trackPlayCounts = playHistory
+      .sort((a, b) => b._count.trackId - a._count.trackId)
+      .map((p) => p.trackId);
+
+    // get genres for those tracks, excluding deleted/hidden
+    const tracks = await this.prisma.track.findMany({
+      where: {
+        id: { in: trackPlayCounts },
+        isDeleted: false,
+        isHidden: false,
+        genre: { isNot: null },
+      },
+      select: {
+        genreId: true,
+        genre: { select: { id: true, label: true } },
+      },
+    });
+
+    // count plays per genre
+    const genrePlayCounts = new Map<
+      string,
+      { id: string; label: string; count: number }
+    >();
+
+    for (const track of tracks) {
+      if (!track.genre) continue;
+      const plays =
+        playHistory.find((p) => p.trackId === track.genreId)?._count.trackId ??
+        0;
+      const existing = genrePlayCounts.get(track.genreId ?? '');
+      if (existing) {
+        existing.count += plays;
+      } else {
+        genrePlayCounts.set(track.genreId ?? '', {
+          id: track.genre.id,
+          label: track.genre.label,
+          count: plays,
+        });
+      }
+    }
+
+    return [...genrePlayCounts.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ id, label }) => ({ id, label }));
+  }
+
+  async updateSocialLinks(userId: string, dto: UpdateSocialLinksDto) {
+    const upserts = dto.links.map((link) =>
+      this.prisma.userSocialLink.upsert({
+        where: {
+          userId_platform: {
+            userId: userId,
+            platform: link.platform,
+          },
+        },
+        update: { url: link.url },
+        create: { userId: userId, platform: link.platform, url: link.url },
+      }),
+    );
+    await this.prisma.$transaction(upserts);
+    return this.prisma.userSocialLink.findMany({
+      where: { userId: userId, deletedAt: null },
+      select: { platform: true, url: true },
+    });
+  }
+
+  async updateUserProfile(userId: string, dto: UpdateUserProfileDto) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { ...dto },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        email: true,
+        bio: true,
+        location: true,
+        avatarUrl: true,
+        coverUrl: true,
+        visibility: true,
+        role: true,
+        isVerified: true,
+        gender: true,
+        dateOfBirth: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async deleteSocialLink(userId: string, platform: SocialPlatform) {
+    return this.prisma.userSocialLink
+      .delete({
+        where: { userId_platform: { userId: userId, platform } },
+      })
+      .catch(() => {
+        throw new NotFoundException(`No ${platform.toLowerCase()} link found`);
+      });
+  }
+}

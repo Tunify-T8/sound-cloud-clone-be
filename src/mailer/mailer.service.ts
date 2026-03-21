@@ -42,7 +42,7 @@ export class MailerService {
   }
 
   // ─── Email Verification ──────────────────────────────────────────
- // ─── Email Verification ──────────────────────────────────────────
+  // ─── Email Verification ──────────────────────────────────────────
   async sendVerificationEmail(
     to: string,
     username: string,

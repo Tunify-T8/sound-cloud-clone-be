@@ -23,7 +23,7 @@ import { GoogleAuthService } from './google-auth.service';
   providers: [
     AuthService,
     GoogleAuthService,
-    JwtAccessStrategy,  // strategy must be a provider so Passport can find it
+    JwtAccessStrategy, // strategy must be a provider so Passport can find it
     JwtAccessGuard,
     RolesGuard,
   ],

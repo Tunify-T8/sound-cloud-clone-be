@@ -15,8 +15,8 @@ async function bootstrap() {
   // ─── CORS ──────────────────────────────────────────────────────
   app.enableCors({
     origin: [
-      'https://tunify.duckdns.org',   // Azure production
-      'http://localhost:5173',         // Vite dev server
+      'https://tunify.duckdns.org', // Azure production
+      'http://localhost:5173', // Vite dev server
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -26,9 +26,9 @@ async function bootstrap() {
   // ─── Global Validation ─────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       // strip unknown fields
+      whitelist: true, // strip unknown fields
       forbidNonWhitelisted: true,
-      transform: true,       // auto-transform payloads to DTO types
+      transform: true, // auto-transform payloads to DTO types
     }),
   );
 

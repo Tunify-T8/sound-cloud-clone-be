@@ -32,8 +32,10 @@ import { Roles } from './decorators/roles.decorator';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService, 
-    private readonly googleAuthService: GoogleAuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly googleAuthService: GoogleAuthService,
+  ) {}
 
   // ─── POST /auth/register ──────────────────────────────────────────
   // Registers a new user and sends a verification email
@@ -105,8 +107,6 @@ async googleAuth(@Body() dto: GoogleAuthDto) {
 async googleLink(@Body() dto: GoogleLinkDto) {
   return this.googleAuthService.googleLink(dto);
 }
-
-
 
 
 
