@@ -1,15 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import * as path from 'path';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // serve uploads folder as static files
+  app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+  });
 
   // ─── CORS ──────────────────────────────────────────────────────
   app.enableCors({
     origin: [
-      'https://tunify.duckdns.org',   // Azure production
-      'http://localhost:5173',         // Vite dev server
+      'https://tunify.duckdns.org', // Azure production
+      'http://localhost:5173', // Vite dev server
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -19,9 +26,9 @@ async function bootstrap() {
   // ─── Global Validation ─────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       // strip unknown fields
+      whitelist: true, // strip unknown fields
       forbidNonWhitelisted: true,
-      transform: true,       // auto-transform payloads to DTO types
+      transform: true, // auto-transform payloads to DTO types
     }),
   );
 

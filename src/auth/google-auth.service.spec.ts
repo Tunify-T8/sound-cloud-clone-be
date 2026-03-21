@@ -65,18 +65,18 @@ describe('GoogleAuthService', () => {
           provide: PrismaService,
           useValue: {
             user: {
-              findUnique: jest.fn() as jest.Mock,
-              create: jest.fn() as jest.Mock,
-              update: jest.fn() as jest.Mock,
+              findUnique: jest.fn(),
+              create: jest.fn(),
+              update: jest.fn(),
             },
             oAuthAccount: {
-              findUnique: jest.fn() as jest.Mock,
-              create: jest.fn() as jest.Mock,
+              findUnique: jest.fn(),
+              create: jest.fn(),
             },
             refreshToken: {
-              create: jest.fn() as jest.Mock,
+              create: jest.fn(),
             },
-            $transaction: jest.fn() as jest.Mock,
+            $transaction: jest.fn(),
           } satisfies PrismaMock,
         },
         {
@@ -102,10 +102,12 @@ describe('GoogleAuthService', () => {
     }).compile();
 
     service = module.get<GoogleAuthService>(GoogleAuthService);
-    prisma = module.get(PrismaService) as any;
-    jwtService = module.get(JwtService) as jest.Mocked<JwtService>;
+    prisma = module.get(PrismaService);
+    jwtService = module.get(JwtService);
 
-    jest.spyOn(service as any, 'getGoogleUser').mockResolvedValue(mockGooglePayload);
+    jest
+      .spyOn(service as any, 'getGoogleUser')
+      .mockResolvedValue(mockGooglePayload);
   });
 
   afterEach(() => {
@@ -126,7 +128,7 @@ describe('GoogleAuthService', () => {
         prisma.user.update.mockResolvedValue({} as any);
         prisma.refreshToken.create.mockResolvedValue({} as any);
 
-        const result = await service.googleAuth(googleAuthDto) as any;
+        const result = (await service.googleAuth(googleAuthDto)) as any;
 
         expect(result.accessToken).toBeDefined();
         expect(result.refreshToken).toBeDefined();
@@ -207,7 +209,7 @@ describe('GoogleAuthService', () => {
         });
         prisma.refreshToken.create.mockResolvedValue({} as any);
 
-        const result = await service.googleAuth(googleAuthDto) as any;
+        const result = (await service.googleAuth(googleAuthDto)) as any;
 
         expect(result.accessToken).toBeDefined();
         expect(result.refreshToken).toBeDefined();
@@ -250,7 +252,7 @@ describe('GoogleAuthService', () => {
         });
         prisma.refreshToken.create.mockResolvedValue({} as any);
 
-        const result = await service.googleAuth(googleAuthDto) as any;
+        const result = (await service.googleAuth(googleAuthDto)) as any;
 
         expect(result.user.isVerified).toBe(true);
       });
@@ -280,7 +282,7 @@ describe('GoogleAuthService', () => {
       prisma.user.update.mockResolvedValue({} as any);
       prisma.refreshToken.create.mockResolvedValue({} as any);
 
-      const result = await service.googleLink(googleLinkDto) as any;
+      const result = (await service.googleLink(googleLinkDto)) as any;
 
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
@@ -360,7 +362,9 @@ describe('GoogleAuthService', () => {
       prisma.oAuthAccount.create.mockRejectedValue({ code: 'P2002' });
 
       await expect(service.googleLink(googleLinkDto)).rejects.toThrow(
-        new BadRequestException('This Google account is already linked to another account'),
+        new BadRequestException(
+          'This Google account is already linked to another account',
+        ),
       );
     });
   });

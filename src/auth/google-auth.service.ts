@@ -31,12 +31,18 @@ export class GoogleAuthService {
     );
   }
 
-  private generateAccessToken(userId: string, email: string, role: string): string {
+  private generateAccessToken(
+    userId: string,
+    email: string,
+    role: string,
+  ): string {
     return this.jwtService.sign(
       { sub: userId, email, role },
       {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') as StringValue,
+        expiresIn: this.configService.get<string>(
+          'JWT_ACCESS_EXPIRES_IN',
+        ) as StringValue,
       },
     );
   }
@@ -46,12 +52,17 @@ export class GoogleAuthService {
       { sub: userId, email },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') as StringValue,
+        expiresIn: this.configService.get<string>(
+          'JWT_REFRESH_EXPIRES_IN',
+        ) as StringValue,
       },
     );
   }
 
-  private async saveRefreshToken(userId: string, refreshTokenRaw: string): Promise<void> {
+  private async saveRefreshToken(
+    userId: string,
+    refreshTokenRaw: string,
+  ): Promise<void> {
     const hash = await bcrypt.hash(refreshTokenRaw, 12);
     await this.prisma.refreshToken.create({
       data: {
@@ -63,7 +74,11 @@ export class GoogleAuthService {
   }
 
   private async buildAuthResponse(user: any) {
-    const accessToken = this.generateAccessToken(user.id, user.email, user.role);
+    const accessToken = this.generateAccessToken(
+      user.id,
+      user.email,
+      user.role,
+    );
     const refreshTokenRaw = this.generateRefreshToken(user.id, user.email);
     await this.saveRefreshToken(user.id, refreshTokenRaw);
 
@@ -135,7 +150,9 @@ export class GoogleAuthService {
       };
     } catch (error) {
       this.logger.error('Google token exchange failed', error);
-      throw new UnauthorizedException('Invalid or expired Google authorization code');
+      throw new UnauthorizedException(
+        'Invalid or expired Google authorization code',
+      );
     }
   }
 
@@ -288,7 +305,9 @@ export class GoogleAuthService {
       });
     } catch (error) {
       if (error.code === 'P2002') {
-        throw new BadRequestException('This Google account is already linked to another account');
+        throw new BadRequestException(
+          'This Google account is already linked to another account',
+        );
       }
       throw new InternalServerErrorException('Failed to link account');
     }

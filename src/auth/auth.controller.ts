@@ -4,10 +4,10 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  Delete, 
+  Delete,
   Request,
- UseGuards,
- Get
+  UseGuards,
+  Get,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -27,16 +27,15 @@ import { GoogleAuthService } from './google-auth.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { GoogleLinkDto } from './dto/google-link.dto';
 
-
-
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 
-
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService, 
-    private readonly googleAuthService: GoogleAuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly googleAuthService: GoogleAuthService,
+  ) {}
 
   // ─── POST /auth/register ──────────────────────────────────────────
   // Registers a new user and sends a verification email
@@ -46,109 +45,53 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  // ─── POST /auth/verify-email ──────────────────────────────────────
+  // Verifies user email using the token sent to their inbox
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto);
+  }
 
+  // ─── POST /auth/check-email ───────────────────────────────────────
+  // Step 1 of registration — checks if email is already registered
+  @Post('check-email')
+  @HttpCode(HttpStatus.OK)
+  async checkEmail(@Body() dto: CheckEmailDto) {
+    return this.authService.checkEmail(dto);
+  }
 
+  // ─── POST /auth/resend-verification ──────────────────────────────
+  // Resends the email verification token to the user's inbox
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerification(dto);
+  }
 
-// ─── POST /auth/verify-email ──────────────────────────────────────
-// Verifies user email using the token sent to their inbox
-@Post('verify-email')
-@HttpCode(HttpStatus.OK)
-async verifyEmail(@Body() dto: VerifyEmailDto) {
-  return this.authService.verifyEmail(dto);
-}
+  // ─── POST /auth/login ─────────────────────────────────────────────
+  // Authenticates user and returns access + refresh tokens
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
 
+  // ─── POST /auth/refresh-token ─────────────────────────────────────
+  // Rotates refresh token and returns new access + refresh tokens
+  @Post('refresh-token')
+  @HttpCode(HttpStatus.OK)
+  async refreshToken(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto);
+  }
 
-
-// ─── POST /auth/check-email ───────────────────────────────────────
-// Step 1 of registration — checks if email is already registered
-@Post('check-email')
-@HttpCode(HttpStatus.OK)
-async checkEmail(@Body() dto: CheckEmailDto) {
-  return this.authService.checkEmail(dto);
-}
-
-
-
-
-// ─── POST /auth/resend-verification ──────────────────────────────
-// Resends the email verification token to the user's inbox
-@Post('resend-verification')
-@HttpCode(HttpStatus.OK)
-async resendVerification(@Body() dto: ResendVerificationDto) {
-  return this.authService.resendVerification(dto);
-}
-
-
-
-// ─── POST /auth/login ─────────────────────────────────────────────
-// Authenticates user and returns access + refresh tokens
-@Post('login')
-@HttpCode(HttpStatus.OK)
-async login(@Body() dto: LoginDto) {
-  return this.authService.login(dto);
-}
-
-// ─── POST /auth/refresh-token ─────────────────────────────────────
-// Rotates refresh token and returns new access + refresh tokens
-@Post('refresh-token')
-@HttpCode(HttpStatus.OK)
-async refreshToken(@Body() dto: RefreshTokenDto) {
-  return this.authService.refreshToken(dto);
-}
-
-
-
-// ─── POST /auth/signout ───────────────────────────────────────────
-// Revokes current device's refresh token
-@Post('signout')
-@HttpCode(HttpStatus.OK)
-async signout(@Body() dto: LogoutDto) {
-  return this.authService.signout(dto);
-}
-
-// ─── POST /auth/signout-all ───────────────────────────────────────
-// Revokes all refresh tokens for this user across all devices
-@Post('signout-all')
-@HttpCode(HttpStatus.OK)
-async signoutAll(@Body() dto: LogoutDto) {
-  return this.authService.signoutAll(dto);
-
-}
-
-
-
-
-
-// ─── POST /auth/forgot-password ───────────────────────────────────
-// Sends password reset email — always returns success (security)
-@Post('forgot-password')
-@HttpCode(HttpStatus.OK)
-async forgotPassword(@Body() dto: ForgotPasswordDto) {
-  return this.authService.forgotPassword(dto);
-}
-
-// ─── POST /auth/reset-password ────────────────────────────────────
-// Resets password using token from email
-@Post('reset-password')
-@HttpCode(HttpStatus.OK)
-async resetPassword(@Body() dto: ResetPasswordDto) {
-  return this.authService.resetPassword(dto);
-}
-
-
-
-
-// ─── DELETE /auth/delete-account ─────────────────────────────────
-// Soft deletes the authenticated user's account
-@Delete('delete-account')
-@HttpCode(HttpStatus.OK)
-@UseGuards(JwtAccessGuard)
-async deleteAccount(@Request() req, @Body() dto: DeleteAccountDto) {
-  return this.authService.deleteAccount(req.user.userId, dto);
-}
-
-
-
+  // ─── POST /auth/signout ───────────────────────────────────────────
+  // Revokes current device's refresh token
+  @Post('signout')
+  @HttpCode(HttpStatus.OK)
+  async signout(@Body() dto: LogoutDto) {
+    return this.authService.signout(dto);
+  }
 // ─── POST /auth/google ────────────────────────────────────────────
 // Main Google OAuth endpoint — handles sign in + register + linking detection
 @Post('google')
@@ -168,37 +111,65 @@ async googleLink(@Body() dto: GoogleLinkDto) {
 
 
 
+  // ─── POST /auth/signout-all ───────────────────────────────────────
+  // Revokes all refresh tokens for this user across all devices
+  @Post('signout-all')
+  @HttpCode(HttpStatus.OK)
+  async signoutAll(@Body() dto: LogoutDto) {
+    return this.authService.signoutAll(dto);
+  }
 
+  // ─── POST /auth/forgot-password ───────────────────────────────────
+  // Sends password reset email — always returns success (security)
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
 
+  // ─── POST /auth/reset-password ────────────────────────────────────
+  // Resets password using token from email
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
 
-// ─── GET /auth/test-auth ──────────────────────────────────────────
-// Temporary — remove after testing guards
-@Get('test-auth')
-@UseGuards(JwtAccessGuard)
-testAuth() {
-  return { message: 'You are authenticated' };
+  // ─── DELETE /auth/delete-account ─────────────────────────────────
+  // Soft deletes the authenticated user's account
+  @Delete('delete-account')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAccessGuard)
+  async deleteAccount(
+    @Request() req: Request & { user?: { userId: string } },
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.authService.deleteAccount(req.user?.userId ?? '', dto);
+  }
+
+  // ─── GET /auth/test-auth ──────────────────────────────────────────
+  // Temporary — remove after testing guards
+  @Get('test-auth')
+  @UseGuards(JwtAccessGuard)
+  testAuth() {
+    return { message: 'You are authenticated' };
+  }
+
+  // ─── GET /auth/test-admin ─────────────────────────────────────────
+  // Temporary — remove after testing guards
+  @Get('test-admin')
+  @UseGuards(JwtAccessGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
+  testAdmin() {
+    return { message: 'You are an admin' };
+  }
+
+  // ─── GET /auth/test-artist ────────────────────────────────────────
+  // Temporary — remove after testing guards
+  @Get('test-artist')
+  @UseGuards(JwtAccessGuard, RolesGuard)
+  @Roles(UserType.ARTIST)
+  testArtist() {
+    return { message: 'You are an artist or admin' };
+  }
 }
-
-// ─── GET /auth/test-admin ─────────────────────────────────────────
-// Temporary — remove after testing guards
-@Get('test-admin')
-@UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserType.ADMIN)
-testAdmin() {
-  return { message: 'You are an admin' };
-}
-
-// ─── GET /auth/test-artist ────────────────────────────────────────
-// Temporary — remove after testing guards
-@Get('test-artist')
-@UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserType.ARTIST)
-testArtist() {
-  return { message: 'You are an artist or admin' };
-}
-
-
-
-}
-
-

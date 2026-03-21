@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
@@ -38,7 +42,7 @@ export class MailerService {
   }
 
   // ─── Email Verification ──────────────────────────────────────────
- // ─── Email Verification ──────────────────────────────────────────
+  // ─── Email Verification ──────────────────────────────────────────
   async sendVerificationEmail(
     to: string,
     username: string,
