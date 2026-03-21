@@ -489,11 +489,11 @@ export class UsersService {
       const plays =
         playHistory.find((p) => p.trackId === track.genreId)?._count.trackId ??
         0;
-      const existing = genrePlayCounts.get(track.genreId);
+      const existing = genrePlayCounts.get(track.genreId ?? '');
       if (existing) {
         existing.count += plays;
       } else {
-        genrePlayCounts.set(track.genreId, {
+        genrePlayCounts.set(track.genreId ?? '', {
           id: track.genre.id,
           label: track.genre.label,
           count: plays,
