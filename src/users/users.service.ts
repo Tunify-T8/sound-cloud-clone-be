@@ -560,4 +560,62 @@ export class UsersService {
         throw new NotFoundException(`No ${platform.toLowerCase()} link found`);
       });
   }
+
+  //Get current user tier and remaining uploads. Called when entering the Upload Entry Screen.
+  async getUploadStats(userId: string) { 
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId, 
+        plan: {
+          name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+        },
+      },
+      include: {
+        plan: true,
+      },
+    });
+
+    if (!subscription) {
+      return {
+        tier: "FREE",
+        uploadMinutesLimit: 100,
+        uploadMinutesUsed: 0,
+        uploadMinutesRemaining : 100,
+        canReplaceFiles : false,
+        canScheduleRelease : false,
+        canAccessAdvancedTab : false
+      };
+    }
+
+    return{
+      tier: subscription.plan?.name,
+      uploadMinutesLimit : subscription.plan?.monthlyUploadMinutes ?? null,
+      uploadMinutesUsed : subscription.uploadedMinutes ?? 0,
+      uploadMinutesRemaining : subscription.plan?.monthlyUploadMinutes ? subscription.plan?.monthlyUploadMinutes - (subscription.uploadedMinutes ?? 0) : null,
+      canReplaceFiles : subscription.plan?.allowReplace,
+      canScheduleRelease : subscription.plan?.allowScheduledRelease,
+      canAccessAdvancedTab : subscription.plan?.allowAdvancedTabAccess,
+    }
+  }
+
+  async getUploadMinutes(userId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId, 
+        plan: {
+          name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+        },
+      },
+      include: {
+        plan: true,
+      },
+    });
+
+    return {
+        tier : subscription?.plan?.name ?? "FREE",
+        uploadMinutesLimit: subscription?.plan?.monthlyUploadMinutes ?? null,
+        uploadMinutesUsed: subscription?.uploadedMinutes ?? 0,
+        uploadMinutesRemaining: subscription?.plan?.monthlyUploadMinutes ? subscription?.plan?.monthlyUploadMinutes - (subscription?.uploadedMinutes ?? 0) : null,
+    }
+  }
 }

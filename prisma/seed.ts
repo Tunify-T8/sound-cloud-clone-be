@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
@@ -64,18 +65,11 @@ async function main() {
 
   console.log(`\nSuccessfully created ${createdTracks.length} tracks for user ${userId}`);
   
-  // Create all 3 subscription plans
-  const subscriptionPlanConfigs = [
-    {
-      name: 'FREE',
-      description: 'Free tier with basic features',
-      monthlyPrice: 0,
-      monthlyUploadMinutes: 100,
-      maxTrackDurationMin: 30,
-      allowedDownloads: 0,
-      enableMonetization: false,
-    },
-    {
+  // Upsert subscription plans
+  const proPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'PRO' },
+    update: {},
+    create: {
       name: 'PRO',
       description: 'Professional tier with advanced features',
       monthlyPrice: 9.99,
@@ -89,11 +83,16 @@ async function main() {
       analytics: true,
       releaseScheduling: true,
     },
-    {
+  });
+
+  const goPlusPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'GOPLUS' },
+    update: {},
+    create: {
       name: 'GOPLUS',
       description: 'Premium tier with all features',
       monthlyPrice: 19.99,
-      monthlyUploadMinutes: null, // unlimited
+      monthlyUploadMinutes: null,
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
@@ -105,35 +104,61 @@ async function main() {
       releaseScheduling: true,
       prioritySupport: true,
     },
-  ];
+  });
 
-  const createdPlans: Awaited<ReturnType<typeof prisma.subscriptionPlan.upsert>>[] = [];
-  for (const planConfig of subscriptionPlanConfigs) {
-    const plan = await prisma.subscriptionPlan.upsert({
-      where: { name: planConfig.name },
-      update: {},
-      create: planConfig,
-    });
-    createdPlans.push(plan);
-    console.log(`Created/found ${planConfig.name} plan:`, plan.id);
-  }
+  console.log('Created/found PRO plan:', proPlan.id);
+  console.log('Created/found GOPLUS plan:', goPlusPlan.id);
 
-  // Create subscriptions for the user
-  const createdSubscriptions: Awaited<ReturnType<typeof prisma.subscription.create>>[] = [];
-  for (const plan of createdPlans) {
-    const subscription = await prisma.subscription.create({
+  // Create PRO subscription for the first user
+  const proSubscription = await prisma.subscription.create({
+    data: {
+      userId: userId,
+      planId: proPlan.id,
+      status: 'active',
+      billingCycle: 'monthly',
+    },
+  });
+  console.log(`Created PRO subscription for user ${userId}:`, proSubscription.id);
+
+  // Create a second user with GOPLUS subscription
+  const secondUserId = '94788713-4b6f-5eb1-0c4a-bg10cc85b256';
+  
+  // Check if second user exists, if not create them
+  let secondUser = await prisma.user.findUnique({
+    where: { id: secondUserId },
+  });
+
+  if (!secondUser) {
+    const hashedPassword = await bcrypt.hash('PREM123', 10);
+    secondUser = await prisma.user.create({
       data: {
-        userId: userId,
-        planId: plan.id,
-        status: 'active',
-        billingCycle: 'monthly',
+        id: secondUserId,
+        username: 'premium_artist',
+        email: 'premium@soundcloud-clone.com',
+        loginMethod: 'LOCAL',
+        role: 'ARTIST',
+        gender: 'PREFER_NOT_TO_SAY',
+        dateOfBirth: new Date('1990-01-15'),
+        passHash: hashedPassword,
       },
     });
-    createdSubscriptions.push(subscription);
-    console.log(`Created ${plan.name} subscription:`, subscription.id);
+    console.log('Created second user:', secondUser.id, '(' + secondUser.username + ')');
+  } else {
+    console.log('Found second user:', secondUser.id, '(' + secondUser.username + ')');
   }
 
-  console.log(`\nSuccessfully created ${createdSubscriptions.length} subscriptions for user ${userId}`);
+  // Create GOPLUS subscription for the second user
+  const goPlusSubscription = await prisma.subscription.create({
+    data: {
+      userId: secondUserId,
+      planId: goPlusPlan.id,
+      status: 'active',
+      billingCycle: 'monthly',
+    },
+  });
+  console.log(`Created GOPLUS subscription for user ${secondUserId}:`, goPlusSubscription.id);
+
+  console.log(`\nSuccessfully seeded database with subscriptions!`);
   console.log('Database seed completed successfully!');
 }
 
