@@ -127,21 +127,50 @@ export class AuthService {
     // 3. Hash the password
     const passHash = await bcrypt.hash(dto.password, 12);
 
-    // 4. Create the user in DB
+    // 4. Create the user and attach the default FREE subscription in DB
     let user: User;
     try {
-      user = await this.prisma.user.create({
-        data: {
-          username: dto.username,
-          email: dto.email,
-          passHash,
-          avatarUrl: dto.avatarUrl ?? null,
-          loginMethod: 'LOCAL',
-          role: 'LISTENER',
-          isVerified: false,
-          gender: dto.gender,
-          dateOfBirth: dto.date_of_birth,
-        },
+      user = await this.prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: {
+            username: dto.username,
+            email: dto.email,
+            passHash,
+            avatarUrl: dto.avatarUrl ?? null,
+            loginMethod: 'LOCAL',
+            role: 'LISTENER',
+            isVerified: false,
+            gender: dto.gender,
+            dateOfBirth: dto.date_of_birth,
+          },
+        });
+
+        const freePlan = await tx.subscriptionPlan.upsert({
+          where: { name: 'FREE' },
+          update: {
+            isActive: true,
+            monthlyPrice: 0,
+            monthlyUploadMinutes: 100,
+          },
+          create: {
+            name: 'FREE',
+            description: 'Free tier',
+            monthlyPrice: 0,
+            monthlyUploadMinutes: 100,
+            isActive: true,
+          },
+        });
+
+        await tx.subscription.create({
+          data: {
+            user: { connect: { id: createdUser.id } },
+            plan: { connect: { id: freePlan.id } },
+            status: 'active',
+            billingCycle: 'monthly',
+          },
+        });
+
+        return createdUser;
       });
     } catch (error) {
       // Re-throw Prisma unique constraint violations properly

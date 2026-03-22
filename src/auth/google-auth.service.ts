@@ -232,6 +232,31 @@ export class GoogleAuthService {
           },
         });
 
+        const freePlan = await tx.subscriptionPlan.upsert({
+          where: { name: 'FREE' },
+          update: {
+            isActive: true,
+            monthlyPrice: 0,
+            monthlyUploadMinutes: 180,
+          },
+          create: {
+            name: 'FREE',
+            description: 'Free tier',
+            monthlyPrice: 0,
+            monthlyUploadMinutes: 180,
+            isActive: true,
+          },
+        });
+
+        await tx.subscription.create({
+          data: {
+            user: { connect: { id: user.id } },
+            plan: { connect: { id: freePlan.id } },
+            status: 'active',
+            billingCycle: 'monthly',
+          },
+        });
+
         await tx.oAuthAccount.create({
           data: {
             userId: user.id,

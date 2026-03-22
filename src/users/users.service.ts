@@ -618,7 +618,7 @@ export class UsersService {
     const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
     return {
-      tier: subscription?.plan?.name ?? 'FREE',
+      tier: subscription?.plan?.name ?? 'NO_PLAN',
       uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(uploadMinutesLimit - uploadMinutesUsed, 0),
