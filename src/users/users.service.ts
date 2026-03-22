@@ -562,60 +562,66 @@ export class UsersService {
   }
 
   //Get current user tier and remaining uploads. Called when entering the Upload Entry Screen.
-  async getUploadStats(userId: string) { 
+  async getUploadStats(userId: string) {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        userId, 
+        userId,
+        status: 'active',
+        endedAt: null,
         plan: {
-          name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+          is: {
+            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            isActive: true,
+          },
         },
       },
       include: {
         plan: true,
       },
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    if (!subscription) {
-      return {
-        tier: "FREE",
-        uploadMinutesLimit: 100,
-        uploadMinutesUsed: 0,
-        uploadMinutesRemaining : 100,
-        canReplaceFiles : false,
-        canScheduleRelease : false,
-        canAccessAdvancedTab : false
-      };
-    }
+    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 100;
+    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
-    return{
-      tier: subscription.plan?.name,
-      uploadMinutesLimit : subscription.plan?.monthlyUploadMinutes ?? null,
-      uploadMinutesUsed : subscription.uploadedMinutes ?? 0,
-      uploadMinutesRemaining : subscription.plan?.monthlyUploadMinutes ? subscription.plan?.monthlyUploadMinutes - (subscription.uploadedMinutes ?? 0) : null,
-      canReplaceFiles : subscription.plan?.allowReplace,
-      canScheduleRelease : subscription.plan?.allowScheduledRelease,
-      canAccessAdvancedTab : subscription.plan?.allowAdvancedTabAccess,
-    }
+    return {
+      tier: subscription?.plan?.name ?? 'FREE',
+      uploadMinutesLimit,
+      uploadMinutesUsed,
+      uploadMinutesRemaining: Math.max(uploadMinutesLimit - uploadMinutesUsed, 0),
+      canReplaceFiles: subscription?.plan?.allowReplace ?? false,
+      canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
+      canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
+    };
   }
 
   async getUploadMinutes(userId: string) {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
-        userId, 
+        userId,
+        status: 'active',
+        endedAt: null,
         plan: {
-          name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+          is: {
+            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            isActive: true,
+          },
         },
       },
       include: {
         plan: true,
       },
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
+    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
+    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+
     return {
-        tier : subscription?.plan?.name ?? "FREE",
-        uploadMinutesLimit: subscription?.plan?.monthlyUploadMinutes ?? null,
-        uploadMinutesUsed: subscription?.uploadedMinutes ?? 0,
-        uploadMinutesRemaining: subscription?.plan?.monthlyUploadMinutes ? subscription?.plan?.monthlyUploadMinutes - (subscription?.uploadedMinutes ?? 0) : null,
-    }
+      tier: subscription?.plan?.name ?? 'FREE',
+      uploadMinutesLimit,
+      uploadMinutesUsed,
+      uploadMinutesRemaining: Math.max(uploadMinutesLimit - uploadMinutesUsed, 0),
+    };
   }
 }
