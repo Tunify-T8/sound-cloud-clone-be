@@ -726,7 +726,7 @@ export class AuthService {
     }
 
     // 3. Password check
-    if (user.passHash) {
+    /*if (user.passHash) {
       if (!dto.password) {
         throw new BadRequestException(
           'Password is required to delete your account',
@@ -736,7 +736,7 @@ export class AuthService {
       if (!isPasswordValid) {
         throw new UnauthorizedException('Invalid password');
       }
-    }
+    }*/
 
     // 4. Soft delete
     await this.prisma.user.update({
