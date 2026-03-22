@@ -794,14 +794,13 @@ describe('AuthService', () => {
   // DELETE ACCOUNT
   // ══════════════════════════════════════════════════════════════════
   describe('deleteAccount', () => {
-    const deleteDto = { password: 'Password123!' };
-
+    
     it('should soft delete account successfully', async () => {
       prisma.user.findUnique.mockResolvedValue(mockUser as any);
       prisma.user.update.mockResolvedValue({} as any);
       prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
 
-      const result = await service.deleteAccount('user-123', deleteDto);
+      const result = await service.deleteAccount('user-123');
 
       expect(result.message).toBe(
         'Your account has been deleted successfully.',
@@ -817,7 +816,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.deleteAccount('user-123', deleteDto),
+        service.deleteAccount('user-123'),
       ).rejects.toThrow(new UnauthorizedException('User not found'));
     });
 
@@ -828,53 +827,53 @@ describe('AuthService', () => {
       } as any);
 
       await expect(
-        service.deleteAccount('user-123', deleteDto),
+        service.deleteAccount('user-123'),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should throw UnauthorizedException if password is wrong', async () => {
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false);
+    // it('should throw UnauthorizedException if password is wrong', async () => {
+    //   prisma.user.findUnique.mockResolvedValue(mockUser as any);
+    //   (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false);
 
-      await expect(
-        service.deleteAccount('user-123', deleteDto),
-      ).rejects.toThrow(new UnauthorizedException('Invalid password'));
-    });
+    //   await expect(
+    //     service.deleteAccount('user-123'),
+    //   ).rejects.toThrow(new UnauthorizedException('Invalid password'));
+    // });
 
-    it('should throw BadRequestException if password not provided for LOCAL user', async () => {
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
+    // it('should throw BadRequestException if password not provided for LOCAL user', async () => {
+    //   prisma.user.findUnique.mockResolvedValue(mockUser as any);
 
-      await expect(
-        service.deleteAccount('user-123', { password: undefined }),
-      ).rejects.toThrow(
-        new BadRequestException('Password is required to delete your account'),
-      );
-    });
+    //   await expect(
+    //     service.deleteAccount('user-123', { password: undefined }),
+    //   ).rejects.toThrow(
+    //     new BadRequestException('Password is required to delete your account'),
+    //   );
+    // });
 
-    it('should skip password check for pure OAuth user', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...mockUser,
-        passHash: null,
-        loginMethod: 'GOOGLE',
-      } as any);
-      prisma.user.update.mockResolvedValue({} as any);
-      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
+    // it('should skip password check for pure OAuth user', async () => {
+    //   prisma.user.findUnique.mockResolvedValue({
+    //     ...mockUser,
+    //     passHash: null,
+    //     loginMethod: 'GOOGLE',
+    //   } as any);
+    //   prisma.user.update.mockResolvedValue({} as any);
+    //   prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
 
-      const result = await service.deleteAccount('user-123', {
-        password: undefined,
-      });
+    //   const result = await service.deleteAccount('user-123', {
+    //     password: undefined,
+    //   });
 
-      expect(result.message).toBe(
-        'Your account has been deleted successfully.',
-      );
-    });
+    //   expect(result.message).toBe(
+    //     'Your account has been deleted successfully.',
+    //   );
+    // });
 
     it('should revoke all active refresh tokens on delete', async () => {
       prisma.user.findUnique.mockResolvedValue(mockUser as any);
       prisma.user.update.mockResolvedValue({} as any);
       prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 } as any);
 
-      await service.deleteAccount('user-123', deleteDto);
+      await service.deleteAccount('user-123');
 
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
