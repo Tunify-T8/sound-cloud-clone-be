@@ -25,7 +25,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { DeleteAccountDto } from './dto/delete-account.dto';
+//import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @Injectable()
 export class AuthService {
@@ -764,7 +764,7 @@ export class AuthService {
   }
 
   // ─── Delete Account ───────────────────────────────────────────────
-  async deleteAccount(userId: string, _dto: DeleteAccountDto) {
+  async deleteAccount(userId: string) {
     // 1. Fetch user from DB
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

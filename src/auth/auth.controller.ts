@@ -22,7 +22,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UserType } from '@prisma/client';
 
 import { JwtAccessGuard } from './guards/jwt-access.guard';
-import { DeleteAccountDto } from './dto/delete-account.dto';
+//import { DeleteAccountDto } from './dto/delete-account.dto';
 import { GoogleAuthService } from './google-auth.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { GoogleLinkDto } from './dto/google-link.dto';
@@ -142,9 +142,9 @@ async googleLink(@Body() dto: GoogleLinkDto) {
   @UseGuards(JwtAccessGuard)
   async deleteAccount(
     @Request() req: Request & { user?: { userId: string } },
-    @Body() dto: DeleteAccountDto,
+
   ) {
-    return this.authService.deleteAccount(req.user?.userId ?? '', dto);
+    return this.authService.deleteAccount(req.user?.userId ?? '');
   }
 
   // ─── GET /auth/test-auth ──────────────────────────────────────────
