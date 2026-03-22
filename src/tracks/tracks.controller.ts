@@ -65,6 +65,12 @@ export class TracksController {
     return this.tracksService.getStatus(trackId);
   }
 
+  @Get('me')
+  @UseGuards(JwtAccessGuard)
+  getMyTracks(@Request() req: AuthRequest) {
+    return this.tracksService.getMyTracks(req.user?.userId ?? '');
+  }
+
   @Get(':id')
   @UseGuards(JwtAccessGuard)
   async getTrack(@Param('id') trackId: string) {

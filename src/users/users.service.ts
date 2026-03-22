@@ -429,7 +429,7 @@ export class UsersService {
     ]);
 
     return {
-      data: users.map((u) => ({
+      [direction]: users.map((u) => ({
         id: u.id,
         username: u.username,
         displayName: u.displayName,
