@@ -25,7 +25,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { DeleteAccountDto } from './dto/delete-account.dto';
+//import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @Injectable()
 export class AuthService {
@@ -112,6 +112,64 @@ export class AuthService {
     const existingEmail = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
+
+    // 1a. If email exists but account was soft-deleted → reactivate it
+    if (existingEmail && existingEmail.isDeleted) {
+      const passHash = await bcrypt.hash(dto.password, 12);
+
+      const reactivated = await this.prisma.user.update({
+        where: { id: existingEmail.id },
+        data: {
+          username: dto.username,
+          passHash,
+          avatarUrl: dto.avatarUrl ?? existingEmail.avatarUrl,
+          isDeleted: false,
+          isActive: true,
+          deletedAt: null,
+          isVerified: false,
+          gender: dto.gender,
+          dateOfBirth: dto.date_of_birth,
+          loginMethod: 'LOCAL',
+        },
+      });
+
+      // Invalidate any old verification tokens
+      await this.prisma.emailVerificationToken.updateMany({
+        where: { userId: reactivated.id, used: false },
+        data: { used: true },
+      });
+
+      // Generate fresh verification token
+      const verificationToken = this.generateToken();
+      await this.prisma.emailVerificationToken.create({
+        data: {
+          userId: reactivated.id,
+          token: verificationToken,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Send verification email
+      await this.mailerService.sendVerificationEmail(
+        reactivated.email,
+        reactivated.username,
+        verificationToken,
+      );
+
+      this.logger.log(`Reactivated soft-deleted account: ${reactivated.username}`);
+
+      return {
+        message: 'Account reactivated. Please verify your email.',
+        user: {
+          id: reactivated.id,
+          username: reactivated.username,
+          email: reactivated.email,
+          isVerified: reactivated.isVerified,
+        },
+      };
+    }
+
+    // 1b. Email exists and account is active → reject
     if (existingEmail) {
       throw new ConflictException('Email already in use');
     }
@@ -173,7 +231,6 @@ export class AuthService {
         return createdUser;
       });
     } catch (error) {
-      // Re-throw Prisma unique constraint violations properly
       const prismaError = error as {
         code?: string;
         meta?: { target?: string[] };
@@ -701,14 +758,13 @@ export class AuthService {
 
     // 7. Return generic success
     return {
-      // accessToken: newAccessToken,
-      // refreshToken: newRefreshTokenRaw,
-      message: 'temp message lghayet makhod mn alfred'
+     
+      message: 'If an account exists with this email, you will receive a password reset link shortly.'
     };
   }
 
   // ─── Delete Account ───────────────────────────────────────────────
-  async deleteAccount(userId: string, dto: DeleteAccountDto) {
+  async deleteAccount(userId: string) {
     // 1. Fetch user from DB
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -726,7 +782,7 @@ export class AuthService {
     }
 
     // 3. Password check
-    if (user.passHash) {
+    /*if (user.passHash) {
       if (!dto.password) {
         throw new BadRequestException(
           'Password is required to delete your account',
@@ -736,7 +792,7 @@ export class AuthService {
       if (!isPasswordValid) {
         throw new UnauthorizedException('Invalid password');
       }
-    }
+    }*/
 
     // 4. Soft delete
     await this.prisma.user.update({
