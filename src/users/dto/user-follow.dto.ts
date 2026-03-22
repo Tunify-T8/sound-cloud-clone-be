@@ -7,7 +7,8 @@ export class FollowUserDto {
 }
 
 export class FollowListDto {
-  data: FollowUserDto[];
+  followers?: FollowUserDto[];
+  following?: FollowUserDto[];
   page: number;
   limit: number;
   hasMore: boolean;
