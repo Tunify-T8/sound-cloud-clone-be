@@ -764,7 +764,7 @@ export class AuthService {
   }
 
   // ─── Delete Account ───────────────────────────────────────────────
-  async deleteAccount(userId: string, dto: DeleteAccountDto) {
+  async deleteAccount(userId: string, _dto: DeleteAccountDto) {
     // 1. Fetch user from DB
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
