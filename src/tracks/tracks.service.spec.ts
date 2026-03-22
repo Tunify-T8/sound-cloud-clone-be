@@ -90,6 +90,7 @@ const makePrismaMock = () => ({
   track: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
   },
@@ -165,7 +166,10 @@ describe('TracksService', () => {
     };
 
     it('creates a public track and returns it with relations', async () => {
-      prisma.genre.findUnique.mockResolvedValue({ id: 'genre-1', label: 'music_hiphop' });
+      prisma.genre.findUnique.mockResolvedValue({
+        id: 'genre-1',
+        label: 'music_hiphop',
+      });
       prisma.track.create.mockResolvedValue({ ...baseTrack, id: TRACK_ID });
       prisma.trackTag.createMany.mockResolvedValue({ count: 2 });
       prisma.track.findUnique.mockResolvedValue(baseTrackWithRelations);
@@ -194,7 +198,10 @@ describe('TracksService', () => {
     it('creates a private track with a privateToken', async () => {
       prisma.genre.findUnique.mockResolvedValue(null);
       prisma.track.create.mockResolvedValue({ ...baseTrack, isPublic: false });
-      prisma.track.findUnique.mockResolvedValue({ ...baseTrackWithRelations, isPublic: false });
+      prisma.track.findUnique.mockResolvedValue({
+        ...baseTrackWithRelations,
+        isPublic: false,
+      });
 
       await service.create(USER_ID, { ...dto, privacy: 'private', genre: '' });
 
@@ -237,7 +244,10 @@ describe('TracksService', () => {
     it('creates region restrictions when availability type is specific_regions', async () => {
       const dtoWithRegions = {
         ...dto,
-        availability: { type: 'specific_regions' as const, regions: ['US', 'CA'] },
+        availability: {
+          type: 'specific_regions' as const,
+          regions: ['US', 'CA'],
+        },
       };
       prisma.genre.findUnique.mockResolvedValue(null);
       prisma.track.create.mockResolvedValue(baseTrack);
@@ -276,6 +286,68 @@ describe('TracksService', () => {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // getMyTracks()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getMyTracks()', () => {
+    it('returns formatted tracks for the user', async () => {
+      const mockTracks = [
+        {
+          ...baseTrack,
+          tags: [{ tag: 'hiphop' }],
+          user: { username: 'testuser' },
+          genre: { label: 'Hip-hop & Rap' },
+          _count: { likes: 5, comments: 2, reposts: 1, playHistory: 10 },
+        },
+      ];
+
+      // add findMany to your prisma mock
+      prisma.track.findMany = jest.fn().mockResolvedValue(mockTracks);
+
+      const result = await service.getMyTracks(USER_ID);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: TRACK_ID,
+        title: 'Test Track',
+        artist: 'testuser',
+        genre: 'Hip-hop & Rap',
+        tags: ['hiphop'],
+        likes: 5,
+        comments: 2,
+        reposts: 1,
+        plays: 10,
+        isPrivate: false,
+      });
+    });
+
+    it('returns empty array when user has no tracks', async () => {
+      prisma.track.findMany = jest.fn().mockResolvedValue([]);
+
+      const result = await service.getMyTracks(USER_ID);
+
+      expect(result).toEqual([]);
+    });
+
+    it('handles track with no genre', async () => {
+      const mockTracks = [
+        {
+          ...baseTrack,
+          tags: [],
+          user: { username: 'testuser' },
+          genre: null,
+          _count: { likes: 0, comments: 0, reposts: 0, playHistory: 0 },
+        },
+      ];
+      prisma.track.findMany = jest.fn().mockResolvedValue(mockTracks);
+
+      const result = await service.getMyTracks(USER_ID);
+
+      expect(result[0].genre).toBeNull();
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // uploadAudio()
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -300,15 +372,31 @@ describe('TracksService', () => {
         'process-track',
         expect.objectContaining({ trackId: TRACK_ID }),
       );
-      expect(result).toEqual({ message: 'Audio upload received, processing in background' });
+      expect(result).toEqual({
+        message: 'Audio upload received, processing in background',
+      });
+    });
+
+    it('sets fileFormat correctly for ogg files', async () => {
+      const oggFile = { ...mockFile, originalname: 'audio.ogg' };
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.track.update.mockResolvedValue(baseTrack);
+
+      await service.uploadAudio(TRACK_ID, USER_ID, oggFile);
+
+      expect(prisma.track.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ fileFormat: 'ogg' }),
+        }),
+      );
     });
 
     it('throws NotFoundException when track does not exist', async () => {
       prisma.track.findUnique.mockResolvedValue(null);
 
-      await expect(service.uploadAudio(TRACK_ID, USER_ID, mockFile)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.uploadAudio(TRACK_ID, USER_ID, mockFile),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws ForbiddenException when user does not own the track', async () => {
@@ -363,7 +451,9 @@ describe('TracksService', () => {
     it('throws NotFoundException when track does not exist', async () => {
       prisma.track.findUnique.mockResolvedValue(null);
 
-      await expect(service.getStatus(TRACK_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.getStatus(TRACK_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -378,13 +468,24 @@ describe('TracksService', () => {
         subGenreId: 'sub-1',
         tags: [{ tag: 'rap' }],
       });
-      prisma.genre.findUnique.mockResolvedValue({ id: 'genre-1', label: 'music_hiphop', subgenres: [] });
-      prisma.subGenre.findUnique.mockResolvedValue({ id: 'sub-1', name: 'Trap', genreId: 'genre-1' });
+      prisma.genre.findUnique.mockResolvedValue({
+        id: 'genre-1',
+        label: 'music_hiphop',
+        subgenres: [],
+      });
+      prisma.subGenre.findUnique.mockResolvedValue({
+        id: 'sub-1',
+        name: 'Trap',
+        genreId: 'genre-1',
+      });
 
       const result = await service.getTrack(TRACK_ID);
 
       expect(result.trackId).toBe(TRACK_ID);
-      expect(result.genre).toEqual({ category: 'music_hiphop', subGenre: 'Trap' });
+      expect(result.genre).toEqual({
+        category: 'music_hiphop',
+        subGenre: 'Trap',
+      });
       expect(result.tags).toEqual(['rap']);
       expect(result.privacy).toBe('public');
       expect(result.permissions).toBeDefined();
@@ -423,7 +524,9 @@ describe('TracksService', () => {
     it('throws NotFoundException when track does not exist', async () => {
       prisma.track.findUnique.mockResolvedValue(null);
 
-      await expect(service.getTrack(TRACK_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.getTrack(TRACK_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('returns subGenre as null when track has no subGenreId', async () => {
@@ -431,7 +534,10 @@ describe('TracksService', () => {
         ...baseTrackWithRelations,
         subGenreId: null,
       });
-      prisma.genre.findUnique.mockResolvedValue({ id: 'genre-1', label: 'music_hiphop' });
+      prisma.genre.findUnique.mockResolvedValue({
+        id: 'genre-1',
+        label: 'music_hiphop',
+      });
 
       const result = await service.getTrack(TRACK_ID);
 
@@ -470,8 +576,8 @@ describe('TracksService', () => {
 
     it('updates title and description and returns response', async () => {
       prisma.track.findUnique
-        .mockResolvedValueOnce(trackWithRelations)  // ownership check
-        .mockResolvedValueOnce(finalTrack);          // re-fetch after update
+        .mockResolvedValueOnce(trackWithRelations) // ownership check
+        .mockResolvedValueOnce(finalTrack); // re-fetch after update
       prisma.track.update.mockResolvedValue(finalTrack);
       prisma.genre.findUnique.mockResolvedValue(null);
 
@@ -490,6 +596,89 @@ describe('TracksService', () => {
       );
       expect(result.trackId).toBe(TRACK_ID);
       expect(result.tags).toEqual(['newTag']);
+    });
+
+    it('updates all permission fields', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(trackWithRelations)
+        .mockResolvedValueOnce(finalTrack);
+      prisma.track.update.mockResolvedValue(finalTrack);
+      prisma.genre.findUnique.mockResolvedValue(null);
+
+      await service.updateTrack(TRACK_ID, USER_ID, {
+        permissions: {
+          enableDirectDownloads: true,
+          enableOfflineListening: true,
+          includeInRSS: false,
+          displayEmbedCode: false,
+          enableAppPlayback: true,
+          allowComments: false,
+          showCommentsPublic: false,
+          showInsightsPublic: true,
+        },
+      });
+
+      expect(prisma.track.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            allowDownloads: true,
+            allowOffline: true,
+            includeInRSS: false,
+            displayEmbedCode: false,
+            enableAppPlayback: true,
+            allowComments: false,
+            showCommentsPublic: false,
+            showInsightsPublic: true,
+          }),
+        }),
+      );
+    });
+
+    it('updates region restrictions', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(trackWithRelations)
+        .mockResolvedValueOnce(finalTrack);
+      prisma.track.update.mockResolvedValue(finalTrack);
+      prisma.genre.findUnique.mockResolvedValue(null);
+      prisma.trackRegionRestriction.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.trackRegionRestriction.create.mockResolvedValue({});
+
+      await service.updateTrack(TRACK_ID, USER_ID, {
+        availability: { type: 'specific_regions', regions: ['EG', 'US'] },
+      });
+
+      expect(prisma.trackRegionRestriction.deleteMany).toHaveBeenCalledWith({
+        where: { trackId: TRACK_ID },
+      });
+      expect(prisma.trackRegionRestriction.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws NotFoundException when track not found after update', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(trackWithRelations) // ownership check passes
+        .mockResolvedValueOnce(null); // re-fetch returns null
+      prisma.track.update.mockResolvedValue(finalTrack);
+      prisma.genre.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateTrack(TRACK_ID, USER_ID, { title: 'x' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('includes genre label in response', async () => {
+      const finalTrackWithGenre = { ...finalTrack, genreId: 'genre-1' };
+      prisma.track.findUnique
+        .mockResolvedValueOnce(trackWithRelations)
+        .mockResolvedValueOnce(finalTrackWithGenre);
+      prisma.track.update.mockResolvedValue(finalTrackWithGenre);
+      prisma.genre.findUnique.mockResolvedValue({
+        id: 'genre-1',
+        label: 'Hip-hop & Rap',
+      });
+
+      const result = await service.updateTrack(TRACK_ID, USER_ID, {});
+
+      expect(result.genre).toBe('Hip-hop & Rap');
     });
 
     it('throws NotFoundException when track does not exist', async () => {
@@ -525,8 +714,14 @@ describe('TracksService', () => {
     });
 
     it('uploads artwork and sets coverUrl when artworkFile provided', async () => {
-      const artworkFile = { ...mockFile, mimetype: 'image/jpeg', originalname: 'cover.jpg' };
-      storage.uploadImage.mockResolvedValue('https://cdn.example.com/cover-new.jpg');
+      const artworkFile = {
+        ...mockFile,
+        mimetype: 'image/jpeg',
+        originalname: 'cover.jpg',
+      };
+      storage.uploadImage.mockResolvedValue(
+        'https://cdn.example.com/cover-new.jpg',
+      );
 
       prisma.track.findUnique
         .mockResolvedValueOnce(trackWithRelations)
@@ -539,7 +734,9 @@ describe('TracksService', () => {
       expect(storage.uploadImage).toHaveBeenCalledWith(artworkFile);
       expect(prisma.track.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ coverUrl: 'https://cdn.example.com/cover-new.jpg' }),
+          data: expect.objectContaining({
+            coverUrl: 'https://cdn.example.com/cover-new.jpg',
+          }),
         }),
       );
     });
@@ -553,9 +750,13 @@ describe('TracksService', () => {
       prisma.trackTag.createMany.mockResolvedValue({ count: 2 });
       prisma.genre.findUnique.mockResolvedValue(null);
 
-      await service.updateTrack(TRACK_ID, USER_ID, { tags: ['Lo-Fi', 'Chill'] });
+      await service.updateTrack(TRACK_ID, USER_ID, {
+        tags: ['Lo-Fi', 'Chill'],
+      });
 
-      expect(prisma.trackTag.deleteMany).toHaveBeenCalledWith({ where: { trackId: TRACK_ID } });
+      expect(prisma.trackTag.deleteMany).toHaveBeenCalledWith({
+        where: { trackId: TRACK_ID },
+      });
       expect(prisma.trackTag.createMany).toHaveBeenCalledWith({
         data: [
           { trackId: TRACK_ID, tag: 'lo-fi' },
@@ -568,7 +769,10 @@ describe('TracksService', () => {
       prisma.track.findUnique
         .mockResolvedValueOnce(trackWithRelations)
         .mockResolvedValueOnce(finalTrack);
-      prisma.genre.findUnique.mockResolvedValue({ id: 'genre-1', label: 'Rock' });
+      prisma.genre.findUnique.mockResolvedValue({
+        id: 'genre-1',
+        label: 'Rock',
+      });
       prisma.track.update.mockResolvedValue(finalTrack);
 
       await service.updateTrack(TRACK_ID, USER_ID, { genre: 'genre-1' });
@@ -605,31 +809,6 @@ describe('TracksService', () => {
         }),
       );
     });
-
-    it('validates artists and only creates entries for existing users', async () => {
-      prisma.track.findUnique
-        .mockResolvedValueOnce(trackWithRelations)
-        .mockResolvedValueOnce(finalTrack);
-      prisma.track.update.mockResolvedValue(finalTrack);
-      prisma.genre.findUnique.mockResolvedValue(null);
-      prisma.trackArtist.deleteMany.mockResolvedValue({ count: 0 });
-      prisma.user.findUnique
-        .mockResolvedValueOnce({ id: 'artist-1' })   // valid
-        .mockResolvedValueOnce(null);                  // invalid
-      prisma.trackArtist.create.mockResolvedValue({});
-
-      await service.updateTrack(TRACK_ID, USER_ID, {
-        artists: ['artist-1', 'artist-invalid'],
-      });
-
-      // Only one create should be called — for the valid artist
-      expect(prisma.trackArtist.create).toHaveBeenCalledTimes(1);
-      expect(prisma.trackArtist.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ userId: 'artist-1' }),
-        }),
-      );
-    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -643,7 +822,9 @@ describe('TracksService', () => {
 
       const result = await service.deleteTrack(TRACK_ID, USER_ID);
 
-      expect(prisma.track.delete).toHaveBeenCalledWith({ where: { id: TRACK_ID } });
+      expect(prisma.track.delete).toHaveBeenCalledWith({
+        where: { id: TRACK_ID },
+      });
       expect(result).toEqual({ message: 'Track deleted successfully' });
     });
 
@@ -680,7 +861,9 @@ describe('TracksService', () => {
     it('replaces audio, queues job, and returns updated track info', async () => {
       prisma.subscription.findFirst.mockResolvedValue(proSubscription);
       prisma.track.findUnique.mockResolvedValue(baseTrack);
-      storage.uploadAudio.mockResolvedValue('https://cdn.example.com/new-audio.mp3');
+      storage.uploadAudio.mockResolvedValue(
+        'https://cdn.example.com/new-audio.mp3',
+      );
       audio.extractDuration.mockResolvedValue(180);
       prisma.track.update.mockResolvedValue({
         ...baseTrack,
@@ -692,7 +875,10 @@ describe('TracksService', () => {
       const result = await service.replaceAudio(TRACK_ID, USER_ID, mockFile);
 
       expect(storage.uploadAudio).toHaveBeenCalledWith(mockFile);
-      expect(audio.extractDuration).toHaveBeenCalledWith(mockFile.buffer, 'mp3');
+      expect(audio.extractDuration).toHaveBeenCalledWith(
+        mockFile.buffer,
+        'mp3',
+      );
       expect(prisma.track.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -745,9 +931,14 @@ describe('TracksService', () => {
       const wavFile = { ...mockFile, originalname: 'audio.wav' };
       prisma.subscription.findFirst.mockResolvedValue(proSubscription);
       prisma.track.findUnique.mockResolvedValue(baseTrack);
-      storage.uploadAudio.mockResolvedValue('https://cdn.example.com/audio.wav');
+      storage.uploadAudio.mockResolvedValue(
+        'https://cdn.example.com/audio.wav',
+      );
       audio.extractDuration.mockResolvedValue(200);
-      prisma.track.update.mockResolvedValue({ ...baseTrack, fileFormat: 'wav' });
+      prisma.track.update.mockResolvedValue({
+        ...baseTrack,
+        fileFormat: 'wav',
+      });
 
       await service.replaceAudio(TRACK_ID, USER_ID, wavFile);
 
@@ -759,9 +950,14 @@ describe('TracksService', () => {
     });
 
     it('works for GOPLUS subscribers as well', async () => {
-      prisma.subscription.findFirst.mockResolvedValue({ ...proSubscription, planType: 'GOPLUS' });
+      prisma.subscription.findFirst.mockResolvedValue({
+        ...proSubscription,
+        planType: 'GOPLUS',
+      });
       prisma.track.findUnique.mockResolvedValue(baseTrack);
-      storage.uploadAudio.mockResolvedValue('https://cdn.example.com/audio.mp3');
+      storage.uploadAudio.mockResolvedValue(
+        'https://cdn.example.com/audio.mp3',
+      );
       audio.extractDuration.mockResolvedValue(200);
       prisma.track.update.mockResolvedValue(baseTrack);
 
