@@ -971,7 +971,7 @@ describe('AuthService', () => {
       prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 } as any);
 
       // signoutAll defaults to true when not provided
-      const { signoutAll: _, ...dtoWithoutSignoutAll } = resetDto;
+      const {  ...dtoWithoutSignoutAll } = resetDto;
       const result = await service.resetPassword(dtoWithoutSignoutAll as any);
 
       expect(result.signedOutAll).toBe(true);
