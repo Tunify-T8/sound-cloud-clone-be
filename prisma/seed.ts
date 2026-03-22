@@ -65,10 +65,59 @@ async function main() {
 
   console.log(`\nSuccessfully created ${createdTracks.length} tracks for user ${userId}`);
   
-  // Upsert subscription plans
+  // Upsert subscription plans and always refresh key entitlements.
+  const freePlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'FREE' },
+    update: {
+      description: 'Free tier',
+      monthlyPrice: 0,
+      monthlyUploadMinutes: 180,
+      maxTrackDurationMin: 180,
+      allowedDownloads: 0,
+      enableMonetization: false,
+      allowDirectDownload: false,
+      allowOfflineListening: false,
+      adFree: false,
+      analytics: false,
+      advancedAnalytics: false,
+      releaseScheduling: false,
+      prioritySupport: false,
+    },
+    create: {
+      name: 'FREE',
+      description: 'Free tier',
+      monthlyPrice: 0,
+      monthlyUploadMinutes: 180,
+      maxTrackDurationMin: 180,
+      allowedDownloads: 0,
+      enableMonetization: false,
+      allowDirectDownload: false,
+      allowOfflineListening: false,
+      adFree: false,
+      analytics: false,
+      advancedAnalytics: false,
+      releaseScheduling: false,
+      prioritySupport: false,
+    },
+  });
+
   const proPlan = await prisma.subscriptionPlan.upsert({
     where: { name: 'PRO' },
-    update: {},
+    update: {
+      description: 'Professional tier with advanced features',
+      monthlyPrice: 9.99,
+      monthlyUploadMinutes: 5000,
+      maxTrackDurationMin: 180,
+      allowedDownloads: -1,
+      enableMonetization: true,
+      allowDirectDownload: true,
+      allowOfflineListening: true,
+      adFree: true,
+      analytics: true,
+      advancedAnalytics: false,
+      releaseScheduling: true,
+      prioritySupport: false,
+    },
     create: {
       name: 'PRO',
       description: 'Professional tier with advanced features',
@@ -87,12 +136,26 @@ async function main() {
 
   const goPlusPlan = await prisma.subscriptionPlan.upsert({
     where: { name: 'GOPLUS' },
-    update: {},
+    update: {
+      description: 'Premium tier with all features',
+      monthlyPrice: 19.99,
+      monthlyUploadMinutes: 10000000,
+      maxTrackDurationMin: 180,
+      allowedDownloads: -1,
+      enableMonetization: true,
+      allowDirectDownload: true,
+      allowOfflineListening: true,
+      adFree: true,
+      analytics: true,
+      advancedAnalytics: true,
+      releaseScheduling: true,
+      prioritySupport: true,
+    },
     create: {
       name: 'GOPLUS',
       description: 'Premium tier with all features',
       monthlyPrice: 19.99,
-      monthlyUploadMinutes: null,
+      monthlyUploadMinutes: 10000000, // Effectively unlimited
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
@@ -106,16 +169,17 @@ async function main() {
     },
   });
 
+  console.log('Created/found FREE plan:', freePlan.id);
   console.log('Created/found PRO plan:', proPlan.id);
   console.log('Created/found GOPLUS plan:', goPlusPlan.id);
 
   // Create PRO subscription for the first user
   const proSubscription = await prisma.subscription.create({
     data: {
-      userId: userId,
-      planId: proPlan.id,
       status: 'active',
       billingCycle: 'monthly',
+      user: { connect: { id: userId } },
+      plan: { connect: { id: proPlan.id } },
     },
   });
   console.log(`Created PRO subscription for user ${userId}:`, proSubscription.id);
@@ -150,10 +214,10 @@ async function main() {
   // Create GOPLUS subscription for the second user
   const goPlusSubscription = await prisma.subscription.create({
     data: {
-      userId: secondUserId,
-      planId: goPlusPlan.id,
       status: 'active',
       billingCycle: 'monthly',
+      user: { connect: { id: secondUserId } },
+      plan: { connect: { id: goPlusPlan.id } },
     },
   });
   console.log(`Created GOPLUS subscription for user ${secondUserId}:`, goPlusSubscription.id);
