@@ -24,6 +24,7 @@ jest.mock('google-auth-library', () => {
   };
 });
 
+// ─── Prisma Mock Type ─────────────────────────────────────────────
 type PrismaMock = {
   user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
   oAuthAccount: { findUnique: jest.Mock; create: jest.Mock };
@@ -36,6 +37,7 @@ describe('GoogleAuthService', () => {
   let prisma: PrismaMock;
   let jwtService: jest.Mocked<JwtService>;
 
+  // ─── Base mock user ───────────────────────────────────────────────
   const mockUser = {
     id: 'user-123',
     username: 'john_doe',
@@ -50,11 +52,30 @@ describe('GoogleAuthService', () => {
     loginMethod: 'GOOGLE',
   };
 
+  // ─── Google user payload returned by getGoogleUser ───────────────
   const mockGooglePayload = {
     sub: 'google-id-123',
     email: 'john@gmail.com',
     name: 'John Doe',
     picture: 'https://lh3.googleusercontent.com/photo.jpg',
+  };
+
+  // ─── Mock transaction callback factory ───────────────────────────
+  // Simulates prisma.$transaction — includes all tables used inside the tx:
+  // user.create, subscriptionPlan.upsert, subscription.create, oAuthAccount.create
+  const makeTxMock = (userOverride?: Partial<typeof mockUser>) => {
+    const createdUser = { ...mockUser, ...userOverride };
+    return jest.fn().mockImplementation(async (callback: any) => {
+      const tx = {
+        user: { create: jest.fn().mockResolvedValue(createdUser) },
+        subscriptionPlan: {
+          upsert: jest.fn().mockResolvedValue({ id: 'plan-123' }),
+        },
+        subscription: { create: jest.fn().mockResolvedValue({}) },
+        oAuthAccount: { create: jest.fn().mockResolvedValue({}) },
+      };
+      return callback(tx);
+    });
   };
 
   beforeEach(async () => {
@@ -105,6 +126,7 @@ describe('GoogleAuthService', () => {
     prisma = module.get(PrismaService);
     jwtService = module.get(JwtService);
 
+    // Bypass actual Google token exchange in all tests
     jest
       .spyOn(service as any, 'getGoogleUser')
       .mockResolvedValue(mockGooglePayload);
@@ -120,6 +142,7 @@ describe('GoogleAuthService', () => {
   describe('googleAuth', () => {
     const googleAuthDto = { code: 'google-auth-code-123' };
 
+    // ─── Returning Google user ────────────────────────────────────
     describe('returning Google user', () => {
       it('should log in existing Google user and return tokens', async () => {
         prisma.oAuthAccount.findUnique.mockResolvedValue({
@@ -134,6 +157,7 @@ describe('GoogleAuthService', () => {
         expect(result.refreshToken).toBeDefined();
         expect(result.user.email).toBe('john@gmail.com');
         expect(result.user.isVerified).toBe(true);
+        // lastLoginAt must be updated on each login
         expect(prisma.user.update).toHaveBeenCalledWith(
           expect.objectContaining({
             data: expect.objectContaining({ lastLoginAt: expect.any(Date) }),
@@ -172,8 +196,10 @@ describe('GoogleAuthService', () => {
       });
     });
 
+    // ─── Email conflict ───────────────────────────────────────────
     describe('email conflict', () => {
       it('should return requiresLinking if email exists as LOCAL account', async () => {
+        // No existing OAuth account, but email is taken by a LOCAL user
         prisma.oAuthAccount.findUnique.mockResolvedValue(null);
         prisma.user.findUnique.mockResolvedValue({
           ...mockUser,
@@ -186,6 +212,7 @@ describe('GoogleAuthService', () => {
           requiresLinking: true,
           linkingToken: 'mock_jwt_token',
         });
+        // Linking token must be short-lived and typed
         expect(jwtService.sign).toHaveBeenCalledWith(
           expect.objectContaining({ type: 'linking' }),
           expect.objectContaining({ expiresIn: '10m' }),
@@ -193,20 +220,16 @@ describe('GoogleAuthService', () => {
       });
     });
 
+    // ─── New Google user ──────────────────────────────────────────
     describe('new Google user', () => {
       beforeEach(() => {
+        // No existing OAuth account, no existing email → create new user
         prisma.oAuthAccount.findUnique.mockResolvedValue(null);
         prisma.user.findUnique.mockResolvedValue(null);
       });
 
       it('should create new user and return tokens', async () => {
-        prisma.$transaction.mockImplementation(async (cb: any) => {
-          const tx = {
-            user: { create: jest.fn().mockResolvedValue(mockUser) },
-            oAuthAccount: { create: jest.fn().mockResolvedValue({}) },
-          };
-          return cb(tx);
-        });
+        prisma.$transaction = makeTxMock();
         prisma.refreshToken.create.mockResolvedValue({} as any);
 
         const result = (await service.googleAuth(googleAuthDto)) as any;
@@ -214,22 +237,12 @@ describe('GoogleAuthService', () => {
         expect(result.accessToken).toBeDefined();
         expect(result.refreshToken).toBeDefined();
         expect(result.user.isVerified).toBe(true);
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       });
 
       it('should auto-generate username from Google display name', async () => {
-        prisma.user.findUnique.mockResolvedValue(null);
-        prisma.$transaction.mockImplementation(async (cb: any) => {
-          const tx = {
-            user: {
-              create: jest.fn().mockImplementation((args) => ({
-                ...mockUser,
-                username: args.data.username,
-              })),
-            },
-            oAuthAccount: { create: jest.fn().mockResolvedValue({}) },
-          };
-          return cb(tx);
-        });
+        // Username should be derived from name field in Google payload
+        prisma.$transaction = makeTxMock();
         prisma.refreshToken.create.mockResolvedValue({} as any);
 
         await service.googleAuth(googleAuthDto);
@@ -238,7 +251,8 @@ describe('GoogleAuthService', () => {
       });
 
       it('should set isVerified true for new Google user', async () => {
-        prisma.$transaction.mockImplementation(async (cb: any) => {
+        // Google users are auto-verified — no email verification needed
+        prisma.$transaction = jest.fn().mockImplementation(async (cb: any) => {
           const tx = {
             user: {
               create: jest.fn().mockImplementation((args) => ({
@@ -246,6 +260,10 @@ describe('GoogleAuthService', () => {
                 isVerified: args.data.isVerified,
               })),
             },
+            subscriptionPlan: {
+              upsert: jest.fn().mockResolvedValue({ id: 'plan-123' }),
+            },
+            subscription: { create: jest.fn().mockResolvedValue({}) },
             oAuthAccount: { create: jest.fn().mockResolvedValue({}) },
           };
           return cb(tx);
@@ -257,8 +275,33 @@ describe('GoogleAuthService', () => {
         expect(result.user.isVerified).toBe(true);
       });
 
+      it('should attach FREE subscription on new Google user creation', async () => {
+        // Capture tx to verify subscription setup
+        let capturedTx: any;
+        prisma.$transaction = jest.fn().mockImplementation(async (cb: any) => {
+          const tx = {
+            user: { create: jest.fn().mockResolvedValue(mockUser) },
+            subscriptionPlan: {
+              upsert: jest.fn().mockResolvedValue({ id: 'plan-123' }),
+            },
+            subscription: { create: jest.fn().mockResolvedValue({}) },
+            oAuthAccount: { create: jest.fn().mockResolvedValue({}) },
+          };
+          capturedTx = tx;
+          return cb(tx);
+        });
+        prisma.refreshToken.create.mockResolvedValue({} as any);
+
+        await service.googleAuth(googleAuthDto);
+
+        expect(capturedTx.subscriptionPlan.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { name: 'FREE' } }),
+        );
+        expect(capturedTx.subscription.create).toHaveBeenCalledTimes(1);
+      });
+
       it('should throw InternalServerErrorException if user creation fails', async () => {
-        prisma.$transaction.mockRejectedValue(new Error('DB error'));
+        prisma.$transaction = jest.fn().mockRejectedValue(new Error('DB error'));
 
         await expect(service.googleAuth(googleAuthDto)).rejects.toThrow(
           InternalServerErrorException,
@@ -286,6 +329,7 @@ describe('GoogleAuthService', () => {
 
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
+      // Must create the OAuth account entry with correct provider info
       expect(prisma.oAuthAccount.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -307,6 +351,7 @@ describe('GoogleAuthService', () => {
     });
 
     it('should throw UnauthorizedException if token type is not linking', async () => {
+      // Token must have type: 'linking' — any other type is rejected
       jwtService.verify.mockReturnValue({
         googleId: 'google-id-123',
         email: 'john@gmail.com',
@@ -359,12 +404,28 @@ describe('GoogleAuthService', () => {
 
     it('should throw BadRequestException if Google account already linked to another account', async () => {
       prisma.user.findUnique.mockResolvedValue(mockUser as any);
+      // P2002 = unique constraint violation — Google account already linked
       prisma.oAuthAccount.create.mockRejectedValue({ code: 'P2002' });
 
       await expect(service.googleLink(googleLinkDto)).rejects.toThrow(
         new BadRequestException(
           'This Google account is already linked to another account',
         ),
+      );
+    });
+
+    it('should update lastLoginAt after successful linking', async () => {
+      prisma.user.findUnique.mockResolvedValue(mockUser as any);
+      prisma.oAuthAccount.create.mockResolvedValue({} as any);
+      prisma.user.update.mockResolvedValue({} as any);
+      prisma.refreshToken.create.mockResolvedValue({} as any);
+
+      await service.googleLink(googleLinkDto);
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ lastLoginAt: expect.any(Date) }),
+        }),
       );
     });
   });
