@@ -31,7 +31,7 @@ export class UsersService {
         createdAt: true,
         visibility: true,
         isActive: true,
-        isVerified: true,
+        isCertified: true,
         updatedAt: true,
         lastLoginAt: true,
       },
@@ -63,7 +63,7 @@ export class UsersService {
       lastLogin: user.lastLoginAt,
       visibility: user.visibility,
       isActive: user.isActive,
-      isVerified: user.isVerified,
+      isCertified: user.isCertified,
       tracksCount,
       followersCount,
       followingCount,
@@ -89,7 +89,7 @@ export class UsersService {
         createdAt: true,
         visibility: true,
         isActive: true,
-        isVerified: true,
+        isCertified: true,
       },
     });
 
@@ -122,7 +122,7 @@ export class UsersService {
         coverUrl: user.coverUrl,
         isFollowing,
         isActive: user.isActive,
-        isVerified: user.isVerified,
+        isCertified: user.isCertified,
         createdAt: user.createdAt,
       };
     }
@@ -152,7 +152,7 @@ export class UsersService {
       likesReceived,
       isFollowing,
       isActive: user.isActive,
-      isVerified: user.isVerified,
+      isCertified: user.isCertified,
       createdAt: user.createdAt,
     };
   }
@@ -542,7 +542,7 @@ export class UsersService {
         coverUrl: true,
         visibility: true,
         role: true,
-        isVerified: true,
+        isCertified: true,
         gender: true,
         dateOfBirth: true,
         createdAt: true,

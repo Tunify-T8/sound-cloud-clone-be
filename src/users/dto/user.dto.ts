@@ -13,7 +13,7 @@ export class UserDto {
   lastLogin: Date | null;
   visibility: string;
   isActive: boolean;
-  isVerified: boolean;
+  isCertified: boolean;
   followersCount: number;
   followingCount: number;
   tracksCount: number;
