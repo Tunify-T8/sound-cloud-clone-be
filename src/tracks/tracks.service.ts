@@ -63,11 +63,11 @@ export class TracksService {
 
     if (dto.artists && dto.artists.length > 0) {
       await Promise.all(
-        dto.artists.map((artistUserId) =>
+        dto.artists.map((artistName) =>
           this.prisma.trackArtist.create({
             data: {
               trackId: track.id,
-              userId: artistUserId,
+              name: artistName,
               role: 'featured',
             },
           }),
@@ -434,32 +434,20 @@ export class TracksService {
     });
 
     // 6. Update artists if provided
-    if (dto.artists && dto.artists.length > 0) {
-      // Delete existing artists for this track
+    // 6. Update artists if provided
+    if (dto.artists !== undefined) {
       await this.prisma.trackArtist.deleteMany({
         where: { trackId },
       });
 
-      // Validate artists exist before creating relationships
-      const validArtists = await Promise.all(
-        dto.artists.map(async (userId) => {
-          const userExists = await this.prisma.user.findUnique({
-            where: { id: userId },
-          });
-          return userExists ? userId : null;
-        }),
-      );
-
-      // Create new artist relationships only for valid users
-      const validArtistIds = validArtists.filter((id) => id !== null);
-      if (validArtistIds.length > 0) {
+      if (dto.artists.length > 0) {
         await Promise.all(
-          validArtistIds.map((userId) =>
+          dto.artists.map((artistName) =>
             this.prisma.trackArtist.create({
               data: {
                 trackId,
-                userId,
-                role: 'featured', // Default role; adjust as needed
+                name: artistName,
+                role: 'featured',
               },
             }),
           ),
