@@ -11,6 +11,63 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Starting database seed...');
 
+  // Seed genres
+  const genres = [
+    // Music genres
+    { label: 'Alternative Rock' },
+    { label: 'Ambient' },
+    { label: 'Classical' },
+    { label: 'Country' },
+    { label: 'Dance & EDM' },
+    { label: 'Dancehall' },
+    { label: 'Deep House' },
+    { label: 'Disco' },
+    { label: 'Drum & Bass' },
+    { label: 'Dubstep' },
+    { label: 'Electronic' },
+    { label: 'Folk & Singer-Songwriter' },
+    { label: 'Hip-hop & Rap' },
+    { label: 'House' },
+    { label: 'Indie' },
+    { label: 'Jazz & Blues' },
+    { label: 'Latin' },
+    { label: 'Metal' },
+    { label: 'Piano' },
+    { label: 'Pop' },
+    { label: 'R&B & Soul' },
+    { label: 'Reggae' },
+    { label: 'Reggaeton' },
+    { label: 'Rock' },
+    { label: 'Soundtrack' },
+    { label: 'Speech' },
+    { label: 'Techno' },
+    { label: 'Trance' },
+    { label: 'Trap' },
+    { label: 'Triphop' },
+    { label: 'World' },
+    // Audio genres
+    { label: 'Audiobooks' },
+    { label: 'Business' },
+    { label: 'Comedy' },
+    { label: 'Entertainment' },
+    { label: 'Learning' },
+    { label: 'News & Politics' },
+    { label: 'Religion & Spirituality' },
+    { label: 'Science' },
+    { label: 'Sports' },
+    { label: 'Storytelling' },
+    { label: 'Technology' },
+  ];
+
+  for (const genre of genres) {
+    await prisma.genre.upsert({
+      where: { label: genre.label },
+      update: {},
+      create: { label: genre.label },
+    });
+  }
+  console.log(`Seeded ${genres.length} genres`);
+
   const userId = '84677602-3a5f-4da0-9b3a-af09bb74a145';
 
   // Check if the user exists
@@ -38,11 +95,17 @@ async function main() {
 
   // Create multiple tracks for the existing user
   const trackTitles = [
-    { title: 'Midnight Vibes', description: 'A smooth electronic track for late night sessions' },
+    {
+      title: 'Midnight Vibes',
+      description: 'A smooth electronic track for late night sessions',
+    },
     { title: 'Electric Energy', description: 'High-energy electronic beats' },
     { title: 'Cosmic Journey', description: 'Ambient electronic soundscape' },
     { title: 'Pulse', description: 'Rhythmic and hypnotic electronic track' },
-    { title: 'Neon Dreams', description: 'Synthwave-inspired electronic composition' },
+    {
+      title: 'Neon Dreams',
+      description: 'Synthwave-inspired electronic composition',
+    },
   ];
 
   const createdTracks: Awaited<ReturnType<typeof prisma.track.create>>[] = [];
@@ -60,11 +123,15 @@ async function main() {
       },
     });
     createdTracks.push(track);
-    console.log(`Created track: ${track.id} - "${track.title}" (${track.durationSeconds}s)`);
+    console.log(
+      `Created track: ${track.id} - "${track.title}" (${track.durationSeconds}s)`,
+    );
   }
 
-  console.log(`\nSuccessfully created ${createdTracks.length} tracks for user ${userId}`);
-  
+  console.log(
+    `\nSuccessfully created ${createdTracks.length} tracks for user ${userId}`,
+  );
+
   // Upsert subscription plans and always refresh key entitlements.
   const freePlan = await prisma.subscriptionPlan.upsert({
     where: { name: 'FREE' },
@@ -182,11 +249,14 @@ async function main() {
       plan: { connect: { id: proPlan.id } },
     },
   });
-  console.log(`Created PRO subscription for user ${userId}:`, proSubscription.id);
+  console.log(
+    `Created PRO subscription for user ${userId}:`,
+    proSubscription.id,
+  );
 
   // Create a second user with GOPLUS subscription
   const secondUserId = '94788713-4b6f-5eb1-0c4a-bg10cc85b256';
-  
+
   // Check if second user exists, if not create them
   let secondUser = await prisma.user.findUnique({
     where: { id: secondUserId },
@@ -206,9 +276,17 @@ async function main() {
         passHash: hashedPassword,
       },
     });
-    console.log('Created second user:', secondUser.id, '(' + secondUser.username + ')');
+    console.log(
+      'Created second user:',
+      secondUser.id,
+      '(' + secondUser.username + ')',
+    );
   } else {
-    console.log('Found second user:', secondUser.id, '(' + secondUser.username + ')');
+    console.log(
+      'Found second user:',
+      secondUser.id,
+      '(' + secondUser.username + ')',
+    );
   }
 
   // Create GOPLUS subscription for the second user
@@ -220,7 +298,10 @@ async function main() {
       plan: { connect: { id: goPlusPlan.id } },
     },
   });
-  console.log(`Created GOPLUS subscription for user ${secondUserId}:`, goPlusSubscription.id);
+  console.log(
+    `Created GOPLUS subscription for user ${secondUserId}:`,
+    goPlusSubscription.id,
+  );
 
   console.log(`\nSuccessfully seeded database with subscriptions!`);
   console.log('Database seed completed successfully!');
