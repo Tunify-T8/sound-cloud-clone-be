@@ -22,6 +22,7 @@ model User {
   isActive                Boolean                  @default(true)
   isSuspended             Boolean                  @default(false)
   isBanned                Boolean                  @default(false)
+  isCertified             Boolean                  @default(false) 
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   deletedAt               DateTime?

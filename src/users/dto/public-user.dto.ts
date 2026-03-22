@@ -20,7 +20,7 @@ export class PublicUserDto {
 
   isFollowing: boolean;
   isActive: boolean;
-  isVerified: boolean;
+  isCertified: boolean;
 
   createdAt: Date;
 }
