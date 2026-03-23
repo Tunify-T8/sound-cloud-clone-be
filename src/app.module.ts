@@ -9,6 +9,7 @@ import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
+import { FollowsModule } from './follows/follows.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { BullModule } from '@nestjs/bull';
     TracksModule,
     StorageModule,
     AudioModule,
+    FollowsModule,
     BullModule.forRoot({
       redis: {
         host: 'localhost',
