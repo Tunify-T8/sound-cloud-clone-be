@@ -22,10 +22,16 @@ export class TracksService {
     @InjectQueue('tracks') private tracksQueue: Queue,
   ) {}
 
-  async create(userId: string, dto: CreateTrackDto, artworkFile?: Express.Multer.File) {
+  async create(
+    userId: string,
+    dto: CreateTrackDto,
+    artworkFile?: Express.Multer.File,
+  ) {
     const genre = dto.genre
-      ? await this.prisma.genre.findUnique({
+      ? await this.prisma.genre.upsert({
           where: { label: dto.genre },
+          update: {}, 
+          create: { label: dto.genre },
         })
       : null;
 
@@ -108,7 +114,7 @@ export class TracksService {
 
     // Return formatted response matching getTrack() format
     return {
-      trackId: trackWithRelations.id,
+      id: trackWithRelations.id,
       status: trackWithRelations.transcodingStatus,
       title: trackWithRelations.title,
       description: trackWithRelations.description || null,
@@ -557,9 +563,7 @@ export class TracksService {
           updatedTrackFinal.regionRestrictions.length > 0
             ? 'specific_regions'
             : 'worldwide',
-        regions: updatedTrackFinal.regionRestrictions.map(
-          (r) => r.countryCode,
-        ),
+        regions: updatedTrackFinal.regionRestrictions.map((r) => r.countryCode),
       },
       genre: genre?.label || null,
       audioUrl: updatedTrackFinal.audioUrl,
