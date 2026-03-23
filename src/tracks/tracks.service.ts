@@ -531,8 +531,13 @@ export class TracksService {
       throw new ForbiddenException('You can only delete your own tracks');
     }
 
-    await this.prisma.track.delete({
+    await this.prisma.track.update({
       where: { id: trackId },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: userId,
+      },
     });
 
     return { message: 'Track deleted successfully' };
