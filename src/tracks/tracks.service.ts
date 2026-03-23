@@ -108,7 +108,7 @@ export class TracksService {
 
     // Return formatted response matching getTrack() format
     return {
-      trackId: trackWithRelations.id,
+      id: trackWithRelations.id,
       status: trackWithRelations.transcodingStatus,
       title: trackWithRelations.title,
       description: trackWithRelations.description || null,
