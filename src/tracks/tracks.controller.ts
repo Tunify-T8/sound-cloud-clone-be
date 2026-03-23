@@ -31,8 +31,22 @@ export class TracksController {
 
   @Post()
   @UseGuards(JwtAccessGuard)
-  create(@Request() req: AuthRequest, @Body() dto: CreateTrackDto) {
-    return this.tracksService.create(req.user?.userId ?? '', dto);
+  @UseInterceptors(FileInterceptor('artwork'))
+  create(
+    @Request() req: AuthRequest,
+    @Body() dto: CreateTrackDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /image\/(jpeg|png|gif|webp)/ }),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    artworkFile?: Express.Multer.File,
+  ) {
+    return this.tracksService.create(req.user?.userId ?? '', dto, artworkFile);
   }
 
   @Post(':id/audio')
