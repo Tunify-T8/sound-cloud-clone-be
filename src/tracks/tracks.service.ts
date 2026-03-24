@@ -30,7 +30,7 @@ export class TracksService {
     const genre = dto.genre
       ? await this.prisma.genre.upsert({
           where: { label: dto.genre },
-          update: {}, 
+          update: {},
           create: { label: dto.genre },
         })
       : null;
@@ -124,6 +124,9 @@ export class TracksService {
         name: a.name,
         role: a.role,
       })),
+      genre: genre,
+      scheduledReleaseDate:
+        trackWithRelations.releaseDate?.toISOString() ?? null,
       durationSeconds: trackWithRelations.durationSeconds,
       privacy: trackWithRelations.isPublic ? 'public' : 'private',
       availability: {
@@ -369,14 +372,14 @@ export class TracksService {
       updateData.title = dto.title;
     }
 
-    // Update genre if provided and exists
+    // Update genre if provided
     if (dto.genre) {
-      const genreExists = await this.prisma.genre.findUnique({
-        where: { id: dto.genre },
+      const genreRecord = await this.prisma.genre.upsert({
+        where: { label: dto.genre },
+        update: {},
+        create: { label: dto.genre },
       });
-      if (genreExists) {
-        updateData.genre = { connect: { id: dto.genre } };
-      }
+      updateData.genre = { connect: { id: genreRecord.id } };
     }
 
     // Update tags
