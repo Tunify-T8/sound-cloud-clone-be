@@ -6,44 +6,54 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class FollowsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Follow a user ─────────────────────────────────────────────
   async followUser(followerId: string, followingId: string) {
     if (followerId === followingId) {
       throw new BadRequestException('You cannot follow yourself');
     }
 
     const target = await this.prisma.user.findUnique({
-    where: { id: followingId },
+      where: { id: followingId },
     });
     if (!target || target.isDeleted || !target.isActive) {
-    throw new NotFoundException('User not found');
+      throw new NotFoundException('User not found');
     }
     if (target.isBanned || target.isSuspended) {
-    throw new NotFoundException('User not found');
+      throw new NotFoundException('User not found');
     }
 
+    // Check blocking (both directions)
     const isBlocked = await this.prisma.userBlock.findFirst({
-      where: { blockerId: followingId, blockedId: followerId },
+      where: {
+        OR: [
+          { blockerId: followingId, blockedId: followerId }, // they blocked me
+          { blockerId: followerId, blockedId: followingId }, // I blocked them
+        ],
+      },
     });
     if (isBlocked) {
-      throw new ForbiddenException('You cannot follow this user');
+      throw new ForbiddenException('Cannot follow due to blocking');
     }
 
-    const existing = await this.prisma.follow.findFirst({
-      where: { followerId, followingId },
-    });
-    if (existing) {
-      throw new ConflictException('You are already following this user');
+    try {
+      await this.prisma.follow.create({
+        data: { followerId, followingId },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        // Unique constraint violation → already following
+        throw new ConflictException('You are already following this user');
+      }
+      throw error; // rethrow other unexpected errors
     }
-
-    await this.prisma.follow.create({
-      data: { followerId, followingId },
-    });
 
     return { message: 'Followed successfully' };
   }
