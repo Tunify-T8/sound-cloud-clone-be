@@ -301,15 +301,95 @@ describe('UsersController', () => {
 
   // ── updateProfile ─────────────────────────────────────────
   describe('updateProfile', () => {
-    it('should call service with userId and dto', async () => {
+    it('should call service with userId, dto, and undefined files when no files are provided', async () => {
       const dto = { displayName: 'New Name' };
       mockUsersService.updateUserProfile.mockResolvedValue({ id: 'user-123' });
 
-      await controller.updateProfile(dto, mockJwtPayload);
+      await controller.updateProfile(dto, mockJwtPayload, undefined);
 
       expect(mockUsersService.updateUserProfile).toHaveBeenCalledWith(
         'user-123',
         dto,
+        undefined,
+      );
+    });
+
+    it('should call service with userId, dto, and avatar file', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const files = {
+        avatar: [
+          {
+            originalname: 'avatar.png',
+            mimetype: 'image/png',
+            buffer: Buffer.from('fake-avatar'),
+          } as Express.Multer.File,
+        ],
+      };
+
+      mockUsersService.updateUserProfile.mockResolvedValue({ id: 'user-123' });
+
+      await controller.updateProfile(dto, mockJwtPayload, files);
+
+      expect(mockUsersService.updateUserProfile).toHaveBeenCalledWith(
+        'user-123',
+        dto,
+        files,
+      );
+    });
+
+    it('should call service with userId, dto, and cover file', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const files = {
+        cover: [
+          {
+            originalname: 'cover.png',
+            mimetype: 'image/png',
+            buffer: Buffer.from('fake-cover'),
+          } as Express.Multer.File,
+        ],
+      };
+
+      mockUsersService.updateUserProfile.mockResolvedValue({ id: 'user-123' });
+
+      await controller.updateProfile(dto, mockJwtPayload, files);
+
+      expect(mockUsersService.updateUserProfile).toHaveBeenCalledWith(
+        'user-123',
+        dto,
+        files,
+      );
+    });
+
+    it('should call service with userId, dto, and both avatar and cover files', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const files = {
+        avatar: [
+          {
+            originalname: 'avatar.png',
+            mimetype: 'image/png',
+            buffer: Buffer.from('fake-avatar'),
+          } as Express.Multer.File,
+        ],
+        cover: [
+          {
+            originalname: 'cover.png',
+            mimetype: 'image/png',
+            buffer: Buffer.from('fake-cover'),
+          } as Express.Multer.File,
+        ],
+      };
+
+      mockUsersService.updateUserProfile.mockResolvedValue({ id: 'user-123' });
+
+      await controller.updateProfile(dto, mockJwtPayload, files);
+
+      expect(mockUsersService.updateUserProfile).toHaveBeenCalledWith(
+        'user-123',
+        dto,
+        files,
       );
     });
   });

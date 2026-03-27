@@ -8,6 +8,7 @@ import {
   Visibility,
   UserType,
 } from '@prisma/client';
+import { StorageService } from 'src/storage/storage.service';
 
 // ── Mock Prisma ───────────────────────────────────────────────
 const mockPrisma = {
@@ -52,19 +53,19 @@ const mockPrisma = {
 const mockUser = {
   id: 'user-123',
   username: 'testuser',
-  display_name: 'Test User',
+  displayName: 'Test User',
   email: 'test@test.com',
   bio: 'Test bio',
   location: 'NYC',
-  avatar_url: null,
-  cover_url: null,
+  avatarUrl: null,
+  coverUrl: null,
   visibility: Visibility.PUBLIC,
   role: UserType.LISTENER,
-  is_verified: false,
+  isCertified: false,
   isActive: true,
-  created_at: new Date(),
-  updated_at: new Date(),
-  last_login_at: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  lastLoginAt: null,
 };
 
 const mockTrack = {
@@ -83,9 +84,9 @@ const mockSocialLink = {
   userId: 'user-123',
   platform: SocialPlatform.INSTAGRAM,
   url: 'https://instagram.com/test',
-  created_at: new Date(),
-  updated_at: new Date(),
-  deleted_at: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
 };
 
 const mockCollection = {
@@ -98,6 +99,12 @@ const mockCollection = {
   _count: { tracks: 3, likes: 10 },
 };
 
+// ── Mock Storage ─────────────────────────────────────────────
+const mockStorage = {
+  uploadImage: jest.fn(),
+  deleteFile: jest.fn(),
+};
+
 describe('UsersService', () => {
   let service: UsersService;
 
@@ -106,6 +113,7 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: StorageService, useValue: mockStorage },
       ],
     }).compile();
 
@@ -132,8 +140,8 @@ describe('UsersService', () => {
       expect(result.followingCount).toBe(50);
       expect(result.likesReceived).toBe(200);
       // sensitive fields must not be present
-      expect(result).not.toHaveProperty('pass_hash');
-      expect(result).not.toHaveProperty('suspended_by_id');
+      expect(result).not.toHaveProperty('passHash');
+      expect(result).not.toHaveProperty('suspendedById');
     });
 
     it('should throw NotFoundException when user not found', async () => {
@@ -330,8 +338,8 @@ describe('UsersService', () => {
     const mockFollowUser = {
       id: 'user-456',
       username: 'follower',
-      display_name: 'Follower User',
-      avatar_url: null,
+      displayName: 'Follower User',
+      avatarUrl: null,
       _count: { followers: 10 },
     };
 
@@ -341,7 +349,7 @@ describe('UsersService', () => {
 
       const result = await service.getFollowerList('user-123', 1, 10);
 
-      expect(result.data[0].followersCount).toBe(10);
+      expect(result?.followers?.[0]?.followersCount).toBe(10);
       expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -409,7 +417,19 @@ describe('UsersService', () => {
 
   // ── updateUserProfile ─────────────────────────────────────
   describe('updateUserProfile', () => {
-    it('should update and return safe user fields only', async () => {
+    beforeEach(() => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        avatarUrl:
+          'https://test.supabase.co/storage/v1/object/public/artwork/old-avatar.png',
+        coverUrl:
+          'https://test.supabase.co/storage/v1/object/public/artwork/old-cover.png',
+      });
+
+      mockStorage.uploadImage.mockResolvedValue(null);
+      mockStorage.deleteFile.mockResolvedValue(undefined);
+    });
+
+    it('should update and return safe user fields only when no files are provided', async () => {
       const dto = { displayName: 'New Name', bio: 'New bio' };
       const updatedUser = {
         ...mockUser,
@@ -422,6 +442,15 @@ describe('UsersService', () => {
       const result = await service.updateUserProfile('user-123', dto);
 
       expect(result.displayName).toBe('New Name');
+
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        select: {
+          avatarUrl: true,
+          coverUrl: true,
+        },
+      });
+
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-123' },
         data: { ...dto },
@@ -436,16 +465,205 @@ describe('UsersService', () => {
           coverUrl: true,
           visibility: true,
           role: true,
-          isVerified: true,
+          isCertified: true,
           gender: true,
           dateOfBirth: true,
           createdAt: true,
           updatedAt: true,
         },
       });
+
+      expect(mockStorage.uploadImage).not.toHaveBeenCalled();
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should upload avatar and update avatarUrl', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const mockAvatarFile = {
+        originalname: 'avatar.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-avatar'),
+      } as Express.Multer.File;
+
+      const uploadedAvatarUrl =
+        'https://test.supabase.co/storage/v1/object/public/artwork/new-avatar.png';
+
+      mockStorage.uploadImage.mockResolvedValue(uploadedAvatarUrl);
+
+      const updatedUser = {
+        ...mockUser,
+        displayName: 'New Name',
+        avatarUrl: uploadedAvatarUrl,
+      };
+
+      mockPrisma.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.updateUserProfile('user-123', dto, {
+        avatar: [mockAvatarFile],
+      });
+
+      expect(result.avatarUrl).toBe(uploadedAvatarUrl);
+
+      expect(mockStorage.uploadImage).toHaveBeenCalledWith(mockAvatarFile);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: {
+          ...dto,
+          avatarUrl: uploadedAvatarUrl,
+        },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          email: true,
+          bio: true,
+          location: true,
+          avatarUrl: true,
+          coverUrl: true,
+          visibility: true,
+          role: true,
+          isCertified: true,
+          gender: true,
+          dateOfBirth: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(
+        'artwork',
+        'old-avatar.png',
+      );
+    });
+
+    it('should upload cover and update coverUrl', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const mockCoverFile = {
+        originalname: 'cover.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-cover'),
+      } as Express.Multer.File;
+
+      const uploadedCoverUrl =
+        'https://test.supabase.co/storage/v1/object/public/artwork/new-cover.png';
+
+      mockStorage.uploadImage.mockResolvedValue(uploadedCoverUrl);
+
+      const updatedUser = {
+        ...mockUser,
+        displayName: 'New Name',
+        coverUrl: uploadedCoverUrl,
+      };
+
+      mockPrisma.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.updateUserProfile('user-123', dto, {
+        cover: [mockCoverFile],
+      });
+
+      expect(result.coverUrl).toBe(uploadedCoverUrl);
+
+      expect(mockStorage.uploadImage).toHaveBeenCalledWith(mockCoverFile);
+
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(
+        'artwork',
+        'old-cover.png',
+      );
+    });
+
+    it('should upload both avatar and cover', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const mockAvatarFile = {
+        originalname: 'avatar.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-avatar'),
+      } as Express.Multer.File;
+
+      const mockCoverFile = {
+        originalname: 'cover.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-cover'),
+      } as Express.Multer.File;
+
+      mockStorage.uploadImage
+        .mockResolvedValueOnce(
+          'https://test.supabase.co/storage/v1/object/public/artwork/new-avatar.png',
+        )
+        .mockResolvedValueOnce(
+          'https://test.supabase.co/storage/v1/object/public/artwork/new-cover.png',
+        );
+
+      const updatedUser = {
+        ...mockUser,
+        displayName: 'New Name',
+        avatarUrl:
+          'https://test.supabase.co/storage/v1/object/public/artwork/new-avatar.png',
+        coverUrl:
+          'https://test.supabase.co/storage/v1/object/public/artwork/new-cover.png',
+      };
+
+      mockPrisma.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.updateUserProfile('user-123', dto, {
+        avatar: [mockAvatarFile],
+        cover: [mockCoverFile],
+      });
+
+      expect(result.avatarUrl).toContain('new-avatar.png');
+      expect(result.coverUrl).toContain('new-cover.png');
+
+      expect(mockStorage.uploadImage).toHaveBeenCalledTimes(2);
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(
+        'artwork',
+        'old-avatar.png',
+      );
+      expect(mockStorage.deleteFile).toHaveBeenCalledWith(
+        'artwork',
+        'old-cover.png',
+      );
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const dto = { displayName: 'New Name' };
+
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.updateUserProfile('user-123', dto)).rejects.toThrow(
+        NotFoundException,
+      );
+
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should not delete old avatar if avatar upload fails', async () => {
+      const dto = { displayName: 'New Name' };
+
+      const mockAvatarFile = {
+        originalname: 'avatar.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-avatar'),
+      } as Express.Multer.File;
+
+      mockStorage.uploadImage.mockResolvedValue(null);
+
+      const updatedUser = {
+        ...mockUser,
+        displayName: 'New Name',
+      };
+
+      mockPrisma.user.update.mockResolvedValue(updatedUser);
+
+      await service.updateUserProfile('user-123', dto, {
+        avatar: [mockAvatarFile],
+      });
+
+      expect(mockStorage.deleteFile).not.toHaveBeenCalled();
     });
   });
-
   // ── deleteSocialLink ──────────────────────────────────────
   describe('deleteSocialLink', () => {
     it('should delete social link when it exists', async () => {

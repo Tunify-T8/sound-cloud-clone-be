@@ -11,9 +11,9 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
-  ParseFilePipe,
-  MaxFileSizeValidator,
-  FileTypeValidator,
+  // ParseFilePipe,
+  // MaxFileSizeValidator,
+  // FileTypeValidator,
 } from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
@@ -209,8 +209,11 @@ export class UsersController {
       {
         limits: { fileSize: 2 * 1024 * 1024 },
         fileFilter: (req, file, cb) => {
-          if (!file.mimetype.match(/image\/(jpeg|png)$/)) {
-            return cb(new BadRequestException('Only JPG/PNG allowed'), false);
+          if (!file.mimetype.match(/^image\/(jpeg|jpg|png)$/)) {
+            return cb(
+              new BadRequestException('Only JPEG/JPG/PNG allowed'),
+              false,
+            );
           }
           cb(null, true);
         },
@@ -221,7 +224,7 @@ export class UsersController {
     @Body() input: UpdateUserProfileDto,
     @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
     @UploadedFiles()
-    files: {
+    files?: {
       avatar?: Express.Multer.File[];
       cover?: Express.Multer.File[];
     },
