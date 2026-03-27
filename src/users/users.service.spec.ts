@@ -61,7 +61,7 @@ const mockUser = {
   visibility: Visibility.PUBLIC,
   role: UserType.LISTENER,
   is_verified: false,
-  is_active: true,
+  isActive: true,
   created_at: new Date(),
   updated_at: new Date(),
   last_login_at: null,
@@ -80,7 +80,7 @@ const mockTrack = {
 
 const mockSocialLink = {
   id: 'link-123',
-  user_id: 'user-123',
+  userId: 'user-123',
   platform: SocialPlatform.INSTAGRAM,
   url: 'https://instagram.com/test',
   created_at: new Date(),
@@ -188,7 +188,7 @@ describe('UsersService', () => {
   describe('getSocialLinks', () => {
     it('should return social links for a user', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
-        social_links: [mockSocialLink],
+        socialLinks: [mockSocialLink],
       });
 
       const result = await service.getSocialLinks('user-123');
@@ -196,7 +196,7 @@ describe('UsersService', () => {
       expect(result).toEqual([mockSocialLink]);
       expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'user-123' },
-        select: { social_links: true },
+        select: { socialLinks: true },
       });
     });
 
@@ -209,7 +209,7 @@ describe('UsersService', () => {
     });
 
     it('should return empty array when user has no links', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ social_links: [] });
+      mockPrisma.user.findUnique.mockResolvedValue({ socialLinks: [] });
 
       const result = await service.getSocialLinks('user-123');
 
@@ -346,8 +346,8 @@ describe('UsersService', () => {
         expect.objectContaining({
           where: {
             following: { some: { followingId: 'user-123' } },
-            is_deleted: false,
-            is_active: true,
+            isDeleted: false,
+            isActive: true,
           },
         }),
       );
@@ -363,8 +363,8 @@ describe('UsersService', () => {
         expect.objectContaining({
           where: {
             followers: { some: { followerId: 'user-123' } },
-            is_deleted: false,
-            is_active: true,
+            isDeleted: false,
+            isActive: true,
           },
         }),
       );
@@ -410,10 +410,10 @@ describe('UsersService', () => {
   // ── updateUserProfile ─────────────────────────────────────
   describe('updateUserProfile', () => {
     it('should update and return safe user fields only', async () => {
-      const dto = { display_name: 'New Name', bio: 'New bio' };
+      const dto = { displayName: 'New Name', bio: 'New bio' };
       const updatedUser = {
         ...mockUser,
-        display_name: 'New Name',
+        displayName: 'New Name',
         bio: 'New bio',
       };
 
@@ -421,26 +421,26 @@ describe('UsersService', () => {
 
       const result = await service.updateUserProfile('user-123', dto);
 
-      expect(result.display_name).toBe('New Name');
+      expect(result.displayName).toBe('New Name');
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-123' },
         data: { ...dto },
         select: {
           id: true,
           username: true,
-          display_name: true,
+          displayName: true,
           email: true,
           bio: true,
           location: true,
-          avatar_url: true,
-          cover_url: true,
+          avatarUrl: true,
+          coverUrl: true,
           visibility: true,
           role: true,
-          is_verified: true,
+          isVerified: true,
           gender: true,
-          date_of_birth: true,
-          created_at: true,
-          updated_at: true,
+          dateOfBirth: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
     });
@@ -459,8 +459,8 @@ describe('UsersService', () => {
       expect(result).toEqual(mockSocialLink);
       expect(mockPrisma.userSocialLink.delete).toHaveBeenCalledWith({
         where: {
-          user_id_platform: {
-            user_id: 'user-123',
+          userId_platform: {
+            userId: 'user-123',
             platform: SocialPlatform.INSTAGRAM,
           },
         },

@@ -302,7 +302,7 @@ describe('UsersController', () => {
   // ── updateProfile ─────────────────────────────────────────
   describe('updateProfile', () => {
     it('should call service with userId and dto', async () => {
-      const dto = { display_name: 'New Name' };
+      const dto = { displayName: 'New Name' };
       mockUsersService.updateUserProfile.mockResolvedValue({ id: 'user-123' });
 
       await controller.updateProfile(dto, mockJwtPayload);
