@@ -9,6 +9,7 @@ import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
+import { FeedModule } from './feed/feed.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { BullModule } from '@nestjs/bull';
         port: 6379,
       },
     }),
+    FeedModule,
   ],
   controllers: [AppController],
   providers: [AppService],
