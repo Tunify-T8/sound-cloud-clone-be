@@ -7,6 +7,13 @@ import {
   Patch,
   Body,
   Delete,
+  Request,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
@@ -15,6 +22,11 @@ import * as usersDecorator from './users.decorator';
 import { CollectionType, SocialPlatform } from '@prisma/client';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ParseSocialPlatformPipe } from './pipes/parse-social-platform.pipe';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+
+interface AuthRequest extends Request {
+  user?: { userId: string };
+}
 
 @Controller('users')
 export class UsersController {
@@ -188,11 +200,33 @@ export class UsersController {
   //updates user profile
   @Patch('me/profile')
   @UseGuards(JwtAccessGuard)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'avatar', maxCount: 1 },
+        { name: 'cover', maxCount: 1 },
+      ],
+      {
+        limits: { fileSize: 2 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => {
+          if (!file.mimetype.match(/image\/(jpeg|png)$/)) {
+            return cb(new BadRequestException('Only JPG/PNG allowed'), false);
+          }
+          cb(null, true);
+        },
+      },
+    ),
+  )
   updateProfile(
     @Body() input: UpdateUserProfileDto,
     @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @UploadedFiles()
+    files: {
+      avatar?: Express.Multer.File[];
+      cover?: Express.Multer.File[];
+    },
   ) {
-    return this.usersService.updateUserProfile(user.userId, input);
+    return this.usersService.updateUserProfile(user.userId, input, files);
   }
 
   // ─── DELETE /me/social-links/:platform ───────────────────────────────────────
@@ -204,5 +238,18 @@ export class UsersController {
     @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
   ) {
     return this.usersService.deleteSocialLink(user.userId, platform);
+  }
+
+  @Get('me/upload')
+  @UseGuards(JwtAccessGuard)
+  getUploadStats(@Request() req: AuthRequest) {
+    const userId = req.user?.userId ?? '';
+    return this.usersService.getUploadStats(userId);
+  }
+
+  @Get(':id/artist-tools/upload-minutes')
+  @UseGuards(JwtAccessGuard)
+  getUploadMinutes(@Param('id') userId: string) {
+    return this.usersService.getUploadMinutes(userId);
   }
 }

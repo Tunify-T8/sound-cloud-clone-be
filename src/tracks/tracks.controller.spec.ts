@@ -104,9 +104,9 @@ describe('TracksController', () => {
          genre: 'Electronic', availability: { type: 'worldwide', regions: [] } };
       service.create.mockResolvedValue({ id: TRACK_ID });
 
-      const result = await controller.create(makeReq(), dto);
+      const result = await controller.create(makeReq(), dto, undefined);
 
-      expect(service.create).toHaveBeenCalledWith(USER_ID, dto);
+      expect(service.create).toHaveBeenCalledWith(USER_ID, dto, undefined);
       expect(result).toEqual({ id: TRACK_ID });
     });
 
@@ -114,9 +114,9 @@ describe('TracksController', () => {
       const dto: CreateTrackDto = { title: 'Track', privacy: 'public', genre: 'testgenre', availability: { type: 'worldwide', regions: [] } };
       service.create.mockResolvedValue({});
 
-      await controller.create({ user: undefined } as any, dto);
+      await controller.create({ user: undefined } as any, dto, undefined);
 
-      expect(service.create).toHaveBeenCalledWith('', dto);
+      expect(service.create).toHaveBeenCalledWith('', dto, undefined);
     });
   });
 

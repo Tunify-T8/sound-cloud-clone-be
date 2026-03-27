@@ -10,10 +10,14 @@ import { CollectionType, SocialPlatform } from '@prisma/client';
 import { FollowListDto } from './dto/user-follow.dto';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { StorageService } from 'src/storage/storage.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async getCurrentUser(userId: string): Promise<UserDto> {
     const user = await this.prisma.user.findUnique({
@@ -31,7 +35,7 @@ export class UsersService {
         createdAt: true,
         visibility: true,
         isActive: true,
-        isVerified: true,
+        isCertified: true,
         updatedAt: true,
         lastLoginAt: true,
       },
@@ -41,7 +45,9 @@ export class UsersService {
     }
     const [tracksCount, followersCount, followingCount, likesReceived] =
       await Promise.all([
-        this.prisma.track.count({ where: { userId: userId } }),
+        this.prisma.track.count({
+          where: { userId: userId, isDeleted: false },
+        }),
         this.prisma.follow.count({ where: { followingId: userId } }),
         this.prisma.follow.count({ where: { followerId: userId } }),
         this.prisma.trackLike.count({
@@ -63,7 +69,7 @@ export class UsersService {
       lastLogin: user.lastLoginAt,
       visibility: user.visibility,
       isActive: user.isActive,
-      isVerified: user.isVerified,
+      isCertified: user.isCertified,
       tracksCount,
       followersCount,
       followingCount,
@@ -89,7 +95,7 @@ export class UsersService {
         createdAt: true,
         visibility: true,
         isActive: true,
-        isVerified: true,
+        isCertified: true,
       },
     });
 
@@ -122,14 +128,14 @@ export class UsersService {
         coverUrl: user.coverUrl,
         isFollowing,
         isActive: user.isActive,
-        isVerified: user.isVerified,
+        isCertified: user.isCertified,
         createdAt: user.createdAt,
       };
     }
 
     const [tracksCount, followersCount, followingCount, likesReceived] =
       await Promise.all([
-        this.prisma.track.count({ where: { userId: id } }),
+        this.prisma.track.count({ where: { userId: id, isDeleted: false } }),
         this.prisma.follow.count({ where: { followingId: id } }),
         this.prisma.follow.count({ where: { followerId: id } }),
         this.prisma.trackLike.count({
@@ -152,7 +158,7 @@ export class UsersService {
       likesReceived,
       isFollowing,
       isActive: user.isActive,
-      isVerified: user.isVerified,
+      isCertified: user.isCertified,
       createdAt: user.createdAt,
     };
   }
@@ -429,7 +435,7 @@ export class UsersService {
     ]);
 
     return {
-      data: users.map((u) => ({
+      [direction]: users.map((u) => ({
         id: u.id,
         username: u.username,
         displayName: u.displayName,
@@ -527,10 +533,41 @@ export class UsersService {
     });
   }
 
-  async updateUserProfile(userId: string, dto: UpdateUserProfileDto) {
-    return this.prisma.user.update({
+  async updateUserProfile(
+    userId: string,
+    dto: UpdateUserProfileDto,
+    files?: { avatar?: Express.Multer.File[]; cover?: Express.Multer.File[] },
+  ) {
+    const data = { ...dto };
+
+    const oldUserFiles = await this.prisma.user.findUnique({
       where: { id: userId },
-      data: { ...dto },
+      select: {
+        avatarUrl: true,
+        coverUrl: true,
+      },
+    });
+
+    if (!oldUserFiles) {
+      throw new NotFoundException('User not found');
+    }
+
+    let uploadedAvatar: string | null = null;
+    let uploadedCover: string | null = null;
+
+    if (files?.avatar?.[0]) {
+       uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
+      if (uploadedAvatar) data.avatarUrl = uploadedAvatar;
+    }
+
+    if (files?.cover?.[0]) {
+       uploadedCover = await this.storage.uploadImage(files.cover[0]);
+      if (uploadedCover) data.coverUrl = uploadedCover;
+    }
+
+    const updatedUser = this.prisma.user.update({
+      where: { id: userId },
+      data,
       select: {
         id: true,
         username: true,
@@ -542,14 +579,30 @@ export class UsersService {
         coverUrl: true,
         visibility: true,
         role: true,
-        isVerified: true,
+        isCertified: true,
         gender: true,
         dateOfBirth: true,
         createdAt: true,
         updatedAt: true,
       },
     });
-  }
+
+    if (uploadedAvatar && oldUserFiles?.avatarUrl) {
+      const oldAvatarFile = oldUserFiles.avatarUrl.split('/').pop();
+      if (oldAvatarFile) {
+        this.storage.deleteFile('artwork', oldAvatarFile).catch(console.error);
+      }
+    }
+
+    if (uploadedCover && oldUserFiles?.coverUrl) {
+      const oldCoverFile = oldUserFiles.coverUrl.split('/').pop();
+      if (oldCoverFile) {
+        this.storage.deleteFile('artwork', oldCoverFile).catch(console.error);
+      }
+    }
+      return updatedUser;
+    }
+  
 
   async deleteSocialLink(userId: string, platform: SocialPlatform) {
     return this.prisma.userSocialLink
@@ -559,5 +612,75 @@ export class UsersService {
       .catch(() => {
         throw new NotFoundException(`No ${platform.toLowerCase()} link found`);
       });
+  }
+
+  //Get current user tier and remaining uploads. Called when entering the Upload Entry Screen.
+  async getUploadStats(userId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'active',
+        endedAt: null,
+        plan: {
+          is: {
+            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        plan: true,
+      },
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 100;
+    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+
+    return {
+      tier: subscription?.plan?.name ?? 'FREE',
+      uploadMinutesLimit,
+      uploadMinutesUsed,
+      uploadMinutesRemaining: Math.max(
+        uploadMinutesLimit - uploadMinutesUsed,
+        0,
+      ),
+      canReplaceFiles: subscription?.plan?.allowReplace ?? false,
+      canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
+      canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
+    };
+  }
+
+  async getUploadMinutes(userId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'active',
+        endedAt: null,
+        plan: {
+          is: {
+            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            isActive: true,
+          },
+        },
+      },
+      include: {
+        plan: true,
+      },
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
+    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+
+    return {
+      tier: subscription?.plan?.name ?? 'NO_PLAN',
+      uploadMinutesLimit,
+      uploadMinutesUsed,
+      uploadMinutesRemaining: Math.max(
+        uploadMinutesLimit - uploadMinutesUsed,
+        0,
+      ),
+    };
   }
 }

@@ -22,14 +22,25 @@ export class TracksService {
     @InjectQueue('tracks') private tracksQueue: Queue,
   ) {}
 
-  async create(userId: string, dto: CreateTrackDto) {
+  async create(
+    userId: string,
+    dto: CreateTrackDto,
+    artworkFile?: Express.Multer.File,
+  ) {
     const genre = dto.genre
-      ? await this.prisma.genre.findUnique({
+      ? await this.prisma.genre.upsert({
           where: { label: dto.genre },
+          update: {},
+          create: { label: dto.genre },
         })
       : null;
 
     const isPublic = dto.privacy === 'public';
+
+    let coverUrl: string | null = null;
+    if (artworkFile) {
+      coverUrl = await this.storage.uploadImage(artworkFile);
+    }
 
     const track = await this.prisma.track.create({
       data: {
@@ -48,6 +59,7 @@ export class TracksService {
         durationSeconds: 0,
         fileFormat: 'mp3',
         fileSizeBytes: null,
+        coverUrl: coverUrl,
       },
     });
 
@@ -63,11 +75,11 @@ export class TracksService {
 
     if (dto.artists && dto.artists.length > 0) {
       await Promise.all(
-        dto.artists.map((artistUserId) =>
+        dto.artists.map((artistName) =>
           this.prisma.trackArtist.create({
             data: {
               trackId: track.id,
-              userId: artistUserId,
+              name: artistName,
               role: 'featured',
             },
           }),
@@ -96,7 +108,89 @@ export class TracksService {
       },
     });
 
-    return trackWithRelations;
+    if (!trackWithRelations) {
+      throw new NotFoundException('Track not found after creation');
+    }
+
+    // Return formatted response matching getTrack() format
+    return {
+      id: trackWithRelations.id,
+      status: trackWithRelations.transcodingStatus,
+      title: trackWithRelations.title,
+      description: trackWithRelations.description || null,
+      tags: trackWithRelations.tags.map((t) => t.tag),
+      artists: trackWithRelations.trackArtists.map((a) => ({
+        id: a.id,
+        name: a.name,
+        role: a.role,
+      })),
+      genre: genre,
+      scheduledReleaseDate:
+        trackWithRelations.releaseDate?.toISOString() ?? null,
+      durationSeconds: trackWithRelations.durationSeconds,
+      privacy: trackWithRelations.isPublic ? 'public' : 'private',
+      availability: {
+        type:
+          trackWithRelations.regionRestrictions.length > 0
+            ? 'specific_regions'
+            : 'worldwide',
+        regions: trackWithRelations.regionRestrictions.map(
+          (r) => r.countryCode,
+        ),
+      },
+      audioUrl: trackWithRelations.audioUrl,
+      waveformUrl: trackWithRelations.waveformUrl || null,
+      artworkUrl: trackWithRelations.coverUrl || null,
+      createdAt: trackWithRelations.createdAt.toISOString(),
+      updatedAt: trackWithRelations.updatedAt.toISOString(),
+      contentWarning: trackWithRelations.contentWarning,
+    };
+  }
+
+  async getMyTracks(userId: string) {
+    const tracks = await this.prisma.track.findMany({
+      where: {
+        userId,
+        isDeleted: false,
+      },
+      include: {
+        tags: true,
+        user: {
+          select: { username: true },
+        },
+        genre: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            reposts: true,
+            playHistory: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return tracks.map((track) => ({
+      id: track.id,
+      title: track.title,
+      artist: track.user.username,
+      genre: track.genre?.label ?? null,
+      tags: track.tags.map((t) => t.tag),
+      status: track.transcodingStatus,
+      visibility: track.isPublic ? 'public' : 'private',
+      audioUrl: track.audioUrl,
+      description: track.description ?? null,
+      waveformUrl: track.waveformUrl ?? null,
+      duration: track.durationSeconds,
+      date: track.createdAt.toISOString(),
+      likes: track._count.likes,
+      comments: track._count.comments,
+      reposts: track._count.reposts,
+      plays: track._count.playHistory,
+      isPrivate: !track.isPublic,
+      thumbnailUrl: track.coverUrl ?? null,
+    }));
   }
 
   async uploadAudio(
@@ -135,6 +229,9 @@ export class TracksService {
         trackId,
         fileBuffer: file.buffer,
         extension,
+      })
+      .then((job) => {
+        console.log('Job added successfully, job id:', job.id);
       })
       .catch((error: unknown) => {
         console.error('Failed to queue track processing:', error);
@@ -275,14 +372,14 @@ export class TracksService {
       updateData.title = dto.title;
     }
 
-    // Update genre if provided and exists
+    // Update genre if provided
     if (dto.genre) {
-      const genreExists = await this.prisma.genre.findUnique({
-        where: { id: dto.genre },
+      const genreRecord = await this.prisma.genre.upsert({
+        where: { label: dto.genre },
+        update: {},
+        create: { label: dto.genre },
       });
-      if (genreExists) {
-        updateData.genre = { connect: { id: dto.genre } };
-      }
+      updateData.genre = { connect: { id: genreRecord.id } };
     }
 
     // Update tags
@@ -385,32 +482,20 @@ export class TracksService {
     });
 
     // 6. Update artists if provided
-    if (dto.artists && dto.artists.length > 0) {
-      // Delete existing artists for this track
+    // 6. Update artists if provided
+    if (dto.artists !== undefined) {
       await this.prisma.trackArtist.deleteMany({
         where: { trackId },
       });
 
-      // Validate artists exist before creating relationships
-      const validArtists = await Promise.all(
-        dto.artists.map(async (userId) => {
-          const userExists = await this.prisma.user.findUnique({
-            where: { id: userId },
-          });
-          return userExists ? userId : null;
-        }),
-      );
-
-      // Create new artist relationships only for valid users
-      const validArtistIds = validArtists.filter((id) => id !== null);
-      if (validArtistIds.length > 0) {
+      if (dto.artists.length > 0) {
         await Promise.all(
-          validArtistIds.map((userId) =>
+          dto.artists.map((artistName) =>
             this.prisma.trackArtist.create({
               data: {
                 trackId,
-                userId,
-                role: 'featured', // Default role; adjust as needed
+                name: artistName,
+                role: 'featured',
               },
             }),
           ),
@@ -462,20 +547,34 @@ export class TracksService {
         })
       : null;
 
-    // 10. Return simplified response format
+    // 10. Return formatted response matching create() and getTrack() format
     return {
       trackId: updatedTrackFinal.id,
       status: updatedTrackFinal.transcodingStatus,
+      title: updatedTrackFinal.title,
+      description: updatedTrackFinal.description || null,
+      tags: updatedTrackFinal.tags.map((t) => t.tag),
+      artists: updatedTrackFinal.trackArtists.map((a) => ({
+        id: a.id,
+        name: a.name,
+        role: a.role,
+      })),
+      durationSeconds: updatedTrackFinal.durationSeconds,
+      privacy: updatedTrackFinal.isPublic ? 'public' : 'private',
+      availability: {
+        type:
+          updatedTrackFinal.regionRestrictions.length > 0
+            ? 'specific_regions'
+            : 'worldwide',
+        regions: updatedTrackFinal.regionRestrictions.map((r) => r.countryCode),
+      },
+      genre: genre?.label || null,
       audioUrl: updatedTrackFinal.audioUrl,
       waveformUrl: updatedTrackFinal.waveformUrl || null,
-      title: updatedTrackFinal.title,
-      genre: genre?.label || null,
-      tags: updatedTrackFinal.tags.map((t) => t.tag),
-      description: updatedTrackFinal.description || null,
-      scheduledReleaseDate:
-        updatedTrackFinal.releaseDate?.toISOString() || null,
-      privacy: updatedTrackFinal.isPublic ? 'public' : 'private',
       artworkUrl: updatedTrackFinal.coverUrl || null,
+      createdAt: updatedTrackFinal.createdAt.toISOString(),
+      updatedAt: updatedTrackFinal.updatedAt.toISOString(),
+      contentWarning: updatedTrackFinal.contentWarning,
     };
   }
 
@@ -494,8 +593,13 @@ export class TracksService {
       throw new ForbiddenException('You can only delete your own tracks');
     }
 
-    await this.prisma.track.delete({
+    await this.prisma.track.update({
       where: { id: trackId },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: userId,
+      },
     });
 
     return { message: 'Track deleted successfully' };

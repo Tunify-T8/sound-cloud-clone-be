@@ -13,6 +13,7 @@ import {
   Request,
   Patch,
   Delete,
+  ParseUUIDPipe
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -30,8 +31,22 @@ export class TracksController {
 
   @Post()
   @UseGuards(JwtAccessGuard)
-  create(@Request() req: AuthRequest, @Body() dto: CreateTrackDto) {
-    return this.tracksService.create(req.user?.userId ?? '', dto);
+  @UseInterceptors(FileInterceptor('artwork'))
+  create(
+    @Request() req: AuthRequest,
+    @Body() dto: CreateTrackDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /image\/(jpeg|png|gif|webp)/ }),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    artworkFile?: Express.Multer.File,
+  ) {
+    return this.tracksService.create(req.user?.userId ?? '', dto, artworkFile);
   }
 
   @Post(':id/audio')
@@ -39,7 +54,7 @@ export class TracksController {
   @UseInterceptors(FileInterceptor('file'))
   uploadAudio(
     @Request() req: AuthRequest,
-    @Param('id') trackId: string,
+    @Param('id',ParseUUIDPipe) trackId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -59,15 +74,21 @@ export class TracksController {
     );
   }
 
+  @Get('me')
+  @UseGuards(JwtAccessGuard)
+  getMyTracks(@Request() req: AuthRequest) {
+    return this.tracksService.getMyTracks(req.user?.userId ?? '');
+  }
+
   @Get(':id/status')
   @UseGuards(JwtAccessGuard)
-  getStatus(@Param('id') trackId: string) {
+  getStatus(@Param('id',ParseUUIDPipe) trackId: string) {
     return this.tracksService.getStatus(trackId);
   }
 
   @Get(':id')
   @UseGuards(JwtAccessGuard)
-  async getTrack(@Param('id') trackId: string) {
+  async getTrack(@Param('id',ParseUUIDPipe) trackId: string) {
     const track = await this.tracksService.getTrack(trackId);
     if (!track) {
       return { message: 'Track not found', statusCode: 404 };
@@ -82,7 +103,7 @@ export class TracksController {
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
     @Request() req: AuthRequest,
-    @Param('id') trackId: string,
+    @Param('id',ParseUUIDPipe) trackId: string,
     @Body() dto: UpdateTrackMultipartDto,
     @UploadedFile(
       new ParseFilePipe({
@@ -118,7 +139,7 @@ export class TracksController {
 
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
-  async deleteTrack(@Request() req: AuthRequest, @Param('id') trackId: string) {
+  async deleteTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
     const result = await this.tracksService.deleteTrack(
       trackId,
       req.user?.userId ?? '',
@@ -131,7 +152,7 @@ export class TracksController {
   @UseInterceptors(FileInterceptor('file'))
   async replaceAudio(
     @Request() req: AuthRequest,
-    @Param('id') trackId: string,
+    @Param('id',ParseUUIDPipe) trackId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [

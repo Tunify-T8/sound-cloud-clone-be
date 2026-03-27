@@ -19,6 +19,7 @@ export class TracksProcessor {
   async handleProcessTrack(
     job: Job<{ trackId: string; fileBuffer: any; extension: string }>,
   ) {
+    console.log('Processor received job:', job.id, 'for track:', job.data.trackId);
     const { trackId, extension } = job.data;
     const fileBuffer = Buffer.from(job.data.fileBuffer) as Buffer;
 
