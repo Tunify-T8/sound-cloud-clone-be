@@ -10,13 +10,13 @@ import { CollectionType, SocialPlatform } from '@prisma/client';
 import { FollowListDto } from './dto/user-follow.dto';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
-import { storage } from 'src/storage/storage.service';
+import { StorageService } from 'src/storage/storage.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly storage: storage,
+    private readonly storage: StorageService,
   ) {}
 
   async getCurrentUser(userId: string): Promise<UserDto> {
@@ -547,61 +547,62 @@ export class UsersService {
         coverUrl: true,
       },
     });
+
+    if (!oldUserFiles) {
+      throw new NotFoundException('User not found');
+    }
+
+    let uploadedAvatar: string | null = null;
+    let uploadedCover: string | null = null;
+
     if (files?.avatar?.[0]) {
-      const uploadedAvatar = await this.storage.uploadImage(
-        files.avatar[0],
-      );
+       uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
       if (uploadedAvatar) data.avatarUrl = uploadedAvatar;
     }
 
-    // Handle cover upload
     if (files?.cover?.[0]) {
-      const uploadedCover = await this.storage.uploadImage(
-        files.cover[0],
-      );
+       uploadedCover = await this.storage.uploadImage(files.cover[0]);
       if (uploadedCover) data.coverUrl = uploadedCover;
     }
 
-    if (files?.avatar?.[0] && oldUserFiles?.avatarUrl) {
+    const updatedUser = this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        email: true,
+        bio: true,
+        location: true,
+        avatarUrl: true,
+        coverUrl: true,
+        visibility: true,
+        role: true,
+        isCertified: true,
+        gender: true,
+        dateOfBirth: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (uploadedAvatar && oldUserFiles?.avatarUrl) {
       const oldAvatarFile = oldUserFiles.avatarUrl.split('/').pop();
       if (oldAvatarFile) {
-        this.storage
-          .deleteFile('artwork', oldAvatarFile)
-          .catch(console.error);
+        this.storage.deleteFile('artwork', oldAvatarFile).catch(console.error);
       }
     }
 
-    if (files?.cover?.[0] && oldUserFiles?.coverUrl) {
+    if (uploadedCover && oldUserFiles?.coverUrl) {
       const oldCoverFile = oldUserFiles.coverUrl.split('/').pop();
       if (oldCoverFile) {
-        this.storage
-          .deleteFile('artwork', oldCoverFile)
-          .catch(console.error);
+        this.storage.deleteFile('artwork', oldCoverFile).catch(console.error);
       }
-
-      return this.prisma.user.update({
-        where: { id: userId },
-        data,
-        select: {
-          id: true,
-          username: true,
-          displayName: true,
-          email: true,
-          bio: true,
-          location: true,
-          avatarUrl: true,
-          coverUrl: true,
-          visibility: true,
-          role: true,
-          isCertified: true,
-          gender: true,
-          dateOfBirth: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
     }
-  }
+      return updatedUser;
+    }
+  
 
   async deleteSocialLink(userId: string, platform: SocialPlatform) {
     return this.prisma.userSocialLink

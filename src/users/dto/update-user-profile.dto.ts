@@ -44,11 +44,11 @@ export class UpdateUserProfileDto {
   @IsOptional()
   visibility?: Visibility;
 
-  // @IsUrl()
-  // @IsOptional()
-  // avatarUrl?: string;
+  @IsUrl()
+  @IsOptional()
+  avatarUrl?: string;
 
-  // @IsUrl()
-  // @IsOptional()
-  // coverUrl?: string;
+  @IsUrl()
+  @IsOptional()
+  coverUrl?: string;
 }
