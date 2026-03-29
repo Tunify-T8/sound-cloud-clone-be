@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
@@ -175,11 +175,13 @@ async function main() {
   console.log('Created/found GOPLUS plan:', goPlusPlan.id);
 
   // ── 3. Test user and tracks — optional, skipped if user missing
-  const userId = '84677602-3a5f-4da0-9b3a-af09bb74a145';
+  const userId = '2d566af9-38f1-42ee-8d83-53de7a97f240';
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   if (!user) {
-    console.warn(`Test user ${userId} not found — skipping test tracks and subscriptions`);
+    console.warn(
+      `Test user ${userId} not found — skipping test tracks and subscriptions`,
+    );
   } else {
     console.log('Found user:', user.id, '(' + user.username + ')');
 
@@ -189,11 +191,26 @@ async function main() {
 
     if (electronicGenre) {
       const trackTitles = [
-        { title: 'Midnight Vibes', description: 'A smooth electronic track for late night sessions' },
-        { title: 'Electric Energy', description: 'High-energy electronic beats' },
-        { title: 'Cosmic Journey', description: 'Ambient electronic soundscape' },
-        { title: 'Pulse', description: 'Rhythmic and hypnotic electronic track' },
-        { title: 'Neon Dreams', description: 'Synthwave-inspired electronic composition' },
+        {
+          title: 'Midnight Vibes',
+          description: 'A smooth electronic track for late night sessions',
+        },
+        {
+          title: 'Electric Energy',
+          description: 'High-energy electronic beats',
+        },
+        {
+          title: 'Cosmic Journey',
+          description: 'Ambient electronic soundscape',
+        },
+        {
+          title: 'Pulse',
+          description: 'Rhythmic and hypnotic electronic track',
+        },
+        {
+          title: 'Neon Dreams',
+          description: 'Synthwave-inspired electronic composition',
+        },
       ];
 
       let tracksCreated = 0;
@@ -264,7 +281,9 @@ async function main() {
       });
       console.log('Created second user:', secondUser.username);
     } catch {
-      console.warn('Could not create second user — may already exist with different ID, skipping');
+      console.warn(
+        'Could not create second user — may already exist with different ID, skipping',
+      );
     }
   } else {
     console.log('Found second user:', secondUser.username);
@@ -286,6 +305,138 @@ async function main() {
       });
       console.log(`Created GOPLUS subscription for second user`);
     }
+  }
+
+  // ── 5. Feed seed — follows, tracks, reposts, likes, plays ────
+  if (user && secondUser) {
+    // mainUser follows secondUser
+    const existingFollow = await prisma.follow.findFirst({
+      where: { followerId: userId, followingId: secondUserId },
+    });
+
+    if (!existingFollow) {
+      await prisma.follow.create({
+        data: { followerId: userId, followingId: secondUserId },
+      });
+      console.log('mainUser now follows secondUser');
+    }
+
+    const hipHopGenre = await prisma.genre.findUnique({
+      where: { label: 'Hip-hop & Rap' },
+    });
+
+    // secondUser posts 3 tracks
+    const feedTrackData = [
+      { title: 'Feed Track Alpha', description: 'First feed test track' },
+      { title: 'Feed Track Beta', description: 'Second feed test track' },
+      {
+        title: 'Feed Track Gamma',
+        description: 'Third feed test track — no genre',
+      },
+    ];
+
+    const feedTracks: Prisma.TrackGetPayload<true>[] = [];
+    for (const data of feedTrackData) {
+      const existing = await prisma.track.findFirst({
+        where: { userId: secondUserId, title: data.title },
+      });
+
+      if (existing) {
+        feedTracks.push(existing);
+      } else {
+        const track = await prisma.track.create({
+          data: {
+            userId: secondUserId,
+            genreId:
+              data.title === 'Feed Track Gamma' ? undefined : hipHopGenre?.id,
+            title: data.title,
+            description: data.description,
+            audioUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}.mp3`,
+            waveformUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}-waveform.png`,
+            coverUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}-cover.jpg`,
+            durationSeconds: Math.floor(Math.random() * 180) + 120,
+            fileFormat: 'mp3',
+            isPublic: true,
+          },
+        });
+        feedTracks.push(track);
+        console.log(`Created feed track: "${track.title}"`);
+      }
+    }
+
+    // secondUser reposts one of mainUser's existing tracks
+    const mainUserTrack = await prisma.track.findFirst({
+      where: { userId, isPublic: true, isDeleted: false },
+    });
+
+    if (mainUserTrack) {
+      const existingRepost = await prisma.repost.findFirst({
+        where: { userId: secondUserId, trackId: mainUserTrack.id },
+      });
+
+      if (!existingRepost) {
+        await prisma.repost.create({
+          data: { userId: secondUserId, trackId: mainUserTrack.id },
+        });
+        console.log(
+          `secondUser reposted: "${mainUserTrack.title}" — should appear in feed`,
+        );
+      }
+    }
+
+    // mainUser likes feedTracks[0] — isLiked should be true
+    if (feedTracks[0]) {
+      const existingLike = await prisma.trackLike.findFirst({
+        where: { userId, trackId: feedTracks[0].id },
+      });
+
+      if (!existingLike) {
+        await prisma.trackLike.create({
+          data: { userId, trackId: feedTracks[0].id },
+        });
+        console.log(
+          `mainUser liked: "${feedTracks[0].title}" — isLiked should be true`,
+        );
+      }
+    }
+
+    // mainUser reposted feedTracks[1] — isReposted should be true
+    if (feedTracks[1]) {
+      const existingRepost = await prisma.repost.findFirst({
+        where: { userId, trackId: feedTracks[1].id },
+      });
+
+      if (!existingRepost) {
+        await prisma.repost.create({
+          data: { userId, trackId: feedTracks[1].id },
+        });
+        console.log(
+          `mainUser reposted: "${feedTracks[1].title}" — isReposted should be true`,
+        );
+      }
+    }
+
+    // play history — gives numberOfListens > 0
+    if (feedTracks[0]) {
+      await prisma.playHistory.createMany({
+        data: [
+          { userId, trackId: feedTracks[0].id },
+          { userId: secondUserId, trackId: feedTracks[0].id },
+        ],
+        skipDuplicates: true,
+      });
+      console.log(
+        `Added 2 plays for: "${feedTracks[0].title}" — numberOfListens should be 2`,
+      );
+    }
+
+    console.log('\nFeed seed complete. Test with GET /feed/me as mainUser.');
+    console.log('Expected feed items: 3 posts + 1 repost by secondUser');
+    console.log(`feedTracks[0] → isLiked: true, numberOfListens: 2`);
+    console.log(`feedTracks[1] → isReposted: true`);
+    console.log(`mainUserTrack repost → action: 'repost', actor: secondUser`);
+  } else {
+    console.warn('Skipping feed seed — one or both test users not found');
   }
 
   console.log('\nDatabase seed completed successfully!');
