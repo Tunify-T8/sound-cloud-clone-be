@@ -192,7 +192,17 @@ describe('TracksService', () => {
           { trackId: TRACK_ID, tag: 'beats' },
         ],
       });
-      expect(result).toEqual(baseTrackWithRelations);
+      // Verify formatted response structure
+      expect(result).toMatchObject({
+        trackId: TRACK_ID,
+        status: 'finished',
+        privacy: 'public',
+        artists: expect.any(Array),
+        tags: expect.any(Array),
+        contentWarning: false,
+        audioUrl: expect.any(String),
+        waveformUrl: expect.any(String),
+      });
     });
 
     it('creates a private track with a privateToken', async () => {
@@ -203,7 +213,7 @@ describe('TracksService', () => {
         isPublic: false,
       });
 
-      await service.create(USER_ID, { ...dto, privacy: 'private', genre: '' });
+      const result = await service.create(USER_ID, { ...dto, privacy: 'private', genre: '' });
 
       expect(prisma.track.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -213,6 +223,11 @@ describe('TracksService', () => {
           }),
         }),
       );
+      // Verify response includes private flag
+      expect(result).toMatchObject({
+        privacy: 'private',
+        status: 'finished',
+      });
     });
 
     it('skips genre lookup when genre is not provided', async () => {
@@ -816,14 +831,24 @@ describe('TracksService', () => {
   // ══════════════════════════════════════════════════════════════════════════
 
   describe('deleteTrack()', () => {
-    it('deletes the track and returns success message', async () => {
+    it('soft-deletes the track and returns success message', async () => {
       prisma.track.findUnique.mockResolvedValue(baseTrack);
-      prisma.track.delete.mockResolvedValue(baseTrack);
+      prisma.track.update.mockResolvedValue({
+        ...baseTrack,
+        isDeleted: true,
+        deletedAt: expect.any(Date),
+        deletedBy: USER_ID,
+      });
 
       const result = await service.deleteTrack(TRACK_ID, USER_ID);
 
-      expect(prisma.track.delete).toHaveBeenCalledWith({
+      expect(prisma.track.update).toHaveBeenCalledWith({
         where: { id: TRACK_ID },
+        data: {
+          isDeleted: true,
+          deletedAt: expect.any(Date),
+          deletedBy: USER_ID,
+        },
       });
       expect(result).toEqual({ message: 'Track deleted successfully' });
     });
@@ -842,6 +867,40 @@ describe('TracksService', () => {
       await expect(
         service.deleteTrack(TRACK_ID, OTHER_USER_ID),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('sets deletedAt to current timestamp', async () => {
+      const beforeDelete = new Date();
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.track.update.mockResolvedValue({
+        ...baseTrack,
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: USER_ID,
+      });
+
+      await service.deleteTrack(TRACK_ID, USER_ID);
+
+      const callArgs = prisma.track.update.mock.calls[0][0];
+      expect(callArgs.data.deletedAt.getTime()).toBeGreaterThanOrEqual(
+        beforeDelete.getTime(),
+      );
+    });
+
+    it('sets deletedBy to the user performing the deletion', async () => {
+      const trackOwnedByOther = { ...baseTrack, userId: OTHER_USER_ID };
+      prisma.track.findUnique.mockResolvedValue(trackOwnedByOther);
+      prisma.track.update.mockResolvedValue({
+        ...trackOwnedByOther,
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: OTHER_USER_ID,
+      });
+
+      await service.deleteTrack(TRACK_ID, OTHER_USER_ID);
+
+      const callArgs = prisma.track.update.mock.calls[0][0];
+      expect(callArgs.data.deletedBy).toBe(OTHER_USER_ID);
     });
   });
 

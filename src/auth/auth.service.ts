@@ -355,20 +355,21 @@ export class AuthService {
 
   // ─── Check Email ─────────────────────────────────────────────────
   // Checks if email exists before registration
-  // If exists → tell user to sign in (don't reveal sensitive info)
-  // If not → give green light to continue registration
+  // If exists and active → tell user to sign in
+  // If exists but soft-deleted → treat as new user, allow registration
+  // If not exists → give green light to continue registration
   async checkEmail(dto: CheckEmailDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    if (existing) {
+    if (existing && !existing.isDeleted) {
       return {
         exists: true,
         message: 'Welcome back! Please sign in.',
       };
     }
-
+  
     return {
       exists: false,
       message: 'Email available. Please continue with registration.',

@@ -41,7 +41,7 @@ export class UsersService {
     }
     const [tracksCount, followersCount, followingCount, likesReceived] =
       await Promise.all([
-        this.prisma.track.count({ where: { userId: userId } }),
+        this.prisma.track.count({ where: { userId: userId , isDeleted:false } }),
         this.prisma.follow.count({ where: { followingId: userId } }),
         this.prisma.follow.count({ where: { followerId: userId } }),
         this.prisma.trackLike.count({
@@ -129,7 +129,7 @@ export class UsersService {
 
     const [tracksCount, followersCount, followingCount, likesReceived] =
       await Promise.all([
-        this.prisma.track.count({ where: { userId: id } }),
+        this.prisma.track.count({ where: { userId: id , isDeleted: false } }),
         this.prisma.follow.count({ where: { followingId: id } }),
         this.prisma.follow.count({ where: { followerId: id } }),
         this.prisma.trackLike.count({
