@@ -1,7 +1,15 @@
-import { Controller, DefaultValuePipe, Get, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  DefaultValuePipe,
+  Get,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import * as usersDecorator from 'src/users/users.decorator';
 import { FeedService } from './feed.service';
+import { GetTrendingQueryDto } from './dto/trending.dto';
 
 @Controller('feed')
 export class FeedController {
@@ -25,5 +33,10 @@ export class FeedController {
         : Boolean(includeReposts),
       sinceTimestamp,
     );
+  }
+
+  @Get('trending')
+  getTrending(@Query() query: GetTrendingQueryDto) {
+    return this.feedService.getTrending(query);
   }
 }

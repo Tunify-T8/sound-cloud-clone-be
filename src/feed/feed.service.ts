@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FeedListDto, FeedPostDto } from './dto/feed-item.dto';
+import { GetTrendingQueryDto, TrendingListDto, TrendingPeriod, TrendingType } from './dto/trending.dto';
 
 interface RawFeedRow {
   id: string;
@@ -16,6 +17,22 @@ interface RawFeedRow {
   activity_at: Date;
   action: 'post' | 'repost';
   actor_username: string;
+}
+
+interface RawTrendingTrack {
+  id: string;
+  name: string;
+  artist: string;
+  coverUrl: string | null;
+  score: bigint;
+}
+
+interface RawTrendingCollection {
+  id: string;
+  name: string;
+  artist: string;
+  coverUrl: string | null;
+  score: bigint;
 }
 
 @Injectable()
@@ -167,5 +184,133 @@ export class FeedService {
       limit,
       hasMore: sinceTimestamp ? false : items.length === limit,
     };
+  }
+
+  async getTrending(dto: GetTrendingQueryDto): Promise<TrendingListDto> {
+    const { type, period = TrendingPeriod.WEEK, genreId } = dto;
+
+    const periodStart = this.getPeriodStart(period);
+
+    const items =
+      type === TrendingType.TRACK
+        ? await this.getTrendingTracks(periodStart, genreId)
+        : await this.getTrendingCollections(
+            type === TrendingType.ALBUM ? 'ALBUM' : 'PLAYLIST',
+            periodStart,
+            genreId,
+          );
+
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        artist: item.artist,
+        coverUrl: item.coverUrl,
+        type,
+        score: Number(item.score),
+      })),
+      type,
+      period,
+      genreId,
+    };
+  }
+
+  private getPeriodStart(period: TrendingPeriod): Date {
+    const now = new Date();
+    if (period === TrendingPeriod.DAY) {
+      now.setDate(now.getDate() - 1);
+    } else if (period === TrendingPeriod.WEEK) {
+      now.setDate(now.getDate() - 7);
+    } else {
+      now.setMonth(now.getMonth() - 1);
+    }
+    return now;
+  }
+
+  private async getTrendingTracks(
+    periodStart: Date,
+    genreId?: string,
+  ): Promise<RawTrendingTrack[]> {
+    const genreFilter = genreId ? `AND t."genreId" = $2` : '';
+
+    const params: unknown[] = genreId
+      ? [periodStart.toISOString(), genreId]
+      : [periodStart.toISOString()];
+
+    const query = `
+      SELECT
+        t.id,
+        t.title                                   AS name,
+        COALESCE(u."displayName", u.username)     AS artist,
+        t."coverUrl"                              AS "coverUrl",
+        (
+          SELECT COUNT(*) FROM "PlayHistory" ph
+          WHERE ph."trackId" = t.id
+            AND ph."playedAt" >= $1::timestamptz
+        ) * 1
+        +
+        (
+          SELECT COUNT(*) FROM "TrackLike" tl
+          WHERE tl."trackId" = t.id
+            AND tl."createdAt" >= $1::timestamptz
+        ) * 2                                     AS score
+      FROM "Track" t
+      JOIN "User" u ON t."userId" = u.id
+      WHERE t."isDeleted" = false
+        AND t."isHidden"  = false
+        AND t."isPublic"  = true
+        ${genreFilter}
+      ORDER BY score DESC
+      LIMIT 10
+    `;
+
+    return this.prisma.$queryRawUnsafe<RawTrendingTrack[]>(
+      query,
+      ...params,
+    ) as Promise<RawTrendingTrack[]>;
+  }
+
+  private async getTrendingCollections(
+    type: 'ALBUM' | 'PLAYLIST',
+    periodStart: Date,
+    genreId?: string,
+  ): Promise<RawTrendingCollection[]> {
+    // genre filter joins through CollectionTrack → Track
+    const genreFilter = genreId ? `AND t."genreId" = $3` : '';
+
+    const params: unknown[] = genreId
+      ? [type, periodStart.toISOString(), genreId]
+      : [type, periodStart.toISOString()];
+
+    const query = `
+      SELECT
+        c.id,
+        c.title                                   AS name,
+        COALESCE(u."displayName", u.username)     AS artist,
+        c."coverUrl"                              AS "coverUrl",
+        COUNT(ph.id)                              AS score
+      FROM "Collection" c
+      JOIN "User" u             ON c."userId"      = u.id
+      JOIN "CollectionTrack" ct ON ct."collectionId" = c.id
+      JOIN "Track" t            ON ct."trackId"    = t.id
+      LEFT JOIN "PlayHistory" ph
+             ON ph."trackId" = t.id
+            AND ph."playedAt" >= $2::timestamptz
+      WHERE c.type       = $1::"CollectionType"
+        AND c."isDeleted" = false
+        AND c."isPublic"  = true
+        AND t."isDeleted" = false
+        AND t."isHidden"  = false
+        AND t."isPublic"  = true
+        ${genreFilter}
+      GROUP BY c.id, c.title, u."displayName", u.username, c."coverUrl"
+      ORDER BY score DESC
+      LIMIT 10
+    `;
+
+    return this.prisma.$queryRawUnsafe<RawTrendingCollection[]>(
+      query,
+      ...params,
+    ) as Promise<RawTrendingCollection[]>;
   }
 }
