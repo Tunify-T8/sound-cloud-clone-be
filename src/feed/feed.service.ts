@@ -1,7 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FeedListDto, FeedPostDto } from './dto/feed-item.dto';
-import { GetTrendingQueryDto, TrendingListDto, TrendingPeriod, TrendingType } from './dto/trending.dto';
+import {
+  GetTrendingQueryDto,
+  TrendingListDto,
+  TrendingPeriod,
+  TrendingType,
+} from './dto/trending.dto';
+import { DiscoverListDto, GetDiscoverQueryDto } from './dto/discover.dto';
+
+interface RawTopGenre {
+  genreId: string;
+}
 
 interface RawFeedRow {
   id: string;
@@ -312,5 +322,182 @@ export class FeedService {
       query,
       ...params,
     ) as Promise<RawTrendingCollection[]>;
+  }
+
+  async getDiscover(
+    dto: GetDiscoverQueryDto,
+    userId?: string,
+  ): Promise<DiscoverListDto> {
+    const { page = 1, limit = 20, genreId } = dto;
+    const skip = (page - 1) * limit;
+
+    // logged-out or no play history → recent uploads
+    if (!userId) {
+      return this.getRecentUploads(skip, limit, page, genreId, false);
+    }
+
+    // check if user has any play history at all
+    const hasHistory = await this.prisma.playHistory.findFirst({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!hasHistory) {
+      return this.getRecentUploads(skip, limit, page, genreId, false);
+    }
+
+    // get user's top 3 genres from play history
+    const topGenres = (await this.prisma.$queryRawUnsafe<RawTopGenre[]>(
+      `
+        SELECT t."genreId"
+        FROM "PlayHistory" ph
+        JOIN "Track" t ON ph."trackId" = t.id
+        WHERE ph."userId" = $1
+          AND t."genreId" IS NOT NULL
+        GROUP BY t."genreId"
+        ORDER BY COUNT(*) DESC
+        LIMIT 3
+      `,
+      userId,
+    )) as RawTopGenre[];
+
+    // no genre data (all their history is genre-less tracks) → recent uploads
+    if (topGenres.length === 0) {
+      return this.getRecentUploads(skip, limit, page, genreId, false);
+    }
+
+    const topGenreIds = topGenres.map((g) => g.genreId);
+
+    // get tracks already heard by this user
+    const heard = await this.prisma.playHistory.findMany({
+      where: { userId },
+      select: { trackId: true },
+    });
+    const heardIds = heard.map((h) => h.trackId);
+
+    // fetch personalized recent tracks matching top genres, excluding heard
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: {
+          isDeleted: false,
+          isHidden: false,
+          isPublic: true,
+          genreId: genreId
+            ? genreId // explicit genre filter takes priority
+            : { in: topGenreIds },
+          id: { notIn: heardIds.length > 0 ? heardIds : undefined },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          waveformUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          user: {
+            select: {
+              username: true,
+              displayName: true,
+            },
+          },
+          genre: {
+            select: { label: true },
+          },
+        },
+      }),
+      this.prisma.track.count({
+        where: {
+          isDeleted: false,
+          isHidden: false,
+          isPublic: true,
+          genreId: genreId ? genreId : { in: topGenreIds },
+          id: { notIn: heardIds.length > 0 ? heardIds : undefined },
+        },
+      }),
+    ]);
+
+    // not enough personalized results → fall back to recent uploads
+    if (tracks.length === 0) {
+      return this.getRecentUploads(skip, limit, page, genreId, false);
+    }
+
+    return {
+      items: tracks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.user.displayName ?? t.user.username,
+        coverUrl: t.coverUrl,
+        waveformUrl: t.waveformUrl,
+        durationSeconds: t.durationSeconds,
+        genre: t.genre?.label ?? null,
+        createdAt: t.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+      personalized: true,
+    };
+  }
+
+  private async getRecentUploads(
+    skip: number,
+    limit: number,
+    page: number,
+    genreId: string | undefined,
+    personalized: boolean,
+  ): Promise<DiscoverListDto> {
+    const where = {
+      isDeleted: false,
+      isHidden: false,
+      isPublic: true,
+      ...(genreId ? { genreId } : {}),
+    };
+
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          waveformUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          user: {
+            select: {
+              username: true,
+              displayName: true,
+            },
+          },
+          genre: {
+            select: { label: true },
+          },
+        },
+      }),
+      this.prisma.track.count({ where }),
+    ]);
+
+    return {
+      items: tracks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.user.displayName ?? t.user.username,
+        coverUrl: t.coverUrl,
+        waveformUrl: t.waveformUrl,
+        durationSeconds: t.durationSeconds,
+        genre: t.genre?.label ?? null,
+        createdAt: t.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+      personalized,
+    };
   }
 }
