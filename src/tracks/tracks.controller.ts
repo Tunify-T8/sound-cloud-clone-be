@@ -184,6 +184,16 @@ export class TracksController {
     return this.tracksService.unrepostTrack(trackId, req.user?.userId ?? '');
   }
 
+  @Post(':id/comments')
+  @UseGuards(JwtAccessGuard)
+  async addComment(
+    @Request() req: AuthRequest,
+    @Param('id',ParseUUIDPipe) trackId: string,
+    @Body('text') text: string,
+  ) {
+    // Implement comment creation logic here
+    return this.tracksService.addComment(trackId, req.user?.userId ?? '', text);
+  }
 }
 
 

@@ -14,6 +14,7 @@ import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat } from '@prisma/client';
 import { time } from 'console';
 import { timestamp } from 'rxjs';
+import { availableFormats } from 'fluent-ffmpeg';
 
 @Injectable()
 export class TracksService {
@@ -308,6 +309,9 @@ export class TracksService {
       where: {id: { in: trackReposts.map((repost) => repost.userId) } }
     });
 
+    const trackComments = await this.prisma.comment.findMany({
+      where: { trackId: trackId },
+    });
 
 
     const filteredTrack = {
@@ -339,7 +343,15 @@ export class TracksService {
           username: user.username,
           timestamp: trackReposts.find((repost) => repost.userId === user.id)?.createdAt.toISOString() || null,
         }))},
-      comments_count: track._count.comments,
+      comments: {
+        count: track._count.comments,
+        data: trackComments.map((comment) => ({
+          id: comment.id,
+          userId: comment.userId,
+          text: comment.content,
+          timestamp: comment.createdAt.toISOString(),
+        })),
+      },
       plays_count: track._count.playHistory,
       availability: {
         type: 'worldwide',
@@ -935,5 +947,46 @@ export class TracksService {
     };
 
   }
+
+  async addComment(trackId: string, userId: string, text: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Create the comment and map it to user and track
+    const comment = await this.prisma.comment.create({
+      data: {
+        userId: userId,
+        trackId: trackId,
+        content: text,
+      },
+    });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    return{
+      comment: {
+        id: comment.id,
+        userId: userId,
+        username: user?.username || 'Unknown',
+        avatarUrl: user?.avatarUrl || null,
+        text: comment.content,
+        likesCount: 0,
+        repliesCount: 0,
+        createdAt: comment.createdAt.toISOString(), 
+      },
+      commentsCount: await this.prisma.comment.count({
+        where: { trackId },
+      }),
+    }
+  }
+
 }
 

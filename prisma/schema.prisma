@@ -383,7 +383,6 @@ model Comment {
   trackId         String
   parentCommentId String?
   content         String   @db.VarChar(500)
-  timestamp       Int
   isEdited        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
