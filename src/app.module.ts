@@ -12,6 +12,7 @@ import { BullModule } from '@nestjs/bull';
 import { FeedModule } from './feed/feed.module';
 import { SearchModule } from './search/search.module';
 import { SearchIndexService } from './search-index/search-index.service';
+import { OpensearchService } from './opensearch/opensearch.service';
 
 @Module({
   imports: [
@@ -32,6 +33,6 @@ import { SearchIndexService } from './search-index/search-index.service';
     SearchModule,
   ],
   controllers: [AppController],
-  providers: [AppService, SearchIndexService],
+  providers: [AppService, SearchIndexService, OpensearchService],
 })
 export class AppModule {}
