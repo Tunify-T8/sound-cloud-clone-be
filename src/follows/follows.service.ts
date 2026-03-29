@@ -4,13 +4,18 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class FollowsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   async followUser(followerId: string, followingId: string) {
     if (followerId === followingId) {
@@ -55,6 +60,9 @@ export class FollowsService {
       throw error; // rethrow other unexpected errors
     }
 
+     // ── Notify the target user (no-op until Module 10 is ready) ──
+    await this.notifications?.notifyFollow(followerId, followingId);
+    
     return { message: 'Followed successfully' };
   }
 
