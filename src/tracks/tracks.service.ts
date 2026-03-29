@@ -844,7 +844,7 @@ export class TracksService {
     };
   }
 
-  async getTrackLikes(trackId: string, page: number = 1, limit: number = 10) {
+  async getTrackLikes(trackId: string, page: number = 1, limit: number = 20) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
@@ -889,7 +889,6 @@ export class TracksService {
       trackId: track.id,
       title: track.title,
       likes: likes.map((like) => ({
-        id: like.id,
         user: {
           id: like.user.id,
           username: like.user.username,
@@ -1007,6 +1006,61 @@ export class TracksService {
         title: updatedTrack?.title,
         repostsCount: updatedTrack?._count.reposts || 0,
       },
+    };
+
+  }
+
+  async getTrackReposts(trackId: string, page: number = 1, limit: number = 20) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.repost.count({
+      where: { trackId },
+    });
+
+    // Get reposts for the current page
+    const allreposts = await this.prisma.repost.findMany({
+      where: { trackId },
+      skip,
+      take: validLimit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      reposts: allreposts.map((repost) => ({
+        user: {
+          userId: repost.user.id,
+          username: repost.user.username,
+          avatarUrl: repost.user.avatarUrl,
+        },
+        repostedAt: repost.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / validLimit),
+      hasNextPage: skip + allreposts.length < totalCount,
+      hasPreviousPage: skip > 0,
     };
 
   }

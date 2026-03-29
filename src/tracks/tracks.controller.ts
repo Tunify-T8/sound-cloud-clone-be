@@ -202,9 +202,24 @@ export class TracksController {
   async getTrackLikes(
     @Param('id', ParseUUIDPipe) trackId: string,
     @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
+    @Query('limit') limit: string = '20',
   ) {
     return this.tracksService.getTrackLikes(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
+  @Get(':id/reposts')
+  @UseGuards(JwtAccessGuard)
+  async getTrackReposts(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    // Implement getTrackReposts logic here
+    return this.tracksService.getTrackReposts(
       trackId,
       parseInt(page, 10),
       parseInt(limit, 10),
