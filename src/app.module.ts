@@ -9,6 +9,10 @@ import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
+import { FeedModule } from './feed/feed.module';
+import { SearchModule } from './search/search.module';
+import { SearchIndexService } from './search-index/search-index.service';
+import { OpensearchService } from './opensearch/opensearch.service';
 
 @Module({
   imports: [
@@ -25,8 +29,10 @@ import { BullModule } from '@nestjs/bull';
         port: 6379,
       },
     }),
+    FeedModule,
+    SearchModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SearchIndexService, OpensearchService],
 })
 export class AppModule {}
