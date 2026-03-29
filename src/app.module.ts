@@ -11,6 +11,7 @@ import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
 import { FeedModule } from './feed/feed.module';
 import { SearchModule } from './search/search.module';
+import { SearchIndexService } from './search-index/search-index.service';
 
 @Module({
   imports: [
@@ -31,6 +32,6 @@ import { SearchModule } from './search/search.module';
     SearchModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SearchIndexService],
 })
 export class AppModule {}
