@@ -13,6 +13,7 @@ import { FeedModule } from './feed/feed.module';
 import { SearchModule } from './search/search.module';
 import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { OpensearchService } from './opensearch/opensearch.service';
     }),
     FeedModule,
     SearchModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],

@@ -12,6 +12,8 @@ import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat } from '@prisma/client';
+import { time } from 'console';
+import { timestamp } from 'rxjs';
 
 @Injectable()
 export class TracksService {
@@ -264,6 +266,14 @@ export class TracksService {
         trackArtists: true,
         regionRestrictions: true,
         tags: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            reposts: true,
+            playHistory: true,
+          }
+        }
       },
     });
 
@@ -282,6 +292,14 @@ export class TracksService {
         })
       : null;
 
+    const trackLikes = await this.prisma.trackLike.findMany({
+      where: { trackId: trackId },
+    });
+
+    const likedUsers = await this.prisma.user.findMany({
+      where: {id: { in: trackLikes.map((like) => like.userId) } }
+    })
+
     const filteredTrack = {
       trackId: track.id,
       status: track.transcodingStatus,
@@ -298,6 +316,18 @@ export class TracksService {
       durationSeconds: track.durationSeconds,
       privacy: track.isPublic ? 'public' : 'private',
       scheduledReleaseDate: track.releaseDate?.toISOString() || null,
+      likes: {
+          count: track._count.likes,
+          users: likedUsers.map((user) => ({
+            id: user.id,
+            username: user.username,
+            timestamp: trackLikes.find((like) => like.userId === user.id)?.createdAt.toISOString() || null,
+          }))
+      },
+      likes_count: track._count.likes,
+      comments_count: track._count.comments,
+      reposts_count: track._count.reposts,
+      plays_count: track._count.playHistory,
       availability: {
         type: 'worldwide',
         regions: track.regionRestrictions?.map((r) => r.countryCode) || [],
@@ -685,5 +715,62 @@ export class TracksService {
       waveformUrl: updatedTrack.waveformUrl || '',
       audioUrl: updatedTrack.audioUrl,
     };
+  }
+
+  async likeTrack(trackId: string, userId: string) { 
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    }); 
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Check if user already liked this track
+    const existingLike = await this.prisma.trackLike.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (existingLike) {
+      throw new ForbiddenException('You already liked this track');
+    }
+
+    // Create the track like and map it to user and track
+    await this.prisma.trackLike.create({
+      data: {
+        user: { connect: { id: userId } },
+        track: { connect: { id: trackId } },
+      },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { likes: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after liking');
+    }
+
+    return {
+      message: 'Track liked successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        likesCount: updatedTrack?._count.likes || 0,
+      },
+    };
+
+
+
+    
   }
 }

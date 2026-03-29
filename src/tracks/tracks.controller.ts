@@ -126,17 +126,6 @@ export class TracksController {
     return result;
   }
 
-  //--------------------TO BE ADDED IF WELL USE PATCH---------------------//
-  // @Patch(':id')
-  // async updateTrackJson(
-  //   @Param('id') trackId: string,
-  //   @Body() dto: UpdateTrackDto,
-  // ) {
-  //   const userId = 'b712d133-03c6-4229-b07e-6da113d23bb8';
-  //   const track = await this.tracksService.updateTrackJson(trackId, userId, dto);
-  //   return { track, statusCode: 200 };
-  // }
-
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
   async deleteTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
@@ -169,4 +158,13 @@ export class TracksController {
       file,
     );
   }
+
+  @Post(":id/like")
+  @UseGuards(JwtAccessGuard)
+  async likeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.likeTrack(trackId, req.user?.userId ?? '');
+  }
+
 }
+
+
