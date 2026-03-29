@@ -10,6 +10,7 @@ import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
 import { FeedModule } from './feed/feed.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { FeedModule } from './feed/feed.module';
       },
     }),
     FeedModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
