@@ -951,4 +951,83 @@ export class TracksService {
 
     return { message: 'Play recorded' };
   }
+
+  async buildPlaybackContext(
+    contextType: string,
+    contextId: string,
+    startTrackId?: string,
+    shuffle?: boolean,
+    repeat?: string,
+  ) {
+    let trackIds: string[] = [];
+
+    switch (contextType) {
+      case 'playlist': {
+        const tracks = await this.prisma.collectionTrack.findMany({
+          where: { collectionId: contextId },
+          orderBy: { position: 'asc' },
+          select: { trackId: true },
+        });
+        trackIds = tracks.map((t) => t.trackId);
+        break;
+      }
+
+      case 'profile': {
+        const tracks = await this.prisma.track.findMany({
+          where: {
+            userId: contextId,
+            isPublic: true,
+            isDeleted: false,
+            isHidden: false,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        trackIds = tracks.map((t) => t.id);
+        break;
+      }
+
+      case 'history': {
+        const tracks = await this.prisma.playHistory.findMany({
+          where: { userId: contextId },
+          orderBy: { playedAt: 'desc' },
+          select: { trackId: true },
+        });
+        // deduplicate since same track can appear multiple times in history
+        trackIds = [...new Set(tracks.map((t) => t.trackId))];
+        break;
+      }
+
+      default:
+        throw new NotFoundException('Invalid context type');
+    }
+
+    if (trackIds.length === 0) {
+      return {
+        queue: [],
+        currentIndex: 0,
+        shuffle: shuffle ?? false,
+        repeat: repeat ?? 'none',
+        totalCount: 0,
+      };
+    }
+
+    // Apply shuffle if requested
+    if (shuffle) {
+      trackIds = trackIds.sort(() => Math.random() - 0.5);
+    }
+
+    // Find starting index
+    const currentIndex = startTrackId
+      ? Math.max(trackIds.indexOf(startTrackId), 0)
+      : 0;
+
+    return {
+      queue: trackIds.map((id) => ({ trackId: id })),
+      currentIndex,
+      shuffle: shuffle ?? false,
+      repeat: repeat ?? 'none',
+      totalCount: trackIds.length,
+    };
+  }
 }

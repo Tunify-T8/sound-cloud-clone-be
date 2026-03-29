@@ -19,6 +19,7 @@ import {
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTrackDto } from './dto/create-track.dto';
+import { PlaybackContextDto } from './dto/playback-context.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 
@@ -82,6 +83,18 @@ export class TracksController {
     @Param('id', ParseUUIDPipe) trackId: string,
   ) {
     return this.tracksService.markTrackPlayed(trackId, req.user?.userId ?? '');
+  }
+
+  @Post('playback-context')
+  @UseGuards(JwtAccessGuard)
+  async buildContext(@Body() dto: PlaybackContextDto) {
+    return this.tracksService.buildPlaybackContext(
+      dto.contextType,
+      dto.contextId,
+      dto.startTrackId,
+      dto.shuffle,
+      dto.repeat,
+    );
   }
 
   @Get('me')
