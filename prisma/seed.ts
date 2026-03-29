@@ -175,7 +175,7 @@ async function main() {
   console.log('Created/found GOPLUS plan:', goPlusPlan.id);
 
   // ── 3. Test user and tracks — optional, skipped if user missing
-  const userId = '2d566af9-38f1-42ee-8d83-53de7a97f240';
+  const userId = '8f455fae-bb36-4e70-9ae5-87c69718af65';
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   if (!user) {

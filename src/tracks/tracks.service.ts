@@ -300,6 +300,16 @@ export class TracksService {
       where: {id: { in: trackLikes.map((like) => like.userId) } }
     })
 
+    const trackReposts = await this.prisma.repost.findMany({
+      where: { trackId: trackId },
+    });
+
+    const repostedUsers = await this.prisma.user.findMany({
+      where: {id: { in: trackReposts.map((repost) => repost.userId) } }
+    });
+
+
+
     const filteredTrack = {
       trackId: track.id,
       status: track.transcodingStatus,
@@ -319,14 +329,17 @@ export class TracksService {
       likes: {
           count: track._count.likes,
           users: likedUsers.map((user) => ({
-            id: user.id,
             username: user.username,
             timestamp: trackLikes.find((like) => like.userId === user.id)?.createdAt.toISOString() || null,
           }))
       },
-      likes_count: track._count.likes,
+      reposts: {
+        count: track._count.reposts,
+        users: repostedUsers.map((user) => ({
+          username: user.username,
+          timestamp: trackReposts.find((repost) => repost.userId === user.id)?.createdAt.toISOString() || null,
+        }))},
       comments_count: track._count.comments,
-      reposts_count: track._count.reposts,
       plays_count: track._count.playHistory,
       availability: {
         type: 'worldwide',
@@ -818,4 +831,109 @@ export class TracksService {
       },
     };
   }
+
+  async repostTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Check if user already reposted this track
+    const existingRepost = await this.prisma.repost.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (existingRepost) {
+      throw new ForbiddenException('You already reposted this track');
+    }
+
+    // Create the repost and map it to user and track
+    await this.prisma.repost.create({
+      data: {
+        user: { connect: { id: userId } },
+        track: { connect: { id: trackId } },
+      },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after reposting');
+    }
+
+    return {
+      message: 'Track reposted successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        repostsCount: updatedTrack?._count.reposts || 0,
+      },
+    };
+
+  }
+
+  async unrepostTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+    
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const existingRepost = await this.prisma.repost.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (!existingRepost) {
+      throw new ForbiddenException('You have not reposted this track');
+    }
+
+    // Delete the repost
+    await this.prisma.repost.delete({
+      where: { id: existingRepost.id },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after unreposting');
+    }
+
+    return {
+      message: 'Track unreposted successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        repostsCount: updatedTrack?._count.reposts || 0,
+      },
+    };
+
+  }
 }
+

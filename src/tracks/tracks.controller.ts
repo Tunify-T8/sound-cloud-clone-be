@@ -20,6 +20,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
+import { use } from 'passport';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -169,6 +170,18 @@ export class TracksController {
   @UseGuards(JwtAccessGuard)
   async unlikeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
     return this.tracksService.unlikeTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Post(":id/repost")
+  @UseGuards(JwtAccessGuard)
+  async repostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.repostTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Delete(":id/repost")
+  @UseGuards(JwtAccessGuard)
+  async unrepostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.unrepostTrack(trackId, req.user?.userId ?? '');
   }
 
 }
