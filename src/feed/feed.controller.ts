@@ -16,7 +16,7 @@ import { GetDiscoverQueryDto } from './dto/discover.dto';
 @Controller('feed')
 export class FeedController {
   constructor(private feedService: FeedService) {}
-  @Get('me')
+  @Get()
   @UseGuards(JwtAccessGuard)
   getFeed(
     @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
