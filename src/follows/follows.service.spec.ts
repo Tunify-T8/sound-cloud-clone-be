@@ -74,6 +74,28 @@ describe('FollowsService', () => {
       const result = await service.followUser(followerId, followingId);
       expect(result).toEqual({ message: 'Followed successfully' });
     });
+
+    it('should throw Conflict when already following (P2002)', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: followingId,
+        isDeleted: false,
+        isActive: true,
+        isBanned: false,
+        isSuspended: false,
+      });
+      mockPrisma.userBlock.findFirst.mockResolvedValue(null);
+
+      const p2002Error = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '5.0.0' },
+      );
+      mockPrisma.follow.create.mockRejectedValue(p2002Error);
+
+      await expect(service.followUser(followerId, followingId)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
   });
 
   // ── UNFOLLOW USER ───────────────────────────────────────────
