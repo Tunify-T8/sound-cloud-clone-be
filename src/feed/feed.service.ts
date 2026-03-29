@@ -45,7 +45,7 @@ export class FeedService {
     const trackColumns = `
     t.id,
     t.title,
-    COALESCE(u_owner."display_name", u_owner.username) AS artist,
+    COALESCE(u_owner."displayName", u_owner.username) AS artist,
     g.label                   AS genre,
     t."durationSeconds"       AS "durationSeconds",
     t."coverUrl"              AS "coverUrl",
@@ -79,7 +79,7 @@ export class FeedService {
         ${trackColumns},
         r."createdAt"          AS activity_at,
         'repost'::text         AS action,
-        COALESCE(u_reposter."display_name", u_reposter.username) AS actor_username
+        COALESCE(u_reposter."displayName", u_reposter.username) AS actor_username
       FROM "Repost" r
       JOIN "Track" t          ON r."trackId" = t.id
       JOIN "User"  u_owner    ON t."userId"  = u_owner.id
@@ -101,7 +101,7 @@ export class FeedService {
         ${trackColumns},
         t."createdAt"          AS activity_at,
         'post'::text           AS action,
-        COALESCE(u_owner."display_name", u_owner.username) AS actor_username
+        COALESCE(u_owner."displayName", u_owner.username) AS actor_username
       FROM "Track" t
       JOIN "User"  u_owner ON t."userId"  = u_owner.id
       LEFT JOIN "Genre" g  ON t."genreId" = g.id
