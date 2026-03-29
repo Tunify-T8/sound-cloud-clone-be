@@ -24,9 +24,11 @@ interface RawFeedRow {
   comment_count: bigint;
   like_count: bigint;
   play_count: bigint;
+  repost_count: bigint;
   activity_at: Date;
   action: 'post' | 'repost';
   actor_username: string;
+  actor_avatar: string | null;
 }
 
 interface RawTrendingTrack {
@@ -73,6 +75,7 @@ export class FeedService {
     t.id,
     t.title,
     COALESCE(u_owner."displayName", u_owner.username) AS artist,
+    u_owner."avatarUrl" AS actor_avatar,
     g.label                   AS genre,
     t."durationSeconds"       AS "durationSeconds",
     t."coverUrl"              AS "coverUrl",
@@ -90,7 +93,11 @@ export class FeedService {
     (
       SELECT COUNT(*) FROM "PlayHistory" ph
       WHERE ph."trackId" = t.id
-    ) AS play_count
+    ) AS play_count,
+    (
+      SELECT COUNT(*) FROM "Repost" r
+      WHERE r.trackId = t.id
+    ) AS repost_count
   `;
 
     const trackFilters = `
@@ -106,7 +113,8 @@ export class FeedService {
         ${trackColumns},
         r."createdAt"          AS activity_at,
         'repost'::text         AS action,
-        COALESCE(u_reposter."displayName", u_reposter.username) AS actor_username
+        COALESCE(u_reposter."displayName", u_reposter.username) AS actor_username,
+        u_reposter."avatarUrl" AS actor_avatar,
       FROM "Repost" r
       JOIN "Track" t          ON r."trackId" = t.id
       JOIN "User"  u_owner    ON t."userId"  = u_owner.id
@@ -174,6 +182,7 @@ export class FeedService {
         username: row.actor_username,
         action: row.action,
         date: row.activity_at.toISOString(),
+        avatarUrl: row.actor_avatar
       },
       title: row.title,
       artist: row.artist,
@@ -184,6 +193,7 @@ export class FeedService {
       numberOfComments: Number(row.comment_count),
       numberOfLikes: Number(row.like_count),
       numberOfListens: Number(row.play_count),
+      numberOfReposts: Number(row.repost_count),
       isLiked: likedSet.has(row.id),
       isReposted: repostedSet.has(row.id),
     }));

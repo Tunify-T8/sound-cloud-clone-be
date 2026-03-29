@@ -2,12 +2,12 @@ export class ActionDto {
   username: string;
   action: 'repost' | 'post';
   date: string;
+  avatarUrl: string | null;
 }
 
 export class FeedPostDto {
   id: string;
   action: ActionDto;
-
   title: string;
   artist: string;
   genre?: string;
@@ -18,7 +18,7 @@ export class FeedPostDto {
 
   numberOfComments: number;
   numberOfLikes: number;
-
+  numberOfReposts: number;
   numberOfListens: number;
 
   isLiked: boolean;

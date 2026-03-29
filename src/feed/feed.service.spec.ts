@@ -52,7 +52,7 @@ describe('FeedService', () => {
       expect(result.hasMore).toBe(false);
     });
 
-    it('should return feed items with computed flags', async () => {
+    it('should return feed items with computed fields (likes, reposts, avatar)', async () => {
       mockPrisma.follow.findMany.mockResolvedValue([{ followingId: 'u2' }]);
 
       mockPrisma.$queryRawUnsafe.mockResolvedValue([
@@ -67,9 +67,11 @@ describe('FeedService', () => {
           comment_count: BigInt(2),
           like_count: BigInt(5),
           play_count: BigInt(10),
+          repost_count: BigInt(3), // ✅ NEW
           activity_at: new Date(),
           action: 'post',
           actor_username: 'user2',
+          actor_avatar: 'avatar.png', // ✅ NEW
         },
       ]);
 
@@ -80,8 +82,80 @@ describe('FeedService', () => {
       const result = await service.getFeed('user-1', 1, 10);
 
       expect(result.items).toHaveLength(1);
-      expect(result.items[0].isLiked).toBe(true);
-      expect(result.items[0].numberOfLikes).toBe(5);
+
+      const item = result.items[0];
+
+      expect(item.isLiked).toBe(true);
+      expect(item.numberOfLikes).toBe(5);
+
+      // ✅ NEW assertions
+      expect(item.numberOfReposts).toBe(3);
+      expect(item.action.avatarUrl).toBe('avatar.png');
+    });
+
+    it('should handle null avatar correctly', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([{ followingId: 'u2' }]);
+
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([
+        {
+          id: 'track-1',
+          title: 'Track',
+          artist: 'Artist',
+          genre: null,
+          durationSeconds: 120,
+          coverUrl: null,
+          waveformUrl: null,
+          comment_count: BigInt(0),
+          like_count: BigInt(0),
+          play_count: BigInt(0),
+          repost_count: BigInt(0),
+          activity_at: new Date(),
+          action: 'post',
+          actor_username: 'user2',
+          actor_avatar: null,
+        },
+      ]);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([]);
+
+      const result = await service.getFeed('user-1');
+
+      expect(result.items[0].action.avatarUrl).toBeNull();
+    });
+
+    it('should correctly map repost action and isReposted flag', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([{ followingId: 'u2' }]);
+
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([
+        {
+          id: 'track-1',
+          title: 'Track',
+          artist: 'Artist',
+          genre: null,
+          durationSeconds: 120,
+          coverUrl: null,
+          waveformUrl: null,
+          comment_count: BigInt(0),
+          like_count: BigInt(0),
+          play_count: BigInt(0),
+          repost_count: BigInt(1),
+          activity_at: new Date(),
+          action: 'repost',
+          actor_username: 'user2',
+          actor_avatar: 'avatar.png',
+        },
+      ]);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([{ trackId: 'track-1' }]);
+
+      const result = await service.getFeed('user-1');
+
+      const item = result.items[0];
+
+      expect(item.action.action).toBe('repost');
+      expect(item.isReposted).toBe(true);
     });
 
     it('should correctly calculate hasMore', async () => {
@@ -99,9 +173,11 @@ describe('FeedService', () => {
           comment_count: BigInt(0),
           like_count: BigInt(0),
           play_count: BigInt(0),
+          repost_count: BigInt(0),
           activity_at: new Date(),
           action: 'post',
           actor_username: 'user2',
+          actor_avatar: null,
         }),
       );
 
