@@ -844,6 +844,69 @@ export class TracksService {
     };
   }
 
+  async getTrackLikes(trackId: string, page: number = 1, limit: number = 10) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+    
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100)); // Cap at 100 max
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.trackLike.count({
+      where: { trackId },
+    });
+
+    // Get paginated likes with user info
+    const likes = await this.prisma.trackLike.findMany({
+      where: { trackId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: validLimit,
+    });
+
+    const totalPages = Math.ceil(totalCount / validLimit);
+    const hasNextPage = validPage < totalPages;
+    const hasPreviousPage = validPage > 1;
+
+    return {
+      trackId: track.id,
+      title: track.title,
+      likes: likes.map((like) => ({
+        id: like.id,
+        user: {
+          id: like.user.id,
+          username: like.user.username,
+          avatarUrl: like.user.avatarUrl,
+        },
+        likedAt: like.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      total: totalCount,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage,
+    
+    };
+  }
+
   async repostTrack(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({

@@ -13,7 +13,8 @@ import {
   Request,
   Patch,
   Delete,
-  ParseUUIDPipe
+  ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -160,6 +161,7 @@ export class TracksController {
     );
   }
 
+ 
   @Post(":id/like")
   @UseGuards(JwtAccessGuard)
   async likeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
@@ -194,6 +196,21 @@ export class TracksController {
     // Implement comment creation logic here
     return this.tracksService.addComment(trackId, req.user?.userId ?? '', text);
   }
+
+ @Get(':id/likes')
+  @UseGuards(JwtAccessGuard)
+  async getTrackLikes(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+  ) {
+    return this.tracksService.getTrackLikes(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
 }
 
 
