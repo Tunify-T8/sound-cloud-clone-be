@@ -767,10 +767,55 @@ export class TracksService {
         title: updatedTrack?.title,
         likesCount: updatedTrack?._count.likes || 0,
       },
+    };    
+  }
+
+  async unlikeTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const existingLike = await this.prisma.trackLike.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (!existingLike) {
+      throw new ForbiddenException('You have not liked this track');
+    }
+
+    // Delete the track like
+    await this.prisma.trackLike.delete({
+      where: { id: existingLike.id },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { likes: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after unliking');
+    }
+
+    return {
+      message: 'Track unliked successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        likesCount: updatedTrack?._count.likes || 0,
+      },
     };
-
-
-
-    
   }
 }

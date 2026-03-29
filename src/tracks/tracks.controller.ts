@@ -165,6 +165,12 @@ export class TracksController {
     return this.tracksService.likeTrack(trackId, req.user?.userId ?? '');
   }
 
+  @Delete(":id/like")
+  @UseGuards(JwtAccessGuard)
+  async unlikeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.unlikeTrack(trackId, req.user?.userId ?? '');
+  }
+
 }
 
 
