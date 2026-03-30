@@ -97,6 +97,20 @@ export class TracksController {
     );
   }
 
+  @Get('me/listening-history')
+  @UseGuards(JwtAccessGuard)
+  async getListeningHistory(
+    @Request() req: AuthRequest,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.tracksService.getListeningHistory(
+      req.user?.userId ?? '',
+      Number(page),
+      Number(limit),
+    );
+  }
+
   @Get('me')
   @UseGuards(JwtAccessGuard)
   getMyTracks(@Request() req: AuthRequest) {

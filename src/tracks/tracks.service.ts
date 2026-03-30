@@ -1030,4 +1030,68 @@ export class TracksService {
       totalCount: trackIds.length,
     };
   }
+
+  async getListeningHistory(userId: string, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+
+    const [history, total] = await Promise.all([
+      this.prisma.playHistory.findMany({
+        where: { userId },
+        orderBy: { playedAt: 'desc' },
+        skip,
+        take: limit,
+        distinct: ['trackId'], // show each track once, most recent play
+        include: {
+          track: {
+            include: {
+              genre: true,
+              user: {
+                select: {
+                  displayName: true,
+                  username: true,
+                },
+              },
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                  playHistory: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.playHistory.findMany({
+        where: { userId },
+        distinct: ['trackId'],
+        select: { trackId: true },
+      }),
+    ]);
+
+    return {
+      data: history.map((entry) => ({
+        trackId: entry.track.id,
+        title: entry.track.title,
+        artist: entry.track.user.displayName ?? entry.track.user.username,
+        coverUrl: entry.track.coverUrl ?? null,
+        genre: entry.track.genre?.label ?? null,
+        releaseDate: entry.track.releaseDate?.toISOString() ?? null,
+        playedAt: entry.playedAt.toISOString(),
+        durationSeconds: entry.track.durationSeconds,
+        engagement: {
+          likeCount: entry.track._count.likes,
+          repostCount: entry.track._count.reposts,
+          commentCount: entry.track._count.comments,
+          playCount: entry.track._count.playHistory,
+        },
+      })),
+      meta: {
+        page,
+        limit,
+        total: total.length,
+      },
+    };
+  }
 }
