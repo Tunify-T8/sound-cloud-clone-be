@@ -75,16 +75,15 @@ export class FeedService {
     t.id,
     t.title,
     COALESCE(u_owner."displayName", u_owner.username) AS artist,
-    u_owner."avatarUrl" AS actor_avatar,
-    g.label                   AS genre,
-    t."durationSeconds"       AS "durationSeconds",
-    t."coverUrl"              AS "coverUrl",
-    t."waveformUrl"           AS "waveformUrl",
+    g.label AS genre,
+    t."durationSeconds" AS "durationSeconds",
+    t."coverUrl" AS "coverUrl",
+    t."waveformUrl" AS "waveformUrl",
     (
       SELECT COUNT(*) FROM "Comment" c
       WHERE c."trackId" = t.id
         AND c."isDeleted" = false
-        AND c."isHidden"  = false
+        AND c."isHidden" = false
     ) AS comment_count,
     (
       SELECT COUNT(*) FROM "TrackLike" tl
@@ -95,8 +94,8 @@ export class FeedService {
       WHERE ph."trackId" = t.id
     ) AS play_count,
     (
-      SELECT COUNT(*) FROM "Repost" r
-      WHERE r.trackId = t.id
+      SELECT COUNT(*) FROM "Repost" r2
+      WHERE r2."trackId" = t.id
     ) AS repost_count
   `;
 
@@ -111,66 +110,76 @@ export class FeedService {
       UNION ALL
       SELECT
         ${trackColumns},
-        r."createdAt"          AS activity_at,
-        'repost'::text         AS action,
+        r."createdAt" AS activity_at,
+        'repost'::text AS action,
         COALESCE(u_reposter."displayName", u_reposter.username) AS actor_username,
-        u_reposter."avatarUrl" AS actor_avatar,
+        u_reposter."avatarUrl" AS actor_avatar
       FROM "Repost" r
-      JOIN "Track" t          ON r."trackId" = t.id
-      JOIN "User"  u_owner    ON t."userId"  = u_owner.id
-      JOIN "User"  u_reposter ON r."userId"  = u_reposter.id
-      LEFT JOIN "Genre" g     ON t."genreId" = g.id
+      JOIN "Track" t ON r."trackId" = t.id
+      JOIN "User" u_owner ON t."userId" = u_owner.id
+      JOIN "User" u_reposter ON r."userId" = u_reposter.id
+      LEFT JOIN "Genre" g ON t."genreId" = g.id
       WHERE r."userId" = ANY($1::text[])
         AND ${trackFilters}
     `
       : '';
 
     const sinceFilter = sinceTimestamp
-      ? `AND activity_at > $3::timestamptz`
+      ? `AND activity_at > $2::timestamptz`
       : '';
-    const pagination = sinceTimestamp ? '' : `LIMIT $2 OFFSET ${skip}`;
+
+    const pagination = sinceTimestamp ? '' : `LIMIT $2 OFFSET $3`;
 
     const query = `
     SELECT * FROM (
       SELECT
         ${trackColumns},
-        t."createdAt"          AS activity_at,
-        'post'::text           AS action,
-        COALESCE(u_owner."displayName", u_owner.username) AS actor_username
+        t."createdAt" AS activity_at,
+        'post'::text AS action,
+        COALESCE(u_owner."displayName", u_owner.username) AS actor_username,
+        u_owner."avatarUrl" AS actor_avatar
       FROM "Track" t
-      JOIN "User"  u_owner ON t."userId"  = u_owner.id
-      LEFT JOIN "Genre" g  ON t."genreId" = g.id
+      JOIN "User" u_owner ON t."userId" = u_owner.id
+      LEFT JOIN "Genre" g ON t."genreId" = g.id
       WHERE t."userId" = ANY($1::text[])
         AND ${trackFilters}
 
       ${repostUnion}
     ) AS feed
-    WHERE 1=1 ${sinceFilter}
+    WHERE 1=1
+      ${sinceFilter}
     ORDER BY activity_at DESC
     ${pagination}
   `;
 
     const params: unknown[] = sinceTimestamp
-      ? [followedIds, limit, sinceTimestamp]
-      : [followedIds, limit];
+      ? [followedIds, sinceTimestamp]
+      : [followedIds, limit, skip];
 
-    const rows = (await this.prisma.$queryRawUnsafe<RawFeedRow[]>(
+    const rows = await this.prisma.$queryRawUnsafe<RawFeedRow[]>(
       query,
       ...params,
-    )) as RawFeedRow[];
+    );
 
-    const trackIds = rows.map((r) => r.id);
+    const trackIds = [...new Set(rows.map((r) => r.id))];
 
     const [likedSet, repostedSet] = await Promise.all([
       this.prisma.trackLike
         .findMany({
-          where: { userId, trackId: { in: trackIds } },
+          where: {
+            userId,
+            trackId: { in: trackIds.length > 0 ? trackIds : ['__none__'] },
+          },
           select: { trackId: true },
         })
         .then((likes) => new Set(likes.map((l) => l.trackId))),
+
       this.prisma.repost
         .findMany({
-          where: { userId, trackId: { in: trackIds } },
+          where: {
+            userId,
+            trackId: { in: trackIds.length > 0 ? trackIds : ['__none__'] },
+          },
           select: { trackId: true },
         })
         .then((reposts) => new Set(reposts.map((r) => r.trackId))),
@@ -182,7 +191,7 @@ export class FeedService {
         username: row.actor_username,
         action: row.action,
         date: row.activity_at.toISOString(),
-        avatarUrl: row.actor_avatar
+        avatarUrl: row.actor_avatar,
       },
       title: row.title,
       artist: row.artist,
