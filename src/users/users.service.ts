@@ -425,7 +425,14 @@ export class UsersService {
           username: true,
           displayName: true,
           avatarUrl: true,
+          location: true,
+          isCertified: true,
           _count: { select: { followers: true } },
+          ...(direction === 'following' && {
+            notificationPreferences: {
+              select: { userFollowed: true },
+            },
+          }),
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -435,13 +442,28 @@ export class UsersService {
     ]);
 
     return {
-      [direction]: users.map((u) => ({
-        id: u.id,
-        username: u.username,
-        displayName: u.displayName,
-        avatarUrl: u.avatarUrl,
-        followersCount: u._count.followers,
-      })),
+      [direction]: users.map((u) => {
+        // notificationPreferences only exists on following results
+        const prefs = (
+          u as { notificationPreferences?: { userFollowed: boolean }[] }
+        ).notificationPreferences;
+
+        const isNotificationEnabled =
+          direction === 'following'
+            ? (prefs ?? []).some((p) => p.userFollowed === true)
+            : null;
+
+        return {
+          id: u.id,
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl,
+          location: u.location,
+          isCertified: u.isCertified,
+          followersCount: u._count.followers,
+          isNotificationEnabled,
+        };
+      }),
       page,
       limit,
       hasMore: skip + users.length < total,
@@ -556,12 +578,12 @@ export class UsersService {
     let uploadedCover: string | null = null;
 
     if (files?.avatar?.[0]) {
-       uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
+      uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
       if (uploadedAvatar) data.avatarUrl = uploadedAvatar;
     }
 
     if (files?.cover?.[0]) {
-       uploadedCover = await this.storage.uploadImage(files.cover[0]);
+      uploadedCover = await this.storage.uploadImage(files.cover[0]);
       if (uploadedCover) data.coverUrl = uploadedCover;
     }
 
@@ -600,9 +622,8 @@ export class UsersService {
         this.storage.deleteFile('artwork', oldCoverFile).catch(console.error);
       }
     }
-      return updatedUser;
-    }
-  
+    return updatedUser;
+  }
 
   async deleteSocialLink(userId: string, platform: SocialPlatform) {
     return this.prisma.userSocialLink
