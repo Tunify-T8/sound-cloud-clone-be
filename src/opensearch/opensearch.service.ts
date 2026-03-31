@@ -22,11 +22,11 @@ export class OpensearchService {
   constructor(private readonly configService: ConfigService) {
     this.client = new Client({
       node: this.configService.get<string>('OPENSEARCH_NODE'),
-      auth: {
-        username: this.configService.get<string>('OPENSEARCH_USERNAME') ?? '',
-        password: this.configService.get<string>('OPENSEARCH_PASSWORD') ?? '',
-      },
-      ssl: { rejectUnauthorized: false },
+    //   auth: {
+    //     username: this.configService.get<string>('OPENSEARCH_USERNAME') ?? '',
+    //     password: this.configService.get<string>('OPENSEARCH_PASSWORD') ?? '',
+    //   },
+    //  ssl: { rejectUnauthorized: false },
     });
   }
 
