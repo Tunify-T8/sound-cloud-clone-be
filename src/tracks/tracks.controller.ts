@@ -13,11 +13,13 @@ import {
   Request,
   Patch,
   Delete,
-  ParseUUIDPipe
+  ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { TracksService } from './tracks.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTrackDto } from './dto/create-track.dto';
+import { PlaybackContextDto } from './dto/playback-context.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 
@@ -49,12 +51,24 @@ export class TracksController {
     return this.tracksService.create(req.user?.userId ?? '', dto, artworkFile);
   }
 
+  @Post('playback-context')
+  @UseGuards(JwtAccessGuard)
+  async buildContext(@Body() dto: PlaybackContextDto) {
+    return this.tracksService.buildPlaybackContext(
+      dto.contextType,
+      dto.contextId,
+      dto.startTrackId,
+      dto.shuffle,
+      dto.repeat,
+    );
+  }
+
   @Post(':id/audio')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('file'))
   uploadAudio(
     @Request() req: AuthRequest,
-    @Param('id',ParseUUIDPipe) trackId: string,
+    @Param('id', ParseUUIDPipe) trackId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -74,6 +88,29 @@ export class TracksController {
     );
   }
 
+  @Post(':id/played')
+  @UseGuards(JwtAccessGuard)
+  async markPlayed(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
+    return this.tracksService.markTrackPlayed(trackId, req.user?.userId ?? '');
+  }
+
+  @Get('me/listening-history')
+  @UseGuards(JwtAccessGuard)
+  async getListeningHistory(
+    @Request() req: AuthRequest,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.tracksService.getListeningHistory(
+      req.user?.userId ?? '',
+      Number(page),
+      Number(limit),
+    );
+  }
+
   @Get('me')
   @UseGuards(JwtAccessGuard)
   getMyTracks(@Request() req: AuthRequest) {
@@ -82,13 +119,13 @@ export class TracksController {
 
   @Get(':id/status')
   @UseGuards(JwtAccessGuard)
-  getStatus(@Param('id',ParseUUIDPipe) trackId: string) {
+  getStatus(@Param('id', ParseUUIDPipe) trackId: string) {
     return this.tracksService.getStatus(trackId);
   }
 
   @Get(':id')
   @UseGuards(JwtAccessGuard)
-  async getTrack(@Param('id',ParseUUIDPipe) trackId: string) {
+  async getTrack(@Param('id', ParseUUIDPipe) trackId: string) {
     const track = await this.tracksService.getTrack(trackId);
     if (!track) {
       return { message: 'Track not found', statusCode: 404 };
@@ -98,12 +135,40 @@ export class TracksController {
     // na2es ashoof bs el user authorized wla la (hasaal alfred)
   }
 
+  @Get(':id/playback')
+  @UseGuards(JwtAccessGuard)
+  async getPlaybackBundle(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('privateToken') privateToken?: string,
+  ) {
+    return this.tracksService.getTrackPlaybackBundle(
+      trackId,
+      req.user?.userId ?? '',
+      privateToken,
+    );
+  }
+
+  @Get(':id/stream')
+  @UseGuards(JwtAccessGuard)
+  async getStream(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('privateToken') privateToken?: string,
+  ) {
+    return this.tracksService.getStreamUrl(
+      trackId,
+      req.user?.userId ?? '',
+      privateToken,
+    );
+  }
+
   @Patch(':id')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('artwork'))
   async updateTrack(
     @Request() req: AuthRequest,
-    @Param('id',ParseUUIDPipe) trackId: string,
+    @Param('id', ParseUUIDPipe) trackId: string,
     @Body() dto: UpdateTrackMultipartDto,
     @UploadedFile(
       new ParseFilePipe({
@@ -139,7 +204,10 @@ export class TracksController {
 
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
-  async deleteTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+  async deleteTrack(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
     const result = await this.tracksService.deleteTrack(
       trackId,
       req.user?.userId ?? '',
@@ -152,7 +220,7 @@ export class TracksController {
   @UseInterceptors(FileInterceptor('file'))
   async replaceAudio(
     @Request() req: AuthRequest,
-    @Param('id',ParseUUIDPipe) trackId: string,
+    @Param('id', ParseUUIDPipe) trackId: string,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
