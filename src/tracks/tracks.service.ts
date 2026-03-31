@@ -54,7 +54,7 @@ export class TracksService {
 
     // 2. Hidden by admin
     if (track.isHidden) {
-      return { status: 'blocked', blockedReason: 'deleted' };
+      return { status: 'blocked', blockedReason: 'hidden' };
     }
 
     // 3. Transcoding not finished

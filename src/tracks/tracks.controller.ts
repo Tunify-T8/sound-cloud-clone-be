@@ -51,6 +51,18 @@ export class TracksController {
     return this.tracksService.create(req.user?.userId ?? '', dto, artworkFile);
   }
 
+  @Post('playback-context')
+  @UseGuards(JwtAccessGuard)
+  async buildContext(@Body() dto: PlaybackContextDto) {
+    return this.tracksService.buildPlaybackContext(
+      dto.contextType,
+      dto.contextId,
+      dto.startTrackId,
+      dto.shuffle,
+      dto.repeat,
+    );
+  }
+
   @Post(':id/audio')
   @UseGuards(JwtAccessGuard)
   @UseInterceptors(FileInterceptor('file'))
@@ -83,18 +95,6 @@ export class TracksController {
     @Param('id', ParseUUIDPipe) trackId: string,
   ) {
     return this.tracksService.markTrackPlayed(trackId, req.user?.userId ?? '');
-  }
-
-  @Post('playback-context')
-  @UseGuards(JwtAccessGuard)
-  async buildContext(@Body() dto: PlaybackContextDto) {
-    return this.tracksService.buildPlaybackContext(
-      dto.contextType,
-      dto.contextId,
-      dto.startTrackId,
-      dto.shuffle,
-      dto.repeat,
-    );
   }
 
   @Get('me/listening-history')
