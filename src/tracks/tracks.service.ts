@@ -11,7 +11,14 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
-import type { Prisma, FileFormat } from '@prisma/client';
+import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
+
+interface PlayabilityResult {
+  status: 'playable' | 'preview' | 'blocked';
+  blockedReason: string | null;
+  previewStartSeconds?: number;
+  previewDurationSeconds?: number;
+}
 
 @Injectable()
 export class TracksService {
@@ -21,6 +28,188 @@ export class TracksService {
     private prisma: PrismaService,
     @InjectQueue('tracks') private tracksQueue: Queue,
   ) {}
+
+  private async resolvePlayability(
+    track: {
+      transcodingStatus: TranscodingStatus;
+      isDeleted: boolean;
+      isHidden: boolean;
+      isPublic: boolean;
+      privateToken: string | null;
+      requiresPremium: boolean;
+      releaseDate: Date | null;
+      previewEnabled: boolean;
+      previewStart: number | null;
+      previewDuration: number | null;
+      regionRestrictions: { countryCode: string }[];
+    },
+    userId: string,
+    privateToken?: string,
+    userCountryCode?: string,
+  ): Promise<PlayabilityResult> {
+    // 1. Deleted
+    if (track.isDeleted) {
+      return { status: 'blocked', blockedReason: 'deleted' };
+    }
+
+    // 2. Hidden by admin
+    if (track.isHidden) {
+      return { status: 'blocked', blockedReason: 'hidden' };
+    }
+
+    // 3. Transcoding not finished
+    if (track.transcodingStatus === 'processing') {
+      return { status: 'blocked', blockedReason: 'processing' };
+    }
+
+    if (track.transcodingStatus === 'failed') {
+      return { status: 'blocked', blockedReason: 'processing_failed' };
+    }
+
+    // 4. Private track — check token
+    if (!track.isPublic) {
+      if (!privateToken || privateToken !== track.privateToken) {
+        return { status: 'blocked', blockedReason: 'private_no_token' };
+      }
+    }
+
+    // 5. Scheduled release
+    if (track.releaseDate && track.releaseDate > new Date()) {
+      return { status: 'blocked', blockedReason: 'scheduled_release' };
+    }
+
+    // 6. Region restriction
+    if (track.regionRestrictions.length > 0 && userCountryCode) {
+      const isRestricted = track.regionRestrictions.some(
+        (r) => r.countryCode === userCountryCode,
+      );
+      if (isRestricted) {
+        return { status: 'blocked', blockedReason: 'region_restricted' };
+      }
+    }
+
+    // 7. Premium required
+    if (track.requiresPremium) {
+      const subscription = await this.prisma.subscription.findFirst({
+        where: {
+          userId,
+          status: 'active',
+          plan: { name: { in: ['PRO', 'GOPLUS'] } },
+        },
+      });
+      if (!subscription) {
+        return { status: 'blocked', blockedReason: 'tier_restricted' };
+      }
+    }
+
+    // 8. Preview
+    if (
+      track.previewEnabled &&
+      track.previewStart !== null &&
+      track.previewDuration !== null
+    ) {
+      return {
+        status: 'preview',
+        blockedReason: null,
+        previewStartSeconds: track.previewStart,
+        previewDurationSeconds: track.previewDuration,
+      };
+    }
+
+    // 9. Fully playable
+    return { status: 'playable', blockedReason: null };
+  }
+
+  async getTrackPlaybackBundle(
+    trackId: string,
+    userId: string,
+    privateToken?: string,
+  ) {
+    // 1. Fetch track with everything resolvePlayability needs
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        regionRestrictions: true,
+        genre: true,
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            reposts: true,
+          },
+        },
+      },
+    });
+
+    if (!track) throw new NotFoundException('Track not found');
+
+    // 2. Resolve playability
+    const playability = await this.resolvePlayability(
+      track,
+      userId,
+      privateToken,
+    );
+
+    // 3. Check if authenticated user has liked/reposted/saved this track
+    const [userLike, userRepost, userSave] = await Promise.all([
+      this.prisma.trackLike.findFirst({
+        where: { userId, trackId },
+      }),
+      this.prisma.repost.findFirst({
+        where: { userId, trackId },
+      }),
+      this.prisma.collectionTrack.findFirst({
+        where: {
+          trackId,
+          collection: { userId },
+        },
+      }),
+    ]);
+
+    return {
+      trackId: track.id,
+      title: track.title,
+      artist: {
+        id: track.user.id,
+        username: track.user.username,
+        displayName: track.user.displayName,
+        avatarUrl: track.user.avatarUrl,
+      },
+      durationSeconds: track.durationSeconds,
+      waveformUrl: track.waveformUrl ?? null,
+      coverUrl: track.coverUrl ?? null,
+      contentWarning: track.contentWarning,
+      engagement: {
+        likeCount: track._count.likes,
+        commentCount: track._count.comments,
+        repostCount: track._count.reposts,
+        isLiked: !!userLike,
+        isReposted: !!userRepost,
+        isSaved: !!userSave,
+      },
+      playability: {
+        status: playability.status,
+        blockedReason: playability.blockedReason ?? null,
+        regionBlocked: playability.blockedReason === 'region_restricted',
+        tierBlocked: playability.blockedReason === 'tier_restricted',
+        requiresSubscription: playability.blockedReason === 'tier_restricted',
+      },
+      preview: {
+        enabled: track.previewEnabled,
+        previewStartSeconds: track.previewStart ?? null,
+        previewDurationSeconds: track.previewDuration ?? null,
+      },
+      scheduledReleaseDate: track.releaseDate?.toISOString() ?? null,
+    };
+  }
 
   async create(
     userId: string,
@@ -684,6 +873,227 @@ export class TracksService {
       status: updatedTrack.transcodingStatus,
       waveformUrl: updatedTrack.waveformUrl || '',
       audioUrl: updatedTrack.audioUrl,
+    };
+  }
+
+  async getStreamUrl(trackId: string, userId: string, privateToken?: string) {
+    // 1. Fetch track
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: { regionRestrictions: true },
+    });
+
+    if (!track) throw new NotFoundException('Track not found');
+
+    // 2. Resolve playability
+    const playability = await this.resolvePlayability(
+      track,
+      userId,
+      privateToken,
+    );
+
+    if (playability.status === 'blocked') {
+      throw new ForbiddenException(playability.blockedReason);
+    }
+
+    // 3. Record play event with 30s dedup
+    const recentPlay = await this.prisma.playHistory.findFirst({
+      where: {
+        userId,
+        trackId,
+        playedAt: { gte: new Date(Date.now() - 30_000) },
+      },
+    });
+
+    if (!recentPlay) {
+      await this.prisma.playHistory.create({
+        data: { userId, trackId, completed: false },
+      });
+    }
+
+    // 4. Return raw URL
+    return {
+      trackId: track.id,
+      stream: {
+        url: track.audioUrl,
+        format: track.fileFormat,
+      },
+      preview:
+        playability.status === 'preview'
+          ? {
+              previewStartSeconds: playability.previewStartSeconds,
+              previewDurationSeconds: playability.previewDurationSeconds,
+            }
+          : null,
+    };
+  }
+
+  async markTrackPlayed(trackId: string, userId: string) {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) throw new NotFoundException('Track not found');
+
+    // Find the most recent play record for this user+track
+    const recentPlay = await this.prisma.playHistory.findFirst({
+      where: { userId, trackId },
+      orderBy: { playedAt: 'desc' },
+    });
+
+    // Silently ignore if no play record exists
+    if (!recentPlay) return { message: 'Play recorded' };
+
+    await this.prisma.playHistory.update({
+      where: { id: recentPlay.id },
+      data: { completed: true },
+    });
+
+    return { message: 'Play recorded' };
+  }
+
+  async buildPlaybackContext(
+    contextType: string,
+    contextId: string,
+    startTrackId?: string,
+    shuffle?: boolean,
+    repeat?: string,
+  ) {
+    let trackIds: string[] = [];
+
+    switch (contextType) {
+      case 'playlist': {
+        const tracks = await this.prisma.collectionTrack.findMany({
+          where: { collectionId: contextId },
+          orderBy: { position: 'asc' },
+          select: { trackId: true },
+        });
+        trackIds = tracks.map((t) => t.trackId);
+        break;
+      }
+
+      case 'profile': {
+        const tracks = await this.prisma.track.findMany({
+          where: {
+            userId: contextId,
+            isPublic: true,
+            isDeleted: false,
+            isHidden: false,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        trackIds = tracks.map((t) => t.id);
+        break;
+      }
+
+      case 'history': {
+        const tracks = await this.prisma.playHistory.findMany({
+          where: { userId: contextId },
+          orderBy: { playedAt: 'desc' },
+          select: { trackId: true },
+        });
+        // deduplicate since same track can appear multiple times in history
+        trackIds = [...new Set(tracks.map((t) => t.trackId))];
+        break;
+      }
+
+      default:
+        throw new NotFoundException('Invalid context type');
+    }
+
+    if (trackIds.length === 0) {
+      return {
+        queue: [],
+        currentIndex: 0,
+        shuffle: shuffle ?? false,
+        repeat: repeat ?? 'none',
+        totalCount: 0,
+      };
+    }
+
+    // Apply shuffle if requested
+    if (shuffle) {
+      trackIds = trackIds.sort(() => Math.random() - 0.5);
+    }
+
+    // Find starting index
+    const currentIndex = startTrackId
+      ? Math.max(trackIds.indexOf(startTrackId), 0)
+      : 0;
+
+    console.log(trackIds.map((id) => ({ trackId: id })));
+
+    return {
+      queue: trackIds.map((id) => ({ trackId: id })),
+      currentIndex,
+      shuffle: shuffle ?? false,
+      repeat: repeat ?? 'none',
+      totalCount: trackIds.length,
+    };
+  }
+
+  async getListeningHistory(userId: string, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+
+    const [history, total] = await Promise.all([
+      this.prisma.playHistory.findMany({
+        where: { userId },
+        orderBy: { playedAt: 'desc' },
+        skip,
+        take: limit,
+        distinct: ['trackId'], // show each track once, most recent play
+        include: {
+          track: {
+            include: {
+              genre: true,
+              user: {
+                select: {
+                  displayName: true,
+                  username: true,
+                },
+              },
+              _count: {
+                select: {
+                  likes: true,
+                  comments: true,
+                  reposts: true,
+                  playHistory: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.playHistory.findMany({
+        where: { userId },
+        distinct: ['trackId'],
+        select: { trackId: true },
+      }),
+    ]);
+
+    return {
+      data: history.map((entry) => ({
+        trackId: entry.track.id,
+        title: entry.track.title,
+        artist: entry.track.user.displayName ?? entry.track.user.username,
+        coverUrl: entry.track.coverUrl ?? null,
+        genre: entry.track.genre?.label ?? null,
+        releaseDate: entry.track.releaseDate?.toISOString() ?? null,
+        playedAt: entry.playedAt.toISOString(),
+        durationSeconds: entry.track.durationSeconds,
+        engagement: {
+          likeCount: entry.track._count.likes,
+          repostCount: entry.track._count.reposts,
+          commentCount: entry.track._count.comments,
+          playCount: entry.track._count.playHistory,
+        },
+      })),
+      meta: {
+        page,
+        limit,
+        total: total.length,
+      },
     };
   }
 }
