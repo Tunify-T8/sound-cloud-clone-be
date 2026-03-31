@@ -27,9 +27,9 @@ describe('SearchController', () => {
   // ── globalSearch ──────────────────────────────────────────
   it('should call globalSearch with userId when provided', async () => {
     const query = { q: 'test' };
-    const user = { userId: 'user-1' };
+    const user = { userId: 'user-1', email: 'test@example.com', role: 'user' };
 
-    await controller.globalSearch(query as any, user as any);
+    await controller.globalSearch(query, user);
 
     expect(mockSearchService.globalSearch).toHaveBeenCalledWith(
       query,
@@ -40,7 +40,7 @@ describe('SearchController', () => {
   it('should call globalSearch without userId', async () => {
     const query = { q: 'test' };
 
-    await controller.globalSearch(query as any, undefined);
+    await controller.globalSearch(query, undefined);
 
     expect(mockSearchService.globalSearch).toHaveBeenCalledWith(
       query,
@@ -52,7 +52,7 @@ describe('SearchController', () => {
   it('should call searchTracks', async () => {
     const query = { q: 'track' };
 
-    await controller.searchTracks(query as any);
+    await controller.searchTracks(query);
 
     expect(mockSearchService.searchTracks).toHaveBeenCalledWith(query);
   });
@@ -61,7 +61,7 @@ describe('SearchController', () => {
   it('should call searchCollections', async () => {
     const query = { q: 'album' };
 
-    await controller.searchCollections(query as any);
+    await controller.searchCollections(query);
 
     expect(mockSearchService.searchCollections).toHaveBeenCalledWith(query);
   });
@@ -69,9 +69,9 @@ describe('SearchController', () => {
   // ── searchPeople ──────────────────────────────────────────
   it('should call searchPeople with userId', async () => {
     const query = { q: 'user' };
-    const user = { userId: 'user-1' };
+    const user = { userId: 'user-1', email: 'test@example.com', role: 'user' };
 
-    await controller.searchPeople(query as any, user as any);
+    await controller.searchPeople(query, user);
 
     expect(mockSearchService.searchPeople).toHaveBeenCalledWith(
       query,
@@ -82,7 +82,7 @@ describe('SearchController', () => {
   it('should call searchPeople without userId', async () => {
     const query = { q: 'user' };
 
-    await controller.searchPeople(query as any, undefined);
+    await controller.searchPeople(query, undefined);
 
     expect(mockSearchService.searchPeople).toHaveBeenCalledWith(
       query,
