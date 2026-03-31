@@ -1022,6 +1022,8 @@ export class TracksService {
       ? Math.max(trackIds.indexOf(startTrackId), 0)
       : 0;
 
+    console.log(trackIds.map((id) => ({ trackId: id })));
+
     return {
       queue: trackIds.map((id) => ({ trackId: id })),
       currentIndex,
