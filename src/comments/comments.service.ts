@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { repl } from '@nestjs/core';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -34,7 +35,11 @@ export class CommentsService {
 
         await this.prisma.comment.update({
             where: { id: commentId },
-            data: { isDeleted: true },
+            data: { 
+                isDeleted: true, 
+                deletedAt: new Date(),
+                deletedBy: userId,
+            },
         });
 
         return { 
@@ -43,4 +48,44 @@ export class CommentsService {
         };
         
     }
+
+    async addReply(commentId: string, userId: string, text: string) {
+        const parentComment = await this.prisma.comment.findUnique({
+            where: { id: commentId, isDeleted: false },
+        });
+
+        if (!parentComment) {
+            throw new NotFoundException('Parent comment not found');
+        }
+
+        const reply = await this.prisma.comment.create({
+            data: {
+                userId: userId,
+                trackId: parentComment.trackId,
+                parentCommentId: commentId,
+                content: text,
+            },
+        });
+
+
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+        });
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        return{ 
+            replyId: reply.id,
+            commentId: commentId,
+            userId: userId,
+            username: user.username,
+            avatarUrl: user.avatarUrl,
+            text: text,
+            likesCount: 0,
+            createdAt: reply.createdAt,
+        }
+    }
+
 }

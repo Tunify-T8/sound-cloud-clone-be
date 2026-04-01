@@ -25,11 +25,22 @@ export class CommentsController{
 
     @Delete(':id')
     @UseGuards(JwtAccessGuard)
-    deleteComment(
+    async deleteComment(
         @Request() req: Request,
         @Param('id', ParseUUIDPipe) commentId: string,
     ) {
         const userId = (req as any).user?.userId;
         return this.commentsService.deleteComment(userId, commentId);
+    }
+
+    @Post(':id/replies')
+    @UseGuards(JwtAccessGuard)
+    async addReply(
+        @Request() req: Request,
+        @Param('id', ParseUUIDPipe) commentId: string,
+        @Body('text') text: string,
+    ) {
+        const userId = (req as any).user?.userId;
+        return this.commentsService.addReply(commentId, userId, text);
     }
 }

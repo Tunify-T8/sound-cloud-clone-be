@@ -1142,6 +1142,10 @@ export class TracksService {
       skip,
       take: validLimit,
       include: {
+        _count: {
+          select: { replies: true },
+        },
+
         user: {
           select: {
             id: true,
@@ -1162,7 +1166,7 @@ export class TracksService {
         },
         text: comment.content,
         likesCount: 0, // Replace with actual likes count if available
-        repliesCount: 0, // Replace with actual replies count if available
+        repliesCount: comment._count.replies,
         createdAt: comment.createdAt.toISOString(),
       })),
       page: validPage,
