@@ -11,12 +11,14 @@ import { FollowListDto } from './dto/user-follow.dto';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { StorageService } from 'src/storage/storage.service';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly searchIndexService: SearchIndexService,
   ) {}
 
   async getCurrentUser(userId: string): Promise<UserDto> {
@@ -425,7 +427,14 @@ export class UsersService {
           username: true,
           displayName: true,
           avatarUrl: true,
+          location: true,
+          isCertified: true,
           _count: { select: { followers: true } },
+          ...(direction === 'following' && {
+            notificationPreferences: {
+              select: { userFollowed: true },
+            },
+          }),
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -435,13 +444,28 @@ export class UsersService {
     ]);
 
     return {
-      [direction]: users.map((u) => ({
-        id: u.id,
-        username: u.username,
-        displayName: u.displayName,
-        avatarUrl: u.avatarUrl,
-        followersCount: u._count.followers,
-      })),
+      [direction]: users.map((u) => {
+        // notificationPreferences only exists on following results
+        const prefs = (
+          u as { notificationPreferences?: { userFollowed: boolean }[] }
+        ).notificationPreferences;
+
+        const isNotificationEnabled =
+          direction === 'following'
+            ? (prefs ?? []).some((p) => p.userFollowed === true)
+            : null;
+
+        return {
+          id: u.id,
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl,
+          location: u.location,
+          isCertified: u.isCertified,
+          followersCount: u._count.followers,
+          isNotificationEnabled,
+        };
+      }),
       page,
       limit,
       hasMore: skip + users.length < total,
@@ -556,16 +580,16 @@ export class UsersService {
     let uploadedCover: string | null = null;
 
     if (files?.avatar?.[0]) {
-       uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
+      uploadedAvatar = await this.storage.uploadImage(files.avatar[0]);
       if (uploadedAvatar) data.avatarUrl = uploadedAvatar;
     }
 
     if (files?.cover?.[0]) {
-       uploadedCover = await this.storage.uploadImage(files.cover[0]);
+      uploadedCover = await this.storage.uploadImage(files.cover[0]);
       if (uploadedCover) data.coverUrl = uploadedCover;
     }
 
-    const updatedUser = this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data,
       select: {
@@ -600,9 +624,9 @@ export class UsersService {
         this.storage.deleteFile('artwork', oldCoverFile).catch(console.error);
       }
     }
-      return updatedUser;
-    }
-  
+    await this.searchIndexService.indexUser(userId);
+    return updatedUser;
+  }
 
   async deleteSocialLink(userId: string, platform: SocialPlatform) {
     return this.prisma.userSocialLink

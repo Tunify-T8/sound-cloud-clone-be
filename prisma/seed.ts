@@ -429,6 +429,264 @@ async function main() {
         `Added 2 plays for: "${feedTracks[0].title}" — numberOfListens should be 2`,
       );
     }
+    // ── 6. Search seed — third artist, collections, extra tracks ──
+    const thirdUserId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+    let thirdUser = await prisma.user.findUnique({
+      where: { id: thirdUserId },
+    });
+
+    if (!thirdUser) {
+      try {
+        const hashedPassword = await bcrypt.hash('Artist123!', 10);
+        thirdUser = await prisma.user.create({
+          data: {
+            id: thirdUserId,
+            username: 'jazz_artist',
+            email: 'jazz@soundcloud-clone.com',
+            loginMethod: 'LOCAL',
+            role: 'ARTIST',
+            gender: 'PREFER_NOT_TO_SAY',
+            dateOfBirth: new Date('1988-03-22'),
+            passHash: hashedPassword,
+            displayName: 'Jazz Artist',
+            bio: 'Jazz and blues musician from New Orleans',
+            location: 'New Orleans',
+          },
+        });
+        console.log('Created third user:', thirdUser.username);
+      } catch {
+        console.warn('Could not create third user — skipping');
+      }
+    } else {
+      console.log('Found third user:', thirdUser.username);
+    }
+
+    if (thirdUser) {
+      const jazzGenre = await prisma.genre.findUnique({
+        where: { label: 'Jazz & Blues' },
+      });
+      const popGenre = await prisma.genre.findUnique({
+        where: { label: 'Pop' },
+      });
+      const rockGenre = await prisma.genre.findUnique({
+        where: { label: 'Rock' },
+      });
+
+      // extra tracks by thirdUser for search testing
+      const searchTrackData = [
+        {
+          title: 'Blue Note Sessions',
+          description: 'Late night jazz improvisation',
+          genreId: jazzGenre?.id,
+          tags: ['jazz', 'blues', 'instrumental'],
+        },
+        {
+          title: 'Midnight Blues',
+          description: 'Soulful blues track with guitar',
+          genreId: jazzGenre?.id,
+          tags: ['blues', 'guitar', 'soul'],
+        },
+        {
+          title: 'Summer Pop Anthem',
+          description: 'Upbeat pop song for the summer',
+          genreId: popGenre?.id,
+          tags: ['pop', 'summer', 'upbeat'],
+        },
+        {
+          title: 'Rock Revolution',
+          description: 'Heavy rock with electric guitar riffs',
+          genreId: rockGenre?.id,
+          tags: ['rock', 'guitar', 'heavy'],
+        },
+      ];
+
+      const searchTracks: Awaited<ReturnType<typeof prisma.track.findFirst>>[] =
+        [];
+      for (const data of searchTrackData) {
+        const existing = await prisma.track.findFirst({
+          where: { userId: thirdUserId, title: data.title },
+        });
+
+        if (existing) {
+          searchTracks.push(existing);
+        } else {
+          const track = await prisma.track.create({
+            data: {
+              userId: thirdUserId,
+              genreId: data.genreId,
+              title: data.title,
+              description: data.description,
+              audioUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}.mp3`,
+              waveformUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}-waveform.png`,
+              coverUrl: `https://example.com/${data.title.toLowerCase().replace(/ /g, '-')}-cover.jpg`,
+              durationSeconds: Math.floor(Math.random() * 300) + 60,
+              fileFormat: 'mp3',
+              isPublic: true,
+              allowDownloads: true,
+              tags: {
+                create: data.tags.map((tag) => ({ tag })),
+              },
+            },
+          });
+          searchTracks.push(track);
+          console.log(`Created search track: "${track.title}"`);
+        }
+      }
+
+      // also add tags to secondUser's existing feed tracks for tag search testing
+      const feedTrackAlpha = await prisma.track.findFirst({
+        where: { userId: secondUserId, title: 'Feed Track Alpha' },
+      });
+      if (feedTrackAlpha) {
+        const existingTag = await prisma.trackTag.findFirst({
+          where: { trackId: feedTrackAlpha.id, tag: 'hiphop' },
+        });
+        if (!existingTag) {
+          await prisma.trackTag.createMany({
+            data: [
+              { trackId: feedTrackAlpha.id, tag: 'hiphop' },
+              { trackId: feedTrackAlpha.id, tag: 'rap' },
+            ],
+            skipDuplicates: true,
+          });
+          console.log('Added tags to Feed Track Alpha');
+        }
+      }
+
+      // ── Album by thirdUser ──────────────────────────────────────
+      const existingAlbum = await prisma.collection.findFirst({
+        where: { userId: thirdUserId, title: 'Blue Note Collection' },
+      });
+
+      let album = existingAlbum;
+      if (!album) {
+        album = await prisma.collection.create({
+          data: {
+            userId: thirdUserId,
+            title: 'Blue Note Collection',
+            description: 'A collection of jazz and blues tracks',
+            coverUrl: 'https://example.com/blue-note-cover.jpg',
+            type: 'ALBUM',
+            isPublic: true,
+          },
+        });
+        console.log(`Created album: "${album.title}"`);
+      }
+
+      // add tracks to album
+      if (searchTracks.length >= 2) {
+        for (let i = 0; i < 2; i++) {
+          const track = searchTracks[i];
+          if (!track) continue;
+          const existing = await prisma.collectionTrack.findFirst({
+            where: { collectionId: album.id, trackId: track.id },
+          });
+          if (!existing) {
+            await prisma.collectionTrack.create({
+              data: {
+                collectionId: album.id,
+                trackId: track.id,
+                position: i + 1,
+              },
+            });
+          }
+        }
+        console.log(`Added tracks to album: "${album.title}"`);
+      }
+
+      // ── Playlist by mainUser ────────────────────────────────────
+      if (user) {
+        const existingPlaylist = await prisma.collection.findFirst({
+          where: { userId, title: 'My Favorites Playlist' },
+        });
+
+        let playlist = existingPlaylist;
+        if (!playlist) {
+          playlist = await prisma.collection.create({
+            data: {
+              userId,
+              title: 'My Favorites Playlist',
+              description: 'A mix of my favorite tracks',
+              coverUrl: 'https://example.com/playlist-cover.jpg',
+              type: 'PLAYLIST',
+              isPublic: true,
+            },
+          });
+          console.log(`Created playlist: "${playlist.title}"`);
+        }
+
+        // add a mix of tracks from different users to the playlist
+        const playlistTracks = [
+          ...(searchTracks.length > 0 ? [searchTracks[0]] : []),
+          ...(searchTracks.length > 2 ? [searchTracks[2]] : []),
+        ];
+
+        for (let i = 0; i < playlistTracks.length; i++) {
+          const track = playlistTracks[i];
+          if (!track) continue;
+
+          const existing = await prisma.collectionTrack.findFirst({
+            where: { collectionId: playlist.id, trackId: track.id },
+          });
+          if (!existing) {
+            await prisma.collectionTrack.create({
+              data: {
+                collectionId: playlist.id,
+                trackId: track.id,
+                position: i + 1,
+              },
+            });
+          }
+        }
+        console.log(`Added tracks to playlist: "${playlist.title}"`);
+      }
+
+      // ── Second album by secondUser ──────────────────────────────
+      if (secondUser) {
+        const existingAlbum2 = await prisma.collection.findFirst({
+          where: { userId: secondUserId, title: 'Hip Hop Anthology' },
+        });
+
+        let album2 = existingAlbum2;
+        if (!album2) {
+          album2 = await prisma.collection.create({
+            data: {
+              userId: secondUserId,
+              title: 'Hip Hop Anthology',
+              description: 'The best hip hop tracks compiled',
+              coverUrl: 'https://example.com/hiphop-anthology-cover.jpg',
+              type: 'ALBUM',
+              isPublic: true,
+            },
+          });
+          console.log(`Created album: "${album2.title}"`);
+        }
+
+        const feedTrackBeta = await prisma.track.findFirst({
+          where: { userId: secondUserId, title: 'Feed Track Beta' },
+        });
+        const feedTrackGamma = await prisma.track.findFirst({
+          where: { userId: secondUserId, title: 'Feed Track Gamma' },
+        });
+
+        const album2Tracks = [feedTrackBeta, feedTrackGamma].filter(Boolean);
+        for (let i = 0; i < album2Tracks.length; i++) {
+          const t = album2Tracks[i];
+          if (!t) continue;
+          const existing = await prisma.collectionTrack.findFirst({
+            where: { collectionId: album2.id, trackId: t.id },
+          });
+          if (!existing) {
+            await prisma.collectionTrack.create({
+              data: { collectionId: album2.id, trackId: t.id, position: i + 1 },
+            });
+          }
+        }
+        console.log(`Added tracks to album: "${album2.title}"`);
+      }
+
+      console.log('\nSearch seed complete.');
+    }
 
     console.log('\nFeed seed complete. Test with GET /feed/me as mainUser.');
     console.log('Expected feed items: 3 posts + 1 repost by secondUser');
