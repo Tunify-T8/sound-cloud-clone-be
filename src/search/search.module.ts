@@ -9,5 +9,6 @@ import { PrismaModule } from 'src/prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [SearchController],
   providers: [OpensearchService, SearchIndexService, SearchService],
+  exports: [SearchIndexService],
 })
 export class SearchModule {}
