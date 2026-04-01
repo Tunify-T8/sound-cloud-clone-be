@@ -11,12 +11,14 @@ import { FollowListDto } from './dto/user-follow.dto';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { StorageService } from 'src/storage/storage.service';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly searchIndexService: SearchIndexService,
   ) {}
 
   async getCurrentUser(userId: string): Promise<UserDto> {
@@ -587,7 +589,7 @@ export class UsersService {
       if (uploadedCover) data.coverUrl = uploadedCover;
     }
 
-    const updatedUser = this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data,
       select: {
@@ -622,6 +624,7 @@ export class UsersService {
         this.storage.deleteFile('artwork', oldCoverFile).catch(console.error);
       }
     }
+    await this.searchIndexService.indexUser(userId);
     return updatedUser;
   }
 

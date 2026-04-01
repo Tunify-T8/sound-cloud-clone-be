@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  ParseUUIDPipe,
   // ParseFilePipe,
   // MaxFileSizeValidator,
   // FileTypeValidator,
@@ -157,7 +158,7 @@ export class UsersController {
   //returns profile from id
   @Get(':id')
   getUser(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
   ) {
     return this.usersService.getUser(id, user?.userId);
@@ -167,7 +168,7 @@ export class UsersController {
   //gets follower list of a user
   @Get(':id/followers')
   getFollowers(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
@@ -178,7 +179,7 @@ export class UsersController {
   //gets following list of a user
   @Get(':id/following')
   getFollowing(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
@@ -252,7 +253,7 @@ export class UsersController {
 
   @Get(':id/artist-tools/upload-minutes')
   @UseGuards(JwtAccessGuard)
-  getUploadMinutes(@Param('id') userId: string) {
+  getUploadMinutes(@Param('id', ParseUUIDPipe) userId: string) {
     return this.usersService.getUploadMinutes(userId);
   }
 }
