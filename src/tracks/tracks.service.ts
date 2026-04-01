@@ -282,6 +282,11 @@ export class TracksService {
       throw new NotFoundException('Track not found');
     }
 
+    if(track.isDeleted)
+    {
+      throw new NotFoundException('Track was deleted');
+    }
+
     const genre = track.genreId
       ? await this.prisma.genre.findUnique({
           where: { id: track.genreId },
@@ -401,7 +406,9 @@ export class TracksService {
     artworkFile?: Express.Multer.File,
   ) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, 
+        isDeleted: false
+      },
       include: {
         trackArtists: true,
         regionRestrictions: true,
@@ -637,7 +644,9 @@ export class TracksService {
 
   async deleteTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId,
+        isDeleted: false
+       },
     });
 
     if (!track) {
@@ -686,7 +695,9 @@ export class TracksService {
 
     // 2. Find track
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, 
+        isDeleted: false
+      },
     });
 
     // 3. Check track exists
@@ -745,7 +756,7 @@ export class TracksService {
   async likeTrack(trackId: string, userId: string) { 
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     }); 
 
     if (!track) {
@@ -798,7 +809,7 @@ export class TracksService {
   async unlikeTrack(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
@@ -909,7 +920,7 @@ export class TracksService {
   async repostTrack(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
@@ -963,7 +974,7 @@ export class TracksService {
   async unrepostTrack(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
     
     if (!track) {
@@ -1013,7 +1024,7 @@ export class TracksService {
   async getTrackReposts(trackId: string, page: number = 1, limit: number = 20) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
@@ -1068,7 +1079,7 @@ export class TracksService {
   async addComment(trackId: string, userId: string, text: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
@@ -1108,7 +1119,7 @@ export class TracksService {
   async getTrackComments(trackId: string, page: number = 1, limit: number = 20) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
