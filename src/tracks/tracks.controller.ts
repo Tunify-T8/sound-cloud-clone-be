@@ -226,6 +226,21 @@ export class TracksController {
     );
   }
 
+  @Get(':id/comments')
+  @UseGuards(JwtAccessGuard)
+  async getTrackComments(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    // Implement getTrackComments logic here
+    return this.tracksService.getTrackComments(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
 }
 
 

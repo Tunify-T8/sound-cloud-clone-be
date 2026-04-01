@@ -1105,5 +1105,64 @@ export class TracksService {
     }
   }
 
+  async getTrackComments(trackId: string, page: number = 1, limit: number = 20) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.comment.count({
+      where: { trackId },
+    });
+
+    // Get comments for the current page
+    const allcomments = await this.prisma.comment.findMany({
+      where: { trackId },
+      skip,
+      take: validLimit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      comments: allcomments.map((comment) => ({
+        commentId: comment.id,
+        user: {
+          userId: comment.user.id,
+          username: comment.user.username,
+          avatarUrl: comment.user.avatarUrl,
+        },
+        text: comment.content,
+        likesCount: 0, // Replace with actual likes count if available
+        repliesCount: 0, // Replace with actual replies count if available
+        createdAt: comment.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / validLimit),
+      hasNextPage: skip + allcomments.length < totalCount,
+      hasPreviousPage: skip > 0,
+    };
+
+  }
+
 }
 
