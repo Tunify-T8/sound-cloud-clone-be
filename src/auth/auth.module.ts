@@ -10,6 +10,8 @@ import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
 import { JwtAccessGuard } from './guards/jwt-access.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { GoogleAuthService } from './google-auth.service';
+import { JwtOptionalStrategy } from './strategies/jwt-optional.strategy';
+import { JwtOptionalGuard } from './guards/jwt-optional.guard';
 
 @Module({
   imports: [
@@ -24,12 +26,15 @@ import { GoogleAuthService } from './google-auth.service';
     AuthService,
     GoogleAuthService,
     JwtAccessStrategy, // strategy must be a provider so Passport can find it
+    JwtOptionalStrategy, 
     JwtAccessGuard,
+    JwtOptionalGuard,
     RolesGuard,
   ],
   exports: [
     AuthService,
     JwtAccessGuard, // export so other modules can use @UseGuards(JwtAccessGuard)
+    JwtOptionalGuard,
     RolesGuard, // export so other modules can use @UseGuards(RolesGuard)
   ],
 })
