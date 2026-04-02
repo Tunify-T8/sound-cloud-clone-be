@@ -17,10 +17,14 @@ const mockPrisma = {
   playHistory: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
+    groupBy: jest.fn(),
   },
   track: {
     findMany: jest.fn(),
     count: jest.fn(),
+  },
+  user: {
+    findMany: jest.fn(),
   },
   $queryRawUnsafe: jest.fn(),
 };
@@ -285,6 +289,136 @@ describe('FeedService', () => {
 
       expect(result.personalized).toBe(true);
       expect(result.items).toHaveLength(1);
+    });
+  });
+
+  // ── getSuggestedArtists ─────────────────────────────────────
+  describe('getSuggestedArtists', () => {
+    const mockArtist = {
+      id: 'artist-1',
+      username: 'artist1',
+      displayName: 'Artist 1',
+      avatarUrl: null,
+      isCertified: false,
+      _count: { followers: 10, tracks: 2 },
+    };
+
+    beforeEach(() => {
+      mockPrisma.follow.findMany.mockResolvedValue([]);
+      mockPrisma.playHistory.groupBy.mockResolvedValue([]);
+      mockPrisma.track.findMany.mockResolvedValue([]);
+      mockPrisma.user.findMany.mockResolvedValue([]);
+    });
+
+    it('should return empty list when no artists found', async () => {
+      const result = await service.getSuggestedArtists(1, 10, 'user-1');
+
+      expect(result.items).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should exclude current user and followed artists', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([
+        { followingId: 'artist-2' },
+      ]);
+
+      mockPrisma.playHistory.groupBy.mockResolvedValue([
+        { trackId: 'track-1', _count: { trackId: 5 } },
+      ]);
+
+      mockPrisma.track.findMany.mockResolvedValue([
+        { id: 'track-1', userId: 'artist-2' }, // followed artist
+      ]);
+
+      mockPrisma.user.findMany.mockResolvedValue([]);
+
+      const result = await service.getSuggestedArtists(1, 10, 'user-1');
+
+      expect(result.items).toEqual([]);
+    });
+
+    it('should prioritize artists by listen count', async () => {
+      mockPrisma.playHistory.groupBy.mockResolvedValue([
+        { trackId: 't1', _count: { trackId: 10 } },
+        { trackId: 't2', _count: { trackId: 5 } },
+      ]);
+
+      mockPrisma.track.findMany.mockResolvedValue([
+        { id: 't1', userId: 'artist-1' },
+        { id: 't2', userId: 'artist-2' },
+      ]);
+
+      mockPrisma.user.findMany
+        // remaining artists
+        .mockResolvedValueOnce([])
+        // final fetch
+        .mockResolvedValueOnce([mockArtist, { ...mockArtist, id: 'artist-2' }]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.items[0].id).toBe('artist-1'); // highest plays first
+    });
+
+    it('should include fallback artists when no listening history', async () => {
+      mockPrisma.playHistory.groupBy.mockResolvedValue([]);
+
+      mockPrisma.user.findMany
+        // remaining artists
+        .mockResolvedValueOnce([{ id: 'artist-1' }])
+        // final fetch
+        .mockResolvedValueOnce([mockArtist]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe('artist-1');
+    });
+
+    it('should paginate correctly', async () => {
+      mockPrisma.playHistory.groupBy.mockResolvedValue([]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }])
+        .mockResolvedValueOnce([{ ...mockArtist, id: 'a2' }]);
+
+      const result = await service.getSuggestedArtists(2, 1);
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(1);
+      expect(result.items[0].id).toBe('a2');
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should map artist fields correctly', async () => {
+      mockPrisma.playHistory.groupBy.mockResolvedValue([]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([{ id: 'artist-1' }])
+        .mockResolvedValueOnce([mockArtist]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.items[0]).toEqual({
+        id: 'artist-1',
+        username: 'artist1',
+        displayName: 'Artist 1',
+        isCertified: false,
+        avatarUrl: null,
+        followersCount: 10,
+        tracksCount: 2,
+      });
+    });
+
+    it('should return hasMore = false when last page reached', async () => {
+      mockPrisma.playHistory.groupBy.mockResolvedValue([]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([{ id: 'artist-1' }])
+        .mockResolvedValueOnce([mockArtist]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.hasMore).toBe(false);
     });
   });
 });
