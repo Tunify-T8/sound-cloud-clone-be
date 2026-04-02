@@ -480,7 +480,10 @@ export class FeedService {
     userId?: string,
   ): Promise<SuggestionListDto> {
     const skip = (page - 1) * limit;
+
+    // ── Get followed artists (for exclusion) ───────────────────
     let followedArtistIds: string[] = [];
+
     if (userId) {
       const follows = await this.prisma.follow.findMany({
         where: { followerId: userId },
@@ -489,58 +492,35 @@ export class FeedService {
 
       followedArtistIds = follows.map((f) => f.followingId);
     }
+
     const excludedIds = new Set<string>(followedArtistIds);
     if (userId) excludedIds.add(userId);
 
-    const playCounts = await this.prisma.playHistory.groupBy({
-      by: ['trackId'],
-      _count: { trackId: true },
-    });
+    // ── Aggregate GLOBAL listens per artist (optimized) ────────
+    const listenedArtists = await this.prisma.$queryRaw<
+      { userId: string; plays: number }[]
+    >`
+    SELECT t."userId", COUNT(ph."trackId")::int AS plays
+    FROM "PlayHistory" ph
+    JOIN "Track" t ON ph."trackId" = t.id
+    JOIN "User" u ON t."userId" = u.id
+    WHERE t."isDeleted" = false
+      AND t."isHidden" = false
+      AND t."isPublic" = true
+      AND u.role = 'ARTIST'
+      AND u."isDeleted" = false
+      AND u."isActive" = true
+      AND u."isSuspended" = false
+      AND u."isBanned" = false
+    GROUP BY t."userId"
+    ORDER BY plays DESC
+  `;
 
-    const playCountMap = new Map<string, number>(
-      playCounts.map((p) => [p.trackId, p._count.trackId]),
-    );
+    const listenedArtistIds = listenedArtists
+      .map((artist) => artist.userId)
+      .filter((id) => !excludedIds.has(id));
 
-    const trackIds = [...playCountMap.keys()];
-
-    const listenedTracks = trackIds.length
-      ? await this.prisma.track.findMany({
-          where: {
-            id: { in: trackIds },
-            isDeleted: false,
-            isHidden: false,
-            isPublic: true,
-            user: {
-              role: UserType.ARTIST,
-              isDeleted: false,
-              isActive: true,
-              isSuspended: false,
-              isBanned: false,
-            },
-          },
-          select: {
-            id: true,
-            userId: true,
-          },
-        })
-      : [];
-
-    const artistListenCounts = new Map<string, number>();
-
-    for (const track of listenedTracks) {
-      const plays = playCountMap.get(track.id) ?? 0;
-      const current = artistListenCounts.get(track.userId) ?? 0;
-      artistListenCounts.set(track.userId, current + plays);
-    }
-
-    for (const excludedId of excludedIds) {
-      artistListenCounts.delete(excludedId);
-    }
-
-    const listenedArtistIds = [...artistListenCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([artistId]) => artistId);
-
+    // ── Fallback artists (must have at least one public track) ─
     const remainingArtists = await this.prisma.user.findMany({
       where: {
         role: UserType.ARTIST,
@@ -559,16 +539,13 @@ export class FeedService {
           },
         },
       },
-      select: {
-        id: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
     });
 
     const remainingArtistIds = remainingArtists.map((artist) => artist.id);
 
+    // ── Final ranking: listened first, then fallback artists ───
     const rankedArtistIds = [...listenedArtistIds, ...remainingArtistIds];
 
     const total = rankedArtistIds.length;
@@ -584,6 +561,7 @@ export class FeedService {
       };
     }
 
+    // ── Fetch final artist data ────────────────────────────────
     const artists = await this.prisma.user.findMany({
       where: {
         id: { in: paginatedArtistIds },
@@ -625,15 +603,18 @@ export class FeedService {
 
     const items: ArtistDto[] = paginatedArtistIds
       .map((id) => artistMap.get(id))
-      .filter(Boolean)
+      .filter(
+        (artist): artist is Exclude<typeof artist, undefined> =>
+          artist !== undefined && !excludedIds.has(artist.id),
+      )
       .map((artist) => ({
-        id: artist!.id,
-        username: artist!.username,
-        displayName: artist!.displayName,
-        isCertified: artist!.isCertified,
-        avatarUrl: artist!.avatarUrl,
-        followersCount: artist!._count.followers,
-        tracksCount: artist!._count.tracks,
+        id: artist.id,
+        username: artist.username,
+        displayName: artist.displayName,
+        isCertified: artist.isCertified,
+        avatarUrl: artist.avatarUrl,
+        followersCount: artist._count.followers,
+        tracksCount: artist._count.tracks,
       }));
 
     return {
