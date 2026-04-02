@@ -43,10 +43,21 @@ export class FeedController {
   }
 
   @Get('discover')
+  @UseGuards(JwtAccessGuard)
   getDiscover(
     @Query() query: GetDiscoverQueryDto,
     @Optional() @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
   ) {
     return this.feedService.getDiscover(query, user?.userId);
+  }
+
+  @Get('suggested-artists')
+  @UseGuards(JwtAccessGuard)
+  getSuggestedArtists(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Optional() @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
+  ) {
+    return this.feedService.getSuggestedArtists(page, limit, user?.userId);
   }
 }
