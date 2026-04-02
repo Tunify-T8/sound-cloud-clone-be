@@ -258,8 +258,7 @@ model Follow {
   followerId  String
   followingId String
   createdAt   DateTime @default(now())
-  follower    User     @relation("Follower", fields: [followerId], references: [id])
-  following   User     @relation("Following", fields: [followingId], references: [id])
+ 
 
   follower  User @relation("Follower", fields: [followerId], references: [id])
   following User @relation("Following", fields: [followingId], references: [id])
@@ -278,10 +277,9 @@ model UserBlock {
   blocked        User     @relation("Blocked", fields: [blockedId], references: [id])
   blocker        User     @relation("Blocker", fields: [blockerId], references: [id])
 
-  blocker User @relation("Blocker", fields: [blockerId], references: [id])
-  blocked User @relation("Blocked", fields: [blockedId], references: [id])
+ 
 
-   @@unique([blockerId, blockedId])
+  @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
 }
