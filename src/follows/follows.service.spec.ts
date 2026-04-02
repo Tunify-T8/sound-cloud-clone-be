@@ -11,7 +11,6 @@ import { Prisma } from '@prisma/client';
 
 describe('FollowsService', () => {
   let service: FollowsService;
-  let prisma: PrismaService;
 
   const mockPrisma = {
     user: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
@@ -41,7 +40,6 @@ describe('FollowsService', () => {
     }).compile();
 
     service = module.get<FollowsService>(FollowsService);
-    prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
   });
 
@@ -64,7 +62,6 @@ describe('FollowsService', () => {
       mockPrisma.userBlock.findFirst.mockResolvedValue({ id: 'b1' });
       await expect(service.followUser(followerId, followingId)).rejects.toThrow(ForbiddenException);
     });
-
 
     it('should follow successfully', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: followingId, isDeleted: false, isActive: true, isBanned: false, isSuspended: false });
@@ -95,7 +92,6 @@ describe('FollowsService', () => {
         ConflictException,
       );
     });
-
   });
 
   // ── UNFOLLOW USER ───────────────────────────────────────────
@@ -247,8 +243,8 @@ describe('FollowsService', () => {
       const limit = 2;
 
       mockPrisma.follow.findMany
-        .mockResolvedValueOnce([{ followingId: 'u2' }]) // following
-        .mockResolvedValueOnce([{ followingId: 'u4' }]); // friends of friends
+        .mockResolvedValueOnce([{ followingId: 'u2' }])
+        .mockResolvedValueOnce([{ followingId: 'u4' }]);
       mockPrisma.userBlock.findMany.mockResolvedValue([{ blockerId: 'u1', blockedId: 'u3' }]);
       mockPrisma.user.findMany.mockResolvedValue([{ id: 'u5', username: 'user5', avatarUrl: '', coverUrl: '', role: 'LISTENER', isCertified: false, _count: { followers: 5 } }]);
       mockPrisma.user.count.mockResolvedValue(1);
@@ -269,8 +265,8 @@ describe('FollowsService', () => {
       const limit = 2;
 
       mockPrisma.follow.findMany
-        .mockResolvedValueOnce([{ followingId: 'u2' }]) // following
-        .mockResolvedValueOnce([{ followingId: 'u4' }]); // friends of friends
+        .mockResolvedValueOnce([{ followingId: 'u2' }])
+        .mockResolvedValueOnce([{ followingId: 'u4' }]);
       mockPrisma.userBlock.findMany.mockResolvedValue([{ blockerId: 'u1', blockedId: 'u3' }]);
       mockPrisma.user.findMany.mockResolvedValue([{ id: 'a1', username: 'artist1', avatarUrl: '', coverUrl: '', role: 'ARTIST', isCertified: true, _count: { followers: 10 } }]);
       mockPrisma.user.count.mockResolvedValue(1);
