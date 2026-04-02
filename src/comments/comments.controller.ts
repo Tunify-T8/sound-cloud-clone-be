@@ -43,4 +43,16 @@ export class CommentsController{
         const userId = (req as any).user?.userId;
         return this.commentsService.addReply(commentId, userId, text);
     }
+
+    @Get(':id/replies')
+    @UseGuards(JwtAccessGuard)
+    async getReplies(
+        @Request() req: Request,
+        @Param('id', ParseUUIDPipe) commentId: string,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 20,
+    ) {
+        const userId = (req as any).user?.userId;
+        return this.commentsService.getReplies(commentId, userId, page, limit);
+    }
 }

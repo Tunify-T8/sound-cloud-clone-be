@@ -88,4 +88,44 @@ export class CommentsService {
         }
     }
 
+    async getReplies(commentId: string, userId: string, page: number = 1, limit: number = 20) {
+        const parentComment = await this.prisma.comment.findUnique({
+            where: { id: commentId, isDeleted: false },
+        });
+
+        if (!parentComment) {
+            throw new NotFoundException('Parent comment not found');
+        }
+
+        const replies = await this.prisma.comment.findMany({
+            where: { parentCommentId: commentId, isDeleted: false },
+            include: {
+                user: true,
+                _count: {
+                    select: { 
+                        replies: true, 
+                        likes: true,
+                    },
+                    
+                },
+            },
+            orderBy: { createdAt: 'asc' },
+            skip: (page - 1) * limit,
+            take: limit,
+        });
+        return {
+            replies: replies.map(reply => ({
+                replyId: reply.id,
+                commentId: commentId,
+                userId: reply.userId,
+                username: reply.user.username,
+                avatarUrl: reply.user.avatarUrl,
+                text: reply.content,
+                likesCount: reply._count.likes,
+                repliesCount: reply._count.replies,
+            }))
+        };
+
+    }
+
 }

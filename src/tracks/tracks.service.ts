@@ -1143,7 +1143,11 @@ export class TracksService {
       take: validLimit,
       include: {
         _count: {
-          select: { replies: true },
+          select: { 
+            replies: true,
+            likes: true,
+          },
+          
         },
 
         user: {
@@ -1165,7 +1169,7 @@ export class TracksService {
           avatarUrl: comment.user.avatarUrl,
         },
         text: comment.content,
-        likesCount: 0, // Replace with actual likes count if available
+        likesCount: comment._count.likes,
         repliesCount: comment._count.replies,
         createdAt: comment.createdAt.toISOString(),
       })),
