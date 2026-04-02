@@ -8,6 +8,8 @@ import {
   TrendingType,
 } from './dto/trending.dto';
 import { DiscoverListDto, GetDiscoverQueryDto } from './dto/discover.dto';
+import { ArtistDto, SuggestionListDto } from './dto/suggested-artists.dto';
+import { UserType } from '@prisma/client';
 
 interface RawTopGenre {
   genreId: string;
@@ -17,6 +19,9 @@ interface RawFeedRow {
   id: string;
   title: string;
   artist: string;
+  artist_id: string;
+  artist_avatar: string | null;
+  artist_is_certified: boolean;
   genre: string | null;
   durationSeconds: number;
   coverUrl: string | null;
@@ -29,6 +34,7 @@ interface RawFeedRow {
   action: 'post' | 'repost';
   actor_username: string;
   actor_avatar: string | null;
+  actor_id: string;
 }
 
 interface RawTrendingTrack {
@@ -75,15 +81,18 @@ export class FeedService {
     t.id,
     t.title,
     COALESCE(u_owner."displayName", u_owner.username) AS artist,
-    g.label AS genre,
-    t."durationSeconds" AS "durationSeconds",
-    t."coverUrl" AS "coverUrl",
-    t."waveformUrl" AS "waveformUrl",
+    u_owner.id                                        AS artist_id,
+    u_owner."avatarUrl"                               AS artist_avatar,
+    u_owner."isCertified"                             AS artist_is_certified,
+    g.label                                           AS genre,
+    t."durationSeconds"                               AS "durationSeconds",
+    t."coverUrl"                                      AS "coverUrl",
+    t."waveformUrl"                                   AS "waveformUrl",
     (
       SELECT COUNT(*) FROM "Comment" c
       WHERE c."trackId" = t.id
         AND c."isDeleted" = false
-        AND c."isHidden" = false
+        AND c."isHidden"  = false
     ) AS comment_count,
     (
       SELECT COUNT(*) FROM "TrackLike" tl
@@ -110,15 +119,16 @@ export class FeedService {
       UNION ALL
       SELECT
         ${trackColumns},
-        r."createdAt" AS activity_at,
-        'repost'::text AS action,
+        r."createdAt"                                       AS activity_at,
+        'repost'::text                                      AS action,
         COALESCE(u_reposter."displayName", u_reposter.username) AS actor_username,
-        u_reposter."avatarUrl" AS actor_avatar
+        u_reposter."avatarUrl"                              AS actor_avatar,
+        u_reposter.id                                       AS actor_id
       FROM "Repost" r
-      JOIN "Track" t ON r."trackId" = t.id
-      JOIN "User" u_owner ON t."userId" = u_owner.id
-      JOIN "User" u_reposter ON r."userId" = u_reposter.id
-      LEFT JOIN "Genre" g ON t."genreId" = g.id
+      JOIN "Track" t          ON r."trackId"  = t.id
+      JOIN "User"  u_owner    ON t."userId"   = u_owner.id
+      JOIN "User"  u_reposter ON r."userId"   = u_reposter.id
+      LEFT JOIN "Genre" g     ON t."genreId"  = g.id
       WHERE r."userId" = ANY($1::text[])
         AND ${trackFilters}
     `
@@ -127,20 +137,20 @@ export class FeedService {
     const sinceFilter = sinceTimestamp
       ? `AND activity_at > $2::timestamptz`
       : '';
-
     const pagination = sinceTimestamp ? '' : `LIMIT $2 OFFSET $3`;
 
     const query = `
     SELECT * FROM (
       SELECT
         ${trackColumns},
-        t."createdAt" AS activity_at,
-        'post'::text AS action,
-        COALESCE(u_owner."displayName", u_owner.username) AS actor_username,
-        u_owner."avatarUrl" AS actor_avatar
+        t."createdAt"                                       AS activity_at,
+        'post'::text                                        AS action,
+        COALESCE(u_owner."displayName", u_owner.username)  AS actor_username,
+        u_owner."avatarUrl"                                 AS actor_avatar,
+        u_owner.id                                          AS actor_id
       FROM "Track" t
-      JOIN "User" u_owner ON t."userId" = u_owner.id
-      LEFT JOIN "Genre" g ON t."genreId" = g.id
+      JOIN "User"  u_owner ON t."userId"  = u_owner.id
+      LEFT JOIN "Genre" g  ON t."genreId" = g.id
       WHERE t."userId" = ANY($1::text[])
         AND ${trackFilters}
 
@@ -156,10 +166,10 @@ export class FeedService {
       ? [followedIds, sinceTimestamp]
       : [followedIds, limit, skip];
 
-    const rows = await this.prisma.$queryRawUnsafe<RawFeedRow[]>(
+    const rows = (await this.prisma.$queryRawUnsafe<RawFeedRow[]>(
       query,
       ...params,
-    );
+    )) as RawFeedRow[];
 
     const trackIds = [...new Set(rows.map((r) => r.id))];
 
@@ -173,7 +183,6 @@ export class FeedService {
           select: { trackId: true },
         })
         .then((likes) => new Set(likes.map((l) => l.trackId))),
-
       this.prisma.repost
         .findMany({
           where: {
@@ -186,8 +195,12 @@ export class FeedService {
     ]);
 
     const items: FeedPostDto[] = rows.map((row) => ({
-      id: row.id,
+      trackId: row.id,
+      artistId: row.artist_id,
+      artistAvatarUrl: row.artist_avatar ?? '',
+      artistIsCertified: row.artist_is_certified,
       action: {
+        id: row.actor_id,
         username: row.actor_username,
         action: row.action,
         date: row.activity_at.toISOString(),
@@ -458,6 +471,176 @@ export class FeedService {
       limit,
       hasMore: skip + tracks.length < total,
       personalized: true,
+    };
+  }
+
+  async getSuggestedArtists(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<SuggestionListDto> {
+    const skip = (page - 1) * limit;
+    let followedArtistIds: string[] = [];
+    if (userId) {
+      const follows = await this.prisma.follow.findMany({
+        where: { followerId: userId },
+        select: { followingId: true },
+      });
+
+      followedArtistIds = follows.map((f) => f.followingId);
+    }
+    const excludedIds = new Set<string>(followedArtistIds);
+    if (userId) excludedIds.add(userId);
+
+    const playCounts = await this.prisma.playHistory.groupBy({
+      by: ['trackId'],
+      _count: { trackId: true },
+    });
+
+    const playCountMap = new Map<string, number>(
+      playCounts.map((p) => [p.trackId, p._count.trackId]),
+    );
+
+    const trackIds = [...playCountMap.keys()];
+
+    const listenedTracks = trackIds.length
+      ? await this.prisma.track.findMany({
+          where: {
+            id: { in: trackIds },
+            isDeleted: false,
+            isHidden: false,
+            isPublic: true,
+            user: {
+              role: UserType.ARTIST,
+              isDeleted: false,
+              isActive: true,
+              isSuspended: false,
+              isBanned: false,
+            },
+          },
+          select: {
+            id: true,
+            userId: true,
+          },
+        })
+      : [];
+
+    const artistListenCounts = new Map<string, number>();
+
+    for (const track of listenedTracks) {
+      const plays = playCountMap.get(track.id) ?? 0;
+      const current = artistListenCounts.get(track.userId) ?? 0;
+      artistListenCounts.set(track.userId, current + plays);
+    }
+
+    for (const excludedId of excludedIds) {
+      artistListenCounts.delete(excludedId);
+    }
+
+    const listenedArtistIds = [...artistListenCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([artistId]) => artistId);
+
+    const remainingArtists = await this.prisma.user.findMany({
+      where: {
+        role: UserType.ARTIST,
+        isDeleted: false,
+        isActive: true,
+        isSuspended: false,
+        isBanned: false,
+        id: {
+          notIn: [...listenedArtistIds, ...excludedIds],
+        },
+        tracks: {
+          some: {
+            isDeleted: false,
+            isHidden: false,
+            isPublic: true,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const remainingArtistIds = remainingArtists.map((artist) => artist.id);
+
+    const rankedArtistIds = [...listenedArtistIds, ...remainingArtistIds];
+
+    const total = rankedArtistIds.length;
+    const paginatedArtistIds = rankedArtistIds.slice(skip, skip + limit);
+    const hasMore = skip + limit < total;
+
+    if (!paginatedArtistIds.length) {
+      return {
+        items: [],
+        page,
+        limit,
+        hasMore,
+      };
+    }
+
+    const artists = await this.prisma.user.findMany({
+      where: {
+        id: { in: paginatedArtistIds },
+        role: UserType.ARTIST,
+        isDeleted: false,
+        isActive: true,
+        isSuspended: false,
+        isBanned: false,
+        tracks: {
+          some: {
+            isDeleted: false,
+            isHidden: false,
+            isPublic: true,
+          },
+        },
+      },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        avatarUrl: true,
+        isCertified: true,
+        _count: {
+          select: {
+            followers: true,
+            tracks: {
+              where: {
+                isDeleted: false,
+                isHidden: false,
+                isPublic: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const artistMap = new Map(artists.map((artist) => [artist.id, artist]));
+
+    const items: ArtistDto[] = paginatedArtistIds
+      .map((id) => artistMap.get(id))
+      .filter(Boolean)
+      .map((artist) => ({
+        id: artist!.id,
+        username: artist!.username,
+        displayName: artist!.displayName,
+        isCertified: artist!.isCertified,
+        avatarUrl: artist!.avatarUrl,
+        followersCount: artist!._count.followers,
+        tracksCount: artist!._count.tracks,
+      }));
+
+    return {
+      items,
+      page,
+      limit,
+      hasMore,
     };
   }
 
