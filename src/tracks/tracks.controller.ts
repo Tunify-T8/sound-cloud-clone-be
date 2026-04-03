@@ -22,7 +22,6 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { PlaybackContextDto } from './dto/playback-context.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
-import { use } from 'passport';
 
 interface AuthRequest extends Request {
   user?: { userId: string };

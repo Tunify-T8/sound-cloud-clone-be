@@ -12,9 +12,6 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
-import { time } from 'console';
-import { timestamp } from 'rxjs';
-import { availableFormats } from 'fluent-ffmpeg';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 import { SearchIndexService } from '../search-index/search-index.service';
 

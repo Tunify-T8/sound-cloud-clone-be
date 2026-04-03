@@ -1,5 +1,4 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { repl } from '@nestjs/core';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
