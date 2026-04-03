@@ -55,4 +55,24 @@ export class CommentsController{
         const userId = (req as any).user?.userId;
         return this.commentsService.getReplies(commentId, userId, page, limit);
     }
+
+    @Post(':id/like')
+    @UseGuards(JwtAccessGuard)
+    async likeComment(
+        @Request() req: Request,
+        @Param('id', ParseUUIDPipe) commentId: string,
+    ) {
+        const userId = (req as any).user?.userId;
+        return this.commentsService.likeComment(commentId, userId);
+    }
+
+    @Delete(':id/like')
+    @UseGuards(JwtAccessGuard)
+    async unlikeComment(
+        @Request() req: Request,
+        @Param('id', ParseUUIDPipe) commentId: string,
+    ) {
+        const userId = (req as any).user?.userId;
+        return this.commentsService.unlikeComment(commentId, userId);
+    }
 }

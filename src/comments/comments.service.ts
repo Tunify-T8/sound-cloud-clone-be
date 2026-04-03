@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { repl } from '@nestjs/core';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -128,4 +128,61 @@ export class CommentsService {
 
     }
 
+    async likeComment(commentId: string, userId: string) {
+        const comment = await this.prisma.comment.findUnique({
+            where: { id: commentId, isDeleted: false },
+        });
+
+        if (!comment) {
+            throw new NotFoundException('Comment not found');
+        }
+
+        const existingLike = await this.prisma.commentLike.findFirst({
+            where: { userId: userId, commentId: commentId },
+        });
+
+        if (existingLike) {
+            throw new ForbiddenException('You have already liked this comment');
+        }
+
+        await this.prisma.commentLike.create({
+            data: { userId: userId, commentId: commentId },
+        });
+
+        return { 
+            message: 'Comment liked successfully',
+            likesCount: await this.prisma.commentLike.count({
+                where: { commentId: commentId },
+            }),
+        };
+    }
+
+    async unlikeComment(commentId: string, userId: string) {
+        const comment = await this.prisma.comment.findUnique({
+            where: { id: commentId, isDeleted: false },
+        });
+
+        if (!comment) {
+            throw new NotFoundException('Comment not found');
+        }
+
+        const existingLike = await this.prisma.commentLike.findFirst({
+            where: { userId: userId, commentId: commentId },
+        });
+
+        if (!existingLike) {
+            throw new ForbiddenException('You have not liked this comment');
+        }
+
+        await this.prisma.commentLike.delete({
+            where: { id: existingLike.id },
+        });
+        return { 
+            message: 'Comment unliked successfully', 
+            likesCount: await this.prisma.commentLike.count({
+                where: { commentId: commentId },
+            }),
+        };
+
+    }
 }
