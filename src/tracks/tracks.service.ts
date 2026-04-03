@@ -16,6 +16,7 @@ import { time } from 'console';
 import { timestamp } from 'rxjs';
 import { availableFormats } from 'fluent-ffmpeg';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
+import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
   status: 'playable' | 'preview' | 'blocked';
@@ -37,6 +38,7 @@ export class TracksService {
     private storage: StorageService,
     private audio: AudioService,
     private prisma: PrismaService,
+    private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
   ) {}
 
@@ -312,6 +314,8 @@ export class TracksService {
       throw new NotFoundException('Track not found after creation');
     }
 
+    await this.searchIndexService.indexTrack(track.id);
+
     // Return formatted response matching getTrack() format
     return {
       id: trackWithRelations.id,
@@ -470,8 +474,8 @@ export class TracksService {
             comments: true,
             reposts: true,
             playHistory: true,
-          }
-        }
+          },
+        },
       },
     });
 
@@ -479,8 +483,7 @@ export class TracksService {
       throw new NotFoundException('Track not found');
     }
 
-    if(track.isDeleted)
-    {
+    if (track.isDeleted) {
       throw new NotFoundException('Track was deleted');
     }
 
@@ -500,21 +503,20 @@ export class TracksService {
     });
 
     const likedUsers = await this.prisma.user.findMany({
-      where: {id: { in: trackLikes.map((like) => like.userId) } }
-    })
+      where: { id: { in: trackLikes.map((like) => like.userId) } },
+    });
 
     const trackReposts = await this.prisma.repost.findMany({
       where: { trackId: trackId },
     });
 
     const repostedUsers = await this.prisma.user.findMany({
-      where: {id: { in: trackReposts.map((repost) => repost.userId) } }
+      where: { id: { in: trackReposts.map((repost) => repost.userId) } },
     });
 
     const trackComments = await this.prisma.comment.findMany({
       where: { trackId: trackId },
     });
-
 
     const filteredTrack = {
       trackId: track.id,
@@ -534,18 +536,25 @@ export class TracksService {
       privacy: track.isPublic ? 'public' : 'private',
       scheduledReleaseDate: track.releaseDate?.toISOString() || null,
       likes: {
-          count: track._count.likes,
-          users: likedUsers.map((user) => ({
-            username: user.username,
-            timestamp: trackLikes.find((like) => like.userId === user.id)?.createdAt.toISOString() || null,
-          }))
+        count: track._count.likes,
+        users: likedUsers.map((user) => ({
+          username: user.username,
+          timestamp:
+            trackLikes
+              .find((like) => like.userId === user.id)
+              ?.createdAt.toISOString() || null,
+        })),
       },
       reposts: {
         count: track._count.reposts,
         users: repostedUsers.map((user) => ({
           username: user.username,
-          timestamp: trackReposts.find((repost) => repost.userId === user.id)?.createdAt.toISOString() || null,
-        }))},
+          timestamp:
+            trackReposts
+              .find((repost) => repost.userId === user.id)
+              ?.createdAt.toISOString() || null,
+        })),
+      },
       comments: {
         count: track._count.comments,
         data: trackComments.map((comment) => ({
@@ -604,9 +613,7 @@ export class TracksService {
     artworkFile?: Express.Multer.File,
   ) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId, 
-        isDeleted: false
-      },
+      where: { id: trackId, isDeleted: false },
       include: {
         trackArtists: true,
         regionRestrictions: true,
@@ -807,6 +814,8 @@ export class TracksService {
         })
       : null;
 
+    await this.searchIndexService.indexTrack(trackId);
+
     // 10. Return formatted response matching create() and getTrack() format
     return {
       trackId: updatedTrackFinal.id,
@@ -842,9 +851,7 @@ export class TracksService {
 
   async deleteTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId,
-        isDeleted: false
-       },
+      where: { id: trackId, isDeleted: false },
     });
 
     if (!track) {
@@ -863,6 +870,8 @@ export class TracksService {
         deletedBy: userId,
       },
     });
+
+    await this.searchIndexService.removeTrack(trackId);
 
     return { message: 'Track deleted successfully' };
   }
@@ -893,9 +902,7 @@ export class TracksService {
 
     // 2. Find track
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId, 
-        isDeleted: false
-      },
+      where: { id: trackId, isDeleted: false },
     });
 
     // 3. Check track exists
@@ -951,11 +958,11 @@ export class TracksService {
     };
   }
 
-  async likeTrack(trackId: string, userId: string) { 
+  async likeTrack(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
-    }); 
+    });
 
     if (!track) {
       throw new NotFoundException('Track not found');
@@ -1001,7 +1008,7 @@ export class TracksService {
         title: updatedTrack?.title,
         likesCount: updatedTrack?._count.likes || 0,
       },
-    };    
+    };
   }
 
   async unlikeTrack(trackId: string, userId: string) {
@@ -1062,7 +1069,7 @@ export class TracksService {
     if (!track) {
       throw new NotFoundException('Track not found');
     }
-    
+
     // Validate pagination parameters
     const validPage = Math.max(1, page);
     const validLimit = Math.max(1, Math.min(limit, 100)); // Cap at 100 max
@@ -1111,7 +1118,6 @@ export class TracksService {
       totalPages,
       hasNextPage,
       hasPreviousPage,
-    
     };
   }
 
@@ -1166,7 +1172,6 @@ export class TracksService {
         repostsCount: updatedTrack?._count.reposts || 0,
       },
     };
-
   }
 
   async unrepostTrack(trackId: string, userId: string) {
@@ -1174,7 +1179,7 @@ export class TracksService {
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
     });
-    
+
     if (!track) {
       throw new NotFoundException('Track not found');
     }
@@ -1216,7 +1221,6 @@ export class TracksService {
         repostsCount: updatedTrack?._count.reposts || 0,
       },
     };
-
   }
 
   async getTrackReposts(trackId: string, page: number = 1, limit: number = 20) {
@@ -1271,7 +1275,6 @@ export class TracksService {
       hasNextPage: skip + allreposts.length < totalCount,
       hasPreviousPage: skip > 0,
     };
-
   }
 
   async addComment(trackId: string, userId: string, text: string) {
@@ -1297,7 +1300,7 @@ export class TracksService {
       where: { id: userId },
     });
 
-    return{
+    return {
       comment: {
         id: comment.id,
         userId: userId,
@@ -1306,15 +1309,19 @@ export class TracksService {
         text: comment.content,
         likesCount: 0,
         repliesCount: 0,
-        createdAt: comment.createdAt.toISOString(), 
+        createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
         where: { trackId },
       }),
-    }
+    };
   }
 
-  async getTrackComments(trackId: string, page: number = 1, limit: number = 20) {
+  async getTrackComments(
+    trackId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1341,11 +1348,10 @@ export class TracksService {
       take: validLimit,
       include: {
         _count: {
-          select: { 
+          select: {
             replies: true,
             likes: true,
           },
-          
         },
 
         user: {
@@ -1378,7 +1384,6 @@ export class TracksService {
       hasNextPage: skip + allcomments.length < totalCount,
       hasPreviousPage: skip > 0,
     };
-
   }
 
   async getStreamUrl(trackId: string, userId: string, privateToken?: string) {
@@ -1644,6 +1649,4 @@ export class TracksService {
       },
     };
   }
-  
 }
-
