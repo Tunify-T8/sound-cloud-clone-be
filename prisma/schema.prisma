@@ -59,6 +59,7 @@ model User {
   trackLikes      TrackLike[]
   reposts         Repost[]
   collectionLikes CollectionLike[]
+  commentLikes    CommentLike[]
   comments        Comment[]
   collections     Collection[]
 
@@ -339,6 +340,20 @@ model TrackLike {
   @@index([trackId])
 }
 
+model CommentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  comment Comment @relation(fields: [commentId], references: [id])
+
+  @@unique([userId, commentId])
+  @@index([userId])
+  @@index([commentId])
+}
+
 model Repost {
   id        String   @id @default(uuid())
   userId    String
@@ -371,7 +386,6 @@ model Comment {
   trackId         String
   parentCommentId String?
   content         String   @db.VarChar(500)
-  timestamp       Int
   isEdited        Boolean  @default(false)
   createdAt       DateTime @default(now())
 
@@ -386,6 +400,7 @@ model Comment {
   track         Track     @relation(fields: [trackId], references: [id])
   parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
   replies       Comment[] @relation("CommentReplies")
+  likes         CommentLike[]
   hiddenByUser  User?     @relation("CommentHiddenBy", fields: [hiddenBy], references: [id])
   deletedByUser User?     @relation("CommentDeletedBy", fields: [deletedBy], references: [id])
 

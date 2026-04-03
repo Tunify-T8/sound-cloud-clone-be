@@ -11,6 +11,9 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
+import { time } from 'console';
+import { timestamp } from 'rxjs';
+import { availableFormats } from 'fluent-ffmpeg';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 
 interface PlayabilityResult {
@@ -453,11 +456,24 @@ export class TracksService {
         trackArtists: true,
         regionRestrictions: true,
         tags: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            reposts: true,
+            playHistory: true,
+          }
+        }
       },
     });
 
     if (!track) {
       throw new NotFoundException('Track not found');
+    }
+
+    if(track.isDeleted)
+    {
+      throw new NotFoundException('Track was deleted');
     }
 
     const genre = track.genreId
@@ -470,6 +486,27 @@ export class TracksService {
           where: { id: track.subGenreId },
         })
       : null;
+
+    const trackLikes = await this.prisma.trackLike.findMany({
+      where: { trackId: trackId },
+    });
+
+    const likedUsers = await this.prisma.user.findMany({
+      where: {id: { in: trackLikes.map((like) => like.userId) } }
+    })
+
+    const trackReposts = await this.prisma.repost.findMany({
+      where: { trackId: trackId },
+    });
+
+    const repostedUsers = await this.prisma.user.findMany({
+      where: {id: { in: trackReposts.map((repost) => repost.userId) } }
+    });
+
+    const trackComments = await this.prisma.comment.findMany({
+      where: { trackId: trackId },
+    });
+
 
     const filteredTrack = {
       trackId: track.id,
@@ -487,6 +524,29 @@ export class TracksService {
       durationSeconds: track.durationSeconds,
       privacy: track.isPublic ? 'public' : 'private',
       scheduledReleaseDate: track.releaseDate?.toISOString() || null,
+      likes: {
+          count: track._count.likes,
+          users: likedUsers.map((user) => ({
+            username: user.username,
+            timestamp: trackLikes.find((like) => like.userId === user.id)?.createdAt.toISOString() || null,
+          }))
+      },
+      reposts: {
+        count: track._count.reposts,
+        users: repostedUsers.map((user) => ({
+          username: user.username,
+          timestamp: trackReposts.find((repost) => repost.userId === user.id)?.createdAt.toISOString() || null,
+        }))},
+      comments: {
+        count: track._count.comments,
+        data: trackComments.map((comment) => ({
+          id: comment.id,
+          userId: comment.userId,
+          text: comment.content,
+          timestamp: comment.createdAt.toISOString(),
+        })),
+      },
+      plays_count: track._count.playHistory,
       availability: {
         type: 'worldwide',
         regions: track.regionRestrictions?.map((r) => r.countryCode) || [],
@@ -535,7 +595,9 @@ export class TracksService {
     artworkFile?: Express.Multer.File,
   ) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, 
+        isDeleted: false
+      },
       include: {
         trackArtists: true,
         regionRestrictions: true,
@@ -771,7 +833,9 @@ export class TracksService {
 
   async deleteTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId,
+        isDeleted: false
+       },
     });
 
     if (!track) {
@@ -820,7 +884,9 @@ export class TracksService {
 
     // 2. Find track
     const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+      where: { id: trackId, 
+        isDeleted: false
+      },
     });
 
     // 3. Check track exists
@@ -874,6 +940,436 @@ export class TracksService {
       waveformUrl: updatedTrack.waveformUrl || '',
       audioUrl: updatedTrack.audioUrl,
     };
+  }
+
+  async likeTrack(trackId: string, userId: string) { 
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    }); 
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Check if user already liked this track
+    const existingLike = await this.prisma.trackLike.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (existingLike) {
+      throw new ForbiddenException('You already liked this track');
+    }
+
+    // Create the track like and map it to user and track
+    await this.prisma.trackLike.create({
+      data: {
+        user: { connect: { id: userId } },
+        track: { connect: { id: trackId } },
+      },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { likes: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after liking');
+    }
+
+    return {
+      message: 'Track liked successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        likesCount: updatedTrack?._count.likes || 0,
+      },
+    };    
+  }
+
+  async unlikeTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const existingLike = await this.prisma.trackLike.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (!existingLike) {
+      throw new ForbiddenException('You have not liked this track');
+    }
+
+    // Delete the track like
+    await this.prisma.trackLike.delete({
+      where: { id: existingLike.id },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { likes: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after unliking');
+    }
+
+    return {
+      message: 'Track unliked successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        likesCount: updatedTrack?._count.likes || 0,
+      },
+    };
+  }
+
+  async getTrackLikes(trackId: string, page: number = 1, limit: number = 20) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+    
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100)); // Cap at 100 max
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.trackLike.count({
+      where: { trackId },
+    });
+
+    // Get paginated likes with user info
+    const likes = await this.prisma.trackLike.findMany({
+      where: { trackId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: validLimit,
+    });
+
+    const totalPages = Math.ceil(totalCount / validLimit);
+    const hasNextPage = validPage < totalPages;
+    const hasPreviousPage = validPage > 1;
+
+    return {
+      trackId: track.id,
+      title: track.title,
+      likes: likes.map((like) => ({
+        user: {
+          id: like.user.id,
+          username: like.user.username,
+          avatarUrl: like.user.avatarUrl,
+        },
+        likedAt: like.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      total: totalCount,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage,
+    
+    };
+  }
+
+  async repostTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Check if user already reposted this track
+    const existingRepost = await this.prisma.repost.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (existingRepost) {
+      throw new ForbiddenException('You already reposted this track');
+    }
+
+    // Create the repost and map it to user and track
+    await this.prisma.repost.create({
+      data: {
+        user: { connect: { id: userId } },
+        track: { connect: { id: trackId } },
+      },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after reposting');
+    }
+
+    return {
+      message: 'Track reposted successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        repostsCount: updatedTrack?._count.reposts || 0,
+      },
+    };
+
+  }
+
+  async unrepostTrack(trackId: string, userId: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+    
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const existingRepost = await this.prisma.repost.findFirst({
+      where: {
+        trackId,
+        userId,
+      },
+    });
+
+    if (!existingRepost) {
+      throw new ForbiddenException('You have not reposted this track');
+    }
+
+    // Delete the repost
+    await this.prisma.repost.delete({
+      where: { id: existingRepost.id },
+    });
+
+    const updatedTrack = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      include: {
+        _count: {
+          select: { reposts: true },
+        },
+      },
+    });
+
+    if (!updatedTrack) {
+      throw new NotFoundException('Track not found after unreposting');
+    }
+
+    return {
+      message: 'Track unreposted successfully',
+      data: {
+        trackId: updatedTrack?.id,
+        title: updatedTrack?.title,
+        repostsCount: updatedTrack?._count.reposts || 0,
+      },
+    };
+
+  }
+
+  async getTrackReposts(trackId: string, page: number = 1, limit: number = 20) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.repost.count({
+      where: { trackId },
+    });
+
+    // Get reposts for the current page
+    const allreposts = await this.prisma.repost.findMany({
+      where: { trackId },
+      skip,
+      take: validLimit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      reposts: allreposts.map((repost) => ({
+        user: {
+          userId: repost.user.id,
+          username: repost.user.username,
+          avatarUrl: repost.user.avatarUrl,
+        },
+        repostedAt: repost.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / validLimit),
+      hasNextPage: skip + allreposts.length < totalCount,
+      hasPreviousPage: skip > 0,
+    };
+
+  }
+
+  async addComment(trackId: string, userId: string, text: string) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Create the comment and map it to user and track
+    const comment = await this.prisma.comment.create({
+      data: {
+        userId: userId,
+        trackId: trackId,
+        content: text,
+      },
+    });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    return{
+      comment: {
+        id: comment.id,
+        userId: userId,
+        username: user?.username || 'Unknown',
+        avatarUrl: user?.avatarUrl || null,
+        text: comment.content,
+        likesCount: 0,
+        repliesCount: 0,
+        createdAt: comment.createdAt.toISOString(), 
+      },
+      commentsCount: await this.prisma.comment.count({
+        where: { trackId },
+      }),
+    }
+  }
+
+  async getTrackComments(trackId: string, page: number = 1, limit: number = 20) {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
+
+    // Get total count
+    const totalCount = await this.prisma.comment.count({
+      where: { trackId },
+    });
+
+    // Get comments for the current page
+    const allcomments = await this.prisma.comment.findMany({
+      where: { trackId },
+      skip,
+      take: validLimit,
+      include: {
+        _count: {
+          select: { 
+            replies: true,
+            likes: true,
+          },
+          
+        },
+
+        user: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return {
+      comments: allcomments.map((comment) => ({
+        commentId: comment.id,
+        user: {
+          userId: comment.user.id,
+          username: comment.user.username,
+          avatarUrl: comment.user.avatarUrl,
+        },
+        text: comment.content,
+        likesCount: comment._count.likes,
+        repliesCount: comment._count.replies,
+        createdAt: comment.createdAt.toISOString(),
+      })),
+      page: validPage,
+      limit: validLimit,
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / validLimit),
+      hasNextPage: skip + allcomments.length < totalCount,
+      hasPreviousPage: skip > 0,
+    };
+
   }
 
   async getStreamUrl(trackId: string, userId: string, privateToken?: string) {
@@ -1096,4 +1592,6 @@ export class TracksService {
       },
     };
   }
+  
 }
+
