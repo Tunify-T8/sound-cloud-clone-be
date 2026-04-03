@@ -9,10 +9,12 @@ import { TracksModule } from './tracks/tracks.module';
 import { StorageModule } from './storage/storage.module';
 import { AudioModule } from './audio/audio.module';
 import { BullModule } from '@nestjs/bull';
+import { FollowsModule } from './follows/follows.module';
 import { FeedModule } from './feed/feed.module';
 import { SearchModule } from './search/search.module';
 import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { OpensearchService } from './opensearch/opensearch.service';
     TracksModule,
     StorageModule,
     AudioModule,
+    FollowsModule,
     BullModule.forRoot({
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
@@ -31,6 +34,7 @@ import { OpensearchService } from './opensearch/opensearch.service';
     }),
     FeedModule,
     SearchModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],

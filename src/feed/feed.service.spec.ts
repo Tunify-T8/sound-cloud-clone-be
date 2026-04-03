@@ -17,11 +17,16 @@ const mockPrisma = {
   playHistory: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
+    groupBy: jest.fn(),
   },
   track: {
     findMany: jest.fn(),
     count: jest.fn(),
   },
+  user: {
+    findMany: jest.fn(),
+  },
+  $queryRaw: jest.fn(),
   $queryRawUnsafe: jest.fn(),
 };
 
@@ -285,6 +290,130 @@ describe('FeedService', () => {
 
       expect(result.personalized).toBe(true);
       expect(result.items).toHaveLength(1);
+    });
+  });
+
+  // ── getSuggestedArtists ─────────────────────────────────────
+  describe('getSuggestedArtists', () => {
+    const mockArtist = {
+      id: 'artist-1',
+      username: 'artist1',
+      displayName: 'Artist One',
+      avatarUrl: null,
+      isCertified: false,
+      _count: {
+        followers: 10,
+        tracks: 5,
+      },
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return empty list when no artists available', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([]);
+      mockPrisma.$queryRaw.mockResolvedValue([]);
+      mockPrisma.user.findMany.mockResolvedValue([]);
+
+      const result = await service.getSuggestedArtists(1, 10, 'user-1');
+
+      expect(result.items).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should exclude followed artists and self', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([
+        { followingId: 'artist-2' },
+      ]);
+
+      mockPrisma.$queryRaw.mockResolvedValue([
+        { userId: 'artist-2', plays: 50 }, // should be excluded
+        { userId: 'artist-3', plays: 40 },
+      ]);
+
+      mockPrisma.user.findMany
+        // first call → remaining artists
+        .mockResolvedValueOnce([{ id: 'artist-4' }])
+        // second call → final artist fetch
+        .mockResolvedValueOnce([
+          { ...mockArtist, id: 'artist-3' },
+          { ...mockArtist, id: 'artist-4' },
+        ]);
+
+      const result = await service.getSuggestedArtists(1, 10, 'user-1');
+
+      expect(result.items.find((a) => a.id === 'artist-2')).toBeUndefined();
+      expect(result.items.find((a) => a.id === 'user-1')).toBeUndefined();
+    });
+
+    it('should prioritize listened artists over fallback artists', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([]);
+
+      mockPrisma.$queryRaw.mockResolvedValue([
+        { userId: 'artist-1', plays: 100 }, // listened
+      ]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([{ id: 'artist-2' }]) // fallback
+        .mockResolvedValueOnce([
+          { ...mockArtist, id: 'artist-1' },
+          { ...mockArtist, id: 'artist-2' },
+        ]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.items[0].id).toBe('artist-1'); // listened first
+      expect(result.items[1].id).toBe('artist-2');
+    });
+
+    it('should paginate results correctly', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([]);
+      mockPrisma.$queryRaw.mockResolvedValue([
+        { userId: 'artist-1', plays: 100 },
+        { userId: 'artist-2', plays: 90 },
+        { userId: 'artist-3', plays: 80 },
+      ]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([]) // no fallback
+        .mockResolvedValueOnce([{ ...mockArtist, id: 'artist-2' }]);
+
+      const result = await service.getSuggestedArtists(2, 1);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe('artist-2');
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should return hasMore = false when last page reached', async () => {
+      mockPrisma.follow.findMany.mockResolvedValue([]);
+      mockPrisma.$queryRaw.mockResolvedValue([
+        { userId: 'artist-1', plays: 100 },
+      ]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ ...mockArtist, id: 'artist-1' }]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should handle undefined userId (no exclusions)', async () => {
+      mockPrisma.$queryRaw.mockResolvedValue([
+        { userId: 'artist-1', plays: 100 },
+      ]);
+
+      mockPrisma.user.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ ...mockArtist, id: 'artist-1' }]);
+
+      const result = await service.getSuggestedArtists(1, 10);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe('artist-1');
     });
   });
 });
