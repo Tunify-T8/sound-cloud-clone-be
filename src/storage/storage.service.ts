@@ -110,4 +110,19 @@ export class StorageService {
 
     if (error) throw new Error(`Delete failed: ${error.message}`);
   }
+
+  async getSignedUrl(filePath: string, expiresIn: number): Promise<string> {
+    // extract just the filename from the full public URL if needed
+    const filename = filePath.split('/').pop() ?? filePath;
+
+    const { data, error } = await this.supabase.storage
+      .from('audio')
+      .createSignedUrl(filename, expiresIn);
+
+    if (error || !data) {
+      throw new Error(`Failed to generate signed URL: ${error?.message}`);
+    }
+
+    return data.signedUrl;
+  }
 }

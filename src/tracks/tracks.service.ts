@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { AudioService } from '../audio/audio.service';
@@ -21,6 +22,13 @@ interface PlayabilityResult {
   blockedReason: string | null;
   previewStartSeconds?: number;
   previewDurationSeconds?: number;
+}
+
+export interface QueueTrack {
+  trackId: string;
+  title: string;
+  artist: string;
+  durationSeconds: number;
 }
 
 @Injectable()
@@ -521,6 +529,7 @@ export class TracksService {
         : null,
       tags: track.tags.map((t) => t.tag),
       artists: track.trackArtists,
+      privateToken: track.isPublic ? null : track.privateToken,
       durationSeconds: track.durationSeconds,
       privacy: track.isPublic ? 'public' : 'private',
       scheduledReleaseDate: track.releaseDate?.toISOString() || null,
@@ -1407,11 +1416,15 @@ export class TracksService {
       });
     }
 
-    // 4. Return raw URL
+    // 4. Generate signed URL
+    const signedUrl = await this.storage.getSignedUrl(track.audioUrl, 600);
+
+    // 5. Return signed URL
     return {
       trackId: track.id,
       stream: {
-        url: track.audioUrl,
+        url: signedUrl,
+        expiresInSeconds: 600,
         format: track.fileFormat,
       },
       preview:
@@ -1455,16 +1468,29 @@ export class TracksService {
     shuffle?: boolean,
     repeat?: string,
   ) {
-    let trackIds: string[] = [];
+    let queueTracks: QueueTrack[] = [];
 
     switch (contextType) {
       case 'playlist': {
         const tracks = await this.prisma.collectionTrack.findMany({
           where: { collectionId: contextId },
           orderBy: { position: 'asc' },
-          select: { trackId: true },
+          include: {
+            track: {
+              include: {
+                user: {
+                  select: { displayName: true, username: true },
+                },
+              },
+            },
+          },
         });
-        trackIds = tracks.map((t) => t.trackId);
+        queueTracks = tracks.map((t) => ({
+          trackId: t.trackId,
+          title: t.track.title,
+          artist: t.track.user.displayName ?? t.track.user.username,
+          durationSeconds: t.track.durationSeconds,
+        }));
         break;
       }
 
@@ -1477,9 +1503,18 @@ export class TracksService {
             isHidden: false,
           },
           orderBy: { createdAt: 'desc' },
-          select: { id: true },
+          include: {
+            user: {
+              select: { displayName: true, username: true },
+            },
+          },
         });
-        trackIds = tracks.map((t) => t.id);
+        queueTracks = tracks.map((t) => ({
+          trackId: t.id,
+          title: t.title,
+          artist: t.user.displayName ?? t.user.username,
+          durationSeconds: t.durationSeconds,
+        }));
         break;
       }
 
@@ -1487,18 +1522,34 @@ export class TracksService {
         const tracks = await this.prisma.playHistory.findMany({
           where: { userId: contextId },
           orderBy: { playedAt: 'desc' },
-          select: { trackId: true },
+          include: {
+            track: {
+              include: {
+                user: {
+                  select: { displayName: true, username: true },
+                },
+              },
+            },
+          },
         });
         // deduplicate since same track can appear multiple times in history
-        trackIds = [...new Set(tracks.map((t) => t.trackId))];
+        const seen = new Set<string>();
+        queueTracks = tracks
+          .filter((t) => !seen.has(t.trackId) && seen.add(t.trackId))
+          .map((t) => ({
+            trackId: t.trackId,
+            title: t.track.title,
+            artist: t.track.user.displayName ?? t.track.user.username,
+            durationSeconds: t.track.durationSeconds,
+          }));
         break;
       }
 
       default:
-        throw new NotFoundException('Invalid context type');
+        throw new BadRequestException('Invalid context type');
     }
 
-    if (trackIds.length === 0) {
+    if (queueTracks.length === 0) {
       return {
         queue: [],
         currentIndex: 0,
@@ -1510,22 +1561,23 @@ export class TracksService {
 
     // Apply shuffle if requested
     if (shuffle) {
-      trackIds = trackIds.sort(() => Math.random() - 0.5);
+      queueTracks = queueTracks.sort(() => Math.random() - 0.5);
     }
 
     // Find starting index
     const currentIndex = startTrackId
-      ? Math.max(trackIds.indexOf(startTrackId), 0)
+      ? Math.max(
+          queueTracks.findIndex((t) => t.trackId === startTrackId),
+          0,
+        )
       : 0;
 
-    console.log(trackIds.map((id) => ({ trackId: id })));
-
     return {
-      queue: trackIds.map((id) => ({ trackId: id })),
+      queue: queueTracks,
       currentIndex,
       shuffle: shuffle ?? false,
       repeat: repeat ?? 'none',
-      totalCount: trackIds.length,
+      totalCount: queueTracks.length,
     };
   }
 
