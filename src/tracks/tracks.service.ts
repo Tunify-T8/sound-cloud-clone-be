@@ -1090,7 +1090,7 @@ export class TracksService {
 
     const [history, total] = await Promise.all([
       this.prisma.playHistory.findMany({
-        where: { userId },
+        where: { userId, isHidden: false },
         orderBy: { playedAt: 'desc' },
         skip,
         take: limit,
@@ -1118,7 +1118,7 @@ export class TracksService {
         },
       }),
       this.prisma.playHistory.findMany({
-        where: { userId },
+        where: { userId, isHidden: false },
         distinct: ['trackId'],
         select: { trackId: true },
       }),
@@ -1147,5 +1147,13 @@ export class TracksService {
         total: total.length,
       },
     };
+  }
+  async clearListeningHistory(userId: string) {
+    await this.prisma.playHistory.updateMany({
+      where: { userId, isHidden: false },
+      data: { isHidden: true },
+    });
+
+    return { message: 'Listening history cleared' };
   }
 }

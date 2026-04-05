@@ -202,6 +202,12 @@ export class TracksController {
   //   return { track, statusCode: 200 };
   // }
 
+  @Delete('me/listening-history')
+  @UseGuards(JwtAccessGuard)
+  async clearHistory(@Request() req: AuthRequest) {
+    return this.tracksService.clearListeningHistory(req.user?.userId ?? '');
+  }
+
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
   async deleteTrack(
