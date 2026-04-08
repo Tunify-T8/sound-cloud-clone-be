@@ -191,6 +191,12 @@ export class TracksController {
     return result;
   }
 
+  @Delete('me/listening-history')
+  @UseGuards(JwtAccessGuard)
+  async clearHistory(@Request() req: AuthRequest) {
+    return this.tracksService.clearListeningHistory(req.user?.userId ?? '');
+  }
+
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
   async deleteTrack(

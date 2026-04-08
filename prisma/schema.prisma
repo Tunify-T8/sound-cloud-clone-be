@@ -318,6 +318,7 @@ model PlayHistory {
   trackId   String
   playedAt  DateTime @default(now())
   completed Boolean  @default(false) 
+  isHidden Boolean @default(false) 
 
   user  User  @relation(fields: [userId], references: [id])
   track Track @relation(fields: [trackId], references: [id])
