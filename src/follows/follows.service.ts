@@ -61,7 +61,7 @@ export class FollowsService {
     }
 
      // ── Notify the target user (no-op until Module 10 is ready) ──
-    await this.notifications?.notifyFollow(followerId, followingId);
+    //await this.notifications?.notifyFollow(followerId, followingId);
     
     return { message: 'Followed successfully' };
   }

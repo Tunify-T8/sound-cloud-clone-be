@@ -6,8 +6,6 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
-import { NotificationsService } from './notifications.service';
-import { forwardRef, Inject } from '@nestjs/common';
 
 @WebSocketGateway({
   namespace: '/notifications',
@@ -21,11 +19,6 @@ export class NotificationsGateway
 
   private connectedUsers = new Map<string, Socket>();
 
-  constructor(
-    @Inject(forwardRef(() => NotificationsService))
-    private readonly notificationsService: NotificationsService,
-  ) {}
-
   async handleConnection(socket: Socket) {
     const token = socket.handshake.query?.token as string;
 
@@ -38,7 +31,8 @@ export class NotificationsGateway
       const payload = WsJwtGuard.verifyToken(token);
       this.connectedUsers.set(payload.sub, socket);
       socket.data.userId = payload.sub;
-    } catch {
+    } catch (err: any) {
+      console.log('Token verification failed:', err.message);
       socket.disconnect();
     }
   }
