@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger ,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -13,6 +14,7 @@ import { randomBytes } from 'crypto';
 
 @Injectable()
 export class CollectionsService {
+  private readonly logger = new Logger(CollectionsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
@@ -104,4 +106,59 @@ try {
       updatedAt: collection.updatedAt.toISOString(),
     };
   }
+
+
+  async getMyCollections(
+  userId: string,
+  page: number,
+  limit: number,
+  type?: string,
+) {
+  const skip = (page - 1) * limit;
+
+  const where: any = {
+    userId,
+    isDeleted: false,
+    ...(type ? { type: type as CollectionType } : {}),
+  };
+
+  const [collections, total] = await Promise.all([
+    this.prisma.collection.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: {
+          select: {
+            tracks: true,
+            likes: true,
+          },
+        },
+      },
+    }),
+    this.prisma.collection.count({ where }),
+  ]);
+
+  return {
+    data: collections.map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      type: c.type,
+      privacy: c.isPublic ? 'public' : 'private',
+      coverUrl: c.coverUrl,
+      trackCount: c._count.tracks,
+      likeCount: c._count.likes,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    total,
+    page,
+    limit,
+    hasMore: skip + collections.length < total,
+  };
+}
+
+
 }
