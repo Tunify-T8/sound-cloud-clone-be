@@ -1256,10 +1256,16 @@ export class TracksService {
       },
     });
 
+    const totalPages = Math.ceil(totalCount / validLimit);
+    const hasNextPage = validPage < totalPages;
+    const hasPreviousPage = validPage > 1;
+
     return {
+      trackId: track.id,
+      title: track.title,
       reposts: allreposts.map((repost) => ({
         user: {
-          userId: repost.user.id,
+          id: repost.user.id,
           username: repost.user.username,
           avatarUrl: repost.user.avatarUrl,
         },
@@ -1267,10 +1273,10 @@ export class TracksService {
       })),
       page: validPage,
       limit: validLimit,
-      totalCount: totalCount,
-      totalPages: Math.ceil(totalCount / validLimit),
-      hasNextPage: skip + allreposts.length < totalCount,
-      hasPreviousPage: skip > 0,
+      total: totalCount,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage,
     };
   }
 
@@ -1365,7 +1371,7 @@ export class TracksService {
       comments: allcomments.map((comment) => ({
         commentId: comment.id,
         user: {
-          userId: comment.user.id,
+          id: comment.user.id,
           username: comment.user.username,
           avatarUrl: comment.user.avatarUrl,
         },
@@ -1376,7 +1382,7 @@ export class TracksService {
       })),
       page: validPage,
       limit: validLimit,
-      totalCount: totalCount,
+      total: totalCount,
       totalPages: Math.ceil(totalCount / validLimit),
       hasNextPage: skip + allcomments.length < totalCount,
       hasPreviousPage: skip > 0,
