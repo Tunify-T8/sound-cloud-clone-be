@@ -12,6 +12,7 @@ import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { StorageService } from 'src/storage/storage.service';
 import { SearchIndexService } from 'src/search-index/search-index.service';
+import { PublicTrackItemDto, PublicUserTracksDto, TrackArtistDto } from './dto/user-public-tracks.dto';
 
 @Injectable()
 export class UsersService {
@@ -535,6 +536,143 @@ export class UsersService {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
       .map(({ id, label }) => ({ id, label }));
+  }
+
+  async getPublicTracks(
+    targetUserId: string,
+    viewerUserId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<PublicUserTracksDto> {
+    const skip = (page - 1) * limit;
+
+    // viewer is the owner — show public + private, else public only
+    const isOwner = viewerUserId === targetUserId;
+    const visibilityFilter = isOwner
+      ? { isDeleted: false }
+      : { isDeleted: false, isPublic: true };
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: { userId: targetUserId, ...visibilityFilter },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          coverUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          transcodingStatus: true,
+          isPublic: true,
+          releaseDate: true,
+          waveformUrl: true,
+          genre: { select: { label: true } },
+          user: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              isCertified: true,
+            },
+          },
+          trackArtists: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              reposts: true,
+              comments: true,
+              playHistory: true,
+            },
+          },
+        },
+      }),
+      this.prisma.track.count({
+        where: { userId: targetUserId, ...visibilityFilter },
+      }),
+    ]);
+
+    const trackIds = tracks.map((t) => t.id);
+
+    // resolve isLiked and isReposted for viewer
+    const [likedSet, repostedSet] = await Promise.all([
+      this.prisma.trackLike
+        .findMany({
+          where: {
+            userId: viewerUserId,
+            trackId: { in: trackIds.length > 0 ? trackIds : ['__none__'] },
+          },
+          select: { trackId: true },
+        })
+        .then((rows) => new Set(rows.map((r) => r.trackId))),
+      this.prisma.repost
+        .findMany({
+          where: {
+            userId: viewerUserId,
+            trackId: { in: trackIds.length > 0 ? trackIds : ['__none__'] },
+          },
+          select: { trackId: true },
+        })
+        .then((rows) => new Set(rows.map((r) => r.trackId))),
+    ]);
+
+    const data: PublicTrackItemDto[] = tracks.map((t) => {
+      // owner as primary artist entry
+      const ownerArtist: TrackArtistDto = {
+        id: t.user.id,
+        username: t.user.username,
+        displayName: t.user.displayName,
+        avatarUrl: t.user.avatarUrl,
+        isVerified: t.user.isCertified,
+      };
+
+      const creditArtists: TrackArtistDto[] = t.trackArtists.map((ta) => ({
+        id: ta.id, 
+        displayName: ta.name,
+      }));
+
+      return {
+        id: t.id,
+        title: t.title,
+        artist: ownerArtist,
+        artists: [ownerArtist, ...creditArtists],
+        coverUrl: t.coverUrl,
+        durationSeconds: t.durationSeconds,
+        createdAt: t.createdAt,
+        status: t.transcodingStatus,
+        privacy: t.isPublic ? 'public' : 'private',
+        scheduledReleaseDate: t.releaseDate,
+        genre: t.genre?.label ?? null,
+        waveformUrl: t.waveformUrl,
+        engagement: {
+          likeCount: t._count.likes,
+          repostCount: t._count.reposts,
+          commentCount: t._count.comments,
+          playCount: t._count.playHistory,
+        },
+        interaction: {
+          isLiked: likedSet.has(t.id),
+          isReposted: repostedSet.has(t.id),
+        },
+      };
+    });
+
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        hasMore: skip + tracks.length < total,
+      },
+    };
   }
 
   async updateSocialLinks(userId: string, dto: UpdateSocialLinksDto) {
