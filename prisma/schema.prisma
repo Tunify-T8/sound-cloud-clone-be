@@ -7,79 +7,91 @@ datasource db {
 }
 
 model User {
-  id                      String                   @id @default(uuid())
-  username                String                   @unique
-  email                   String                   @unique
-  bio                     String?
-  location                String?
-  visibility              Visibility               @default(PUBLIC)
-  suspensionReason        String?
-  role                    UserType
-  gender                  Gender
-  avatarUrl               String?
-  bannedById              String?
-  coverUrl                String?
-  createdAt               DateTime                 @default(now())
-  dateOfBirth             DateTime
-  deletedAt               DateTime?
-  displayName             String?
-  isActive                Boolean                  @default(true)
-  isBanned                Boolean                  @default(false)
-  isDeleted               Boolean                  @default(false)
-  isSuspended             Boolean                  @default(false)
-  isVerified              Boolean                  @default(false)
-  lastLoginAt             DateTime?
-  loginMethod             LoginMethod
-  passHash                String?
-  suspendedById           String?
-  suspendedUntil          DateTime?
-  updatedAt               DateTime                 @updatedAt
-  isCertified             Boolean                  @default(false)
-  collections             Collection[]
-  collectionLikes         CollectionLike[]
-  commentsDeleted         Comment[]                @relation("CommentDeletedBy")
-  commentsHidden          Comment[]                @relation("CommentHiddenBy")
-  comments                Comment[]
-  conversations1          Conversation[]           @relation("ConversationUser1")
-  conversations2          Conversation[]           @relation("ConversationUser2")
+  id               String      @id @default(uuid())
+  username         String      @unique
+  displayName      String?
+  email            String      @unique
+  passHash         String?
+  loginMethod      LoginMethod
+  role             UserType
+  bio              String?
+  location         String?
+  avatarUrl        String?
+  coverUrl         String?
+  isVerified       Boolean     @default(false)
+  isActive         Boolean     @default(true)
+  isSuspended      Boolean     @default(false)
+  isBanned         Boolean     @default(false)
+  isCertified      Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+  suspendedUntil   DateTime?
+  suspendedById    String?
+  bannedById       String?
+  lastLoginAt      DateTime?
+  visibility       Visibility  @default(PUBLIC)
+  gender           Gender
+  dateOfBirth      DateTime
+  isDeleted        Boolean     @default(false)
+  suspensionReason String?
+
+  // ── Relations ─────────────────────────────────────────────────
   emailVerificationTokens EmailVerificationToken[]
-  following               Follow[]                 @relation("Follower")
-  followers               Follow[]                 @relation("Following")
-  sentMessages            Message[]
-  notificationsTriggered  Notification[]           @relation("NotificationActor")
-  notificationsReceived   Notification[]           @relation("NotificationRecipient")
-  notificationPreferences NotificationPreference[]
   oauthAccounts           OAuthAccount[]
   passwordResetTokens     PasswordResetToken[]
-  payments                Payment[]
-  playHistory             PlayHistory[]
   refreshTokens           RefreshToken[]
-  submittedReports        Report[]                 @relation("Reporter")
-  reviewedReports         Report[]                 @relation("ReviewedBy")
-  reposts                 Repost[]
-  subscriptions           Subscription[]
-  tracksDeleted           Track[]                  @relation("TrackDeletedBy")
-  tracksHidden            Track[]                  @relation("TrackHiddenBy")
-  tracks                  Track[]                  @relation("TrackOwner")
-  trackLikes              TrackLike[]
-  bannedBy                User?                    @relation("UserBans", fields: [bannedById], references: [id])
-  bannedUsers             User[]                   @relation("UserBans")
-  suspendedBy             User?                    @relation("UserSuspensions", fields: [suspendedById], references: [id])
-  suspendedUsers          User[]                   @relation("UserSuspensions")
-  blockedBy               UserBlock[]              @relation("Blocked")
-  blocking                UserBlock[]              @relation("Blocker")
-  socialLinks             UserSocialLink[]
-  UserTrackProgress       UserTrackProgress[]
+
+  bannedBy       User?  @relation("UserBans", fields: [bannedById], references: [id])
+  bannedUsers    User[] @relation("UserBans")
+  suspendedBy    User?  @relation("UserSuspensions", fields: [suspendedById], references: [id])
+  suspendedUsers User[] @relation("UserSuspensions")
+
+  socialLinks UserSocialLink[]
+
+  followers Follow[]    @relation("Following")
+  following Follow[]    @relation("Follower")
+  blocking  UserBlock[] @relation("Blocker")
+  blockedBy UserBlock[] @relation("Blocked")
+
+  tracks Track[] @relation("TrackOwner")
+
+  trackLikes      TrackLike[]
+  reposts         Repost[]
+  collectionLikes CollectionLike[]
+  commentLikes    CommentLike[]
+  comments        Comment[]
+  collections     Collection[]
+
+  conversations1 Conversation[] @relation("ConversationUser1")
+  conversations2 Conversation[] @relation("ConversationUser2")
+  sentMessages   Message[]
+
+  notificationsReceived   Notification[]           @relation("NotificationRecipient")
+  notificationsTriggered  Notification[]           @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
+
+  submittedReports Report[]  @relation("Reporter")
+  reviewedReports  Report[]  @relation("ReviewedBy")
+  tracksHidden     Track[]   @relation("TrackHiddenBy")
+  tracksDeleted    Track[]   @relation("TrackDeletedBy")
+  commentsHidden   Comment[] @relation("CommentHiddenBy")
+  commentsDeleted  Comment[] @relation("CommentDeletedBy")
+
+  playHistory PlayHistory[]
+
+  subscriptions Subscription[]
+  payments      Payment[]
 }
 
 model RefreshToken {
   id        String    @id @default(uuid())
-  token     String    @unique
-  createdAt DateTime  @default(now())
-  expiresAt DateTime
-  isActive  Boolean   @default(true)
-  revokedAt DateTime?
   userId    String
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  isActive  Boolean   @default(true)
   user      User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
@@ -87,12 +99,12 @@ model RefreshToken {
 
 model PasswordResetToken {
   id        String    @id @default(uuid())
+  userId    String
   token     String    @unique
+  expiresAt DateTime
   used      Boolean   @default(false)
   createdAt DateTime  @default(now())
-  expiresAt DateTime
   revokedAt DateTime?
-  userId    String
   user      User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
@@ -100,13 +112,13 @@ model PasswordResetToken {
 
 model EmailVerificationToken {
   id        String    @id @default(uuid())
+  userId    String
   token     String    @unique
+  expiresAt DateTime
   used      Boolean   @default(false)
   createdAt DateTime  @default(now())
-  deletedAt DateTime?
-  expiresAt DateTime
   revokedAt DateTime?
-  userId    String
+  deletedAt DateTime?
   user      User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
@@ -114,15 +126,15 @@ model EmailVerificationToken {
 
 model OAuthAccount {
   id             String        @id @default(uuid())
-  provider       OAuthProvider
-  accessToken    String        @unique
-  createdAt      DateTime      @default(now())
-  deletedAt      DateTime?
-  expiresAt      DateTime?
-  providerUserId String
-  refreshToken   String?
-  updatedAt      DateTime      @updatedAt
   userId         String
+  provider       OAuthProvider
+  providerUserId String
+  accessToken    String        @unique
+  refreshToken   String?
+  expiresAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
   user           User          @relation(fields: [userId], references: [id])
 
   @@unique([provider, providerUserId])
@@ -131,12 +143,12 @@ model OAuthAccount {
 
 model UserSocialLink {
   id        String         @id @default(uuid())
+  userId    String
   platform  SocialPlatform
   url       String
   createdAt DateTime       @default(now())
-  deletedAt DateTime?
   updatedAt DateTime       @updatedAt
-  userId    String
+  deletedAt DateTime?
   user      User           @relation(fields: [userId], references: [id])
 
   @@unique([userId, platform])
@@ -156,71 +168,87 @@ model subGenre {
   id      String  @id @default(uuid())
   name    String
   genreId String
-  tracks  Track[]
   genre   Genre   @relation(fields: [genreId], references: [id])
+  tracks  Track[]
 
   @@unique([genreId, name])
   @@index([genreId])
 }
 
 model Track {
-  id                 String                   @id @default(uuid())
-  userId             String
-  genreId            String?
-  title              String
-  description        String?
-  releaseDate        DateTime?
-  audioUrl           String
-  durationSeconds    Int
-  waveformUrl        String?
-  fileFormat         FileFormat
-  fileSizeBytes      Int?
-  transcodingStatus  TranscodingStatus        @default(processing)
-  coverUrl           String?
-  isPublic           Boolean                  @default(true)
-  privateToken       String?
-  requiresPremium    Boolean                  @default(false)
-  previewEnabled     Boolean                  @default(false)
-  previewStart       Int?
-  previewDuration    Int?
-  contentWarning     Boolean                  @default(false)
-  isHidden           Boolean                  @default(false)
-  hiddenAt           DateTime?
-  hiddenBy           String?
-  isDeleted          Boolean                  @default(false)
-  deletedAt          DateTime?
-  deletedBy          String?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  subGenreId         String?
-  allowComments      Boolean                  @default(true)
-  allowDownloads     Boolean                  @default(false)
-  allowOffline       Boolean                  @default(false)
-  bitrateKbps        Int                      @default(320)
-  displayEmbedCode   Boolean                  @default(true)
-  enableAppPlayback  Boolean                  @default(true)
-  includeInRSS       Boolean                  @default(true)
-  isrc               String?
-  pLine              String?
-  publisher          String?
-  recordLabel        String?
-  sampleRateHz       Int                      @default(44100)
-  showCommentsPublic Boolean                  @default(true)
-  showInsightsPublic Boolean                  @default(false)
-  collectionTracks   CollectionTrack[]
-  comments           Comment[]
-  playHistory        PlayHistory[]
-  reposts            Repost[]
-  deletedByUser      User?                    @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
-  genre              Genre?                   @relation(fields: [genreId], references: [id])
-  hiddenByUser       User?                    @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
-  subgenre           subGenre?                @relation(fields: [subGenreId], references: [id])
-  user               User                     @relation("TrackOwner", fields: [userId], references: [id])
+  id         String  @id @default(uuid())
+  userId     String
+  genreId    String?
+  subGenreId String?
+
+  title       String
+  description String?
+  releaseDate DateTime?
+  tags        TrackTag[]
+  recordLabel String?
+  publisher   String?
+  isrc        String?
+  pLine       String?
+
+  // Audio
+  audioUrl          String
+  durationSeconds   Int
+  waveformUrl       String?
+  fileFormat        FileFormat
+  fileSizeBytes     Int?
+  transcodingStatus TranscodingStatus @default(processing)
+  bitrateKbps       Int               @default(320)
+  sampleRateHz      Int               @default(44100)
+
+  coverUrl String?
+
+  // Visibility & access
+  isPublic        Boolean @default(true)
+  privateToken    String?
+  requiresPremium Boolean @default(false)
+
+  // Preview
+  previewEnabled  Boolean @default(false)
+  previewStart    Int?
+  previewDuration Int?
+
+  contentWarning Boolean @default(false)
+
+  // Permissions
+  allowDownloads     Boolean @default(false)
+  allowOffline       Boolean @default(false)
+  includeInRSS       Boolean @default(true)
+  displayEmbedCode   Boolean @default(true)
+  enableAppPlayback  Boolean @default(true)
+  allowComments      Boolean @default(true)
+  showCommentsPublic Boolean @default(true)
+  showInsightsPublic Boolean @default(false)
+
+  // Moderation fields
+  isHidden  Boolean   @default(false)
+  hiddenAt  DateTime?
+  hiddenBy  String?
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user          User      @relation("TrackOwner", fields: [userId], references: [id])
+  genre         Genre?    @relation(fields: [genreId], references: [id])
+  subgenre      subGenre? @relation(fields: [subGenreId], references: [id])
+  hiddenByUser  User?     @relation("TrackHiddenBy", fields: [hiddenBy], references: [id])
+  deletedByUser User?     @relation("TrackDeletedBy", fields: [deletedBy], references: [id])
+
   trackArtists       TrackArtist[]
-  likes              TrackLike[]
   regionRestrictions TrackRegionRestriction[]
-  tags               TrackTag[]
-  UserTrackProgress  UserTrackProgress[]
+  likes              TrackLike[]
+  reposts            Repost[]
+  comments           Comment[]
+  collectionTracks   CollectionTrack[]
+  playHistory        PlayHistory[]
 
   @@index([userId])
   @@index([genreId])
@@ -231,7 +259,7 @@ model Track {
 model TrackArtist {
   id      String     @id @default(uuid())
   trackId String
-  name    String
+  name    String // just a text credit
   role    ArtistRole
   track   Track      @relation(fields: [trackId], references: [id])
 }
@@ -240,7 +268,8 @@ model TrackRegionRestriction {
   id          String @id @default(uuid())
   trackId     String
   countryCode String @db.Char(2)
-  track       Track  @relation(fields: [trackId], references: [id])
+
+  track Track @relation(fields: [trackId], references: [id])
 
   @@index([trackId])
 }
@@ -248,7 +277,8 @@ model TrackRegionRestriction {
 model TrackTag {
   trackId String
   tag     String
-  track   Track  @relation(fields: [trackId], references: [id])
+
+  track Track @relation(fields: [trackId], references: [id])
 
   @@id([trackId, tag])
 }
@@ -258,7 +288,6 @@ model Follow {
   followerId  String
   followingId String
   createdAt   DateTime @default(now())
- 
 
   follower  User @relation("Follower", fields: [followerId], references: [id])
   following User @relation("Following", fields: [followingId], references: [id])
@@ -274,23 +303,25 @@ model UserBlock {
   removeComments Boolean  @default(false)
   reportSpam     Boolean  @default(false)
   createdAt      DateTime @default(now())
-  blocked        User     @relation("Blocked", fields: [blockedId], references: [id])
-  blocker        User     @relation("Blocker", fields: [blockerId], references: [id])
 
- 
+  blocker User @relation("Blocker", fields: [blockerId], references: [id])
+  blocked User @relation("Blocked", fields: [blockedId], references: [id])
 
-  @@unique([blockerId, blockedId])
+   @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
 }
 
 model PlayHistory {
-  id       String   @id @default(uuid())
-  userId   String
-  trackId  String
-  playedAt DateTime @default(now())
-  track    Track    @relation(fields: [trackId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  id        String   @id @default(uuid())
+  userId    String
+  trackId   String
+  playedAt  DateTime @default(now())
+  completed Boolean  @default(false) 
+  isHidden Boolean @default(false) 
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
 
   @@index([userId])
   @@index([trackId])
@@ -302,11 +333,26 @@ model TrackLike {
   userId    String
   trackId   String
   createdAt DateTime @default(now())
-  track     Track    @relation(fields: [trackId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
 
   @@index([userId])
   @@index([trackId])
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  comment Comment @relation(fields: [commentId], references: [id])
+
+  @@unique([userId, commentId])
+  @@index([userId])
+  @@index([commentId])
 }
 
 model Repost {
@@ -314,46 +360,50 @@ model Repost {
   userId    String
   trackId   String
   createdAt DateTime @default(now())
-  track     Track    @relation(fields: [trackId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+
+  user  User  @relation(fields: [userId], references: [id])
+  track Track @relation(fields: [trackId], references: [id])
 
   @@index([userId])
   @@index([trackId])
 }
 
 model CollectionLike {
-  id           String     @id @default(uuid())
+  id           String   @id @default(uuid())
   userId       String
   collectionId String
-  createdAt    DateTime   @default(now())
-  collection   Collection @relation(fields: [collectionId], references: [id])
-  user         User       @relation(fields: [userId], references: [id])
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  collection Collection @relation(fields: [collectionId], references: [id])
 
   @@index([userId])
   @@index([collectionId])
 }
 
 model Comment {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   userId          String
   trackId         String
   parentCommentId String?
-  content         String    @db.VarChar(500)
-  timestamp       Int
-  isEdited        Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  isHidden        Boolean   @default(false)
-  hiddenAt        DateTime?
-  hiddenBy        String?
-  isDeleted       Boolean   @default(false)
-  deletedAt       DateTime?
-  deletedBy       String?
-  deletedByUser   User?     @relation("CommentDeletedBy", fields: [deletedBy], references: [id])
-  hiddenByUser    User?     @relation("CommentHiddenBy", fields: [hiddenBy], references: [id])
-  parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
-  replies         Comment[] @relation("CommentReplies")
-  track           Track     @relation(fields: [trackId], references: [id])
-  user            User      @relation(fields: [userId], references: [id])
+  content         String   @db.VarChar(500)
+  isEdited        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  isHidden  Boolean   @default(false)
+  hiddenAt  DateTime?
+  hiddenBy  String?
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  deletedBy String?
+
+  user          User      @relation(fields: [userId], references: [id])
+  track         Track     @relation(fields: [trackId], references: [id])
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+  likes         CommentLike[]
+  hiddenByUser  User?     @relation("CommentHiddenBy", fields: [hiddenBy], references: [id])
+  deletedByUser User?     @relation("CommentDeletedBy", fields: [deletedBy], references: [id])
 
   @@index([userId])
   @@index([trackId])
@@ -361,33 +411,34 @@ model Comment {
 }
 
 model Collection {
-  id          String            @id @default(uuid())
+  id          String         @id @default(uuid())
   userId      String
   title       String
   description String?
   coverUrl    String?
-  secretToken String? @unique
   type        CollectionType
-  isPublic    Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  isDeleted   Boolean           @default(false)
+  isPublic    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  isDeleted   Boolean        @default(false)
   deletedAt   DateTime?
-  user        User              @relation(fields: [userId], references: [id])
-  likes       CollectionLike[]
-  tracks      CollectionTrack[]
+
+  user   User              @relation(fields: [userId], references: [id])
+  tracks CollectionTrack[]
+  likes  CollectionLike[]
 
   @@index([userId])
 }
 
 model CollectionTrack {
-  id           String     @id @default(uuid())
+  id           String   @id @default(uuid())
   collectionId String
   trackId      String
   position     Int
-  addedAt      DateTime   @default(now())
-  collection   Collection @relation(fields: [collectionId], references: [id])
-  track        Track      @relation(fields: [trackId], references: [id])
+  addedAt      DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id])
+  track      Track      @relation(fields: [trackId], references: [id])
 
   @@index([collectionId])
   @@index([trackId])
@@ -399,22 +450,24 @@ model Conversation {
   user2Id   String
   status    ConversationStatus @default(ACTIVE)
   createdAt DateTime           @default(now())
-  user1     User               @relation("ConversationUser1", fields: [user1Id], references: [id])
-  user2     User               @relation("ConversationUser2", fields: [user2Id], references: [id])
-  messages  Message[]
+
+  user1    User      @relation("ConversationUser1", fields: [user1Id], references: [id])
+  user2    User      @relation("ConversationUser2", fields: [user2Id], references: [id])
+  messages Message[]
 
   @@index([user1Id])
   @@index([user2Id])
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String   @id @default(uuid())
   conversationId String
   senderId       String
   content        String
-  createdAt      DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  sender         User         @relation(fields: [senderId], references: [id])
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
 
   @@index([conversationId])
   @@index([senderId])
@@ -430,8 +483,9 @@ model Notification {
   isRead        Boolean          @default(false)
   readAt        DateTime?
   createdAt     DateTime         @default(now())
-  actor         User?            @relation("NotificationActor", fields: [actorId], references: [id])
-  recipient     User             @relation("NotificationRecipient", fields: [recipientId], references: [id])
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
 
   @@index([recipientId])
   @@index([actorId])
@@ -450,7 +504,8 @@ model NotificationPreference {
   newMessage     Boolean @default(true)
   system         Boolean @default(true)
   subscription   Boolean @default(true)
-  user           User    @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 
   @@id([userId, channel])
 }
@@ -459,25 +514,28 @@ model ReportReason {
   id         String              @id
   label      String              @unique
   entityType ReportedEntityType?
-  reports    Report[]
+
+  reports Report[]
 }
 
 model Report {
-  id             String             @id @default(uuid())
-  reporterId     String
-  targetType     ReportedEntityType
-  targetId       String
-  reasonId       String
-  description    String?
-  status         ReportStatus       @default(PENDING)
-  createdAt      DateTime           @default(now())
-  reviewedAt     DateTime?
-  reviewedBy     String?
-  adminNote      String?
-  adminAction    AdminAction?
-  reason         ReportReason       @relation(fields: [reasonId], references: [id])
-  reporter       User               @relation("Reporter", fields: [reporterId], references: [id])
-  reviewedByUser User?              @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  id          String             @id @default(uuid())
+  reporterId  String
+  targetType  ReportedEntityType
+  targetId    String
+  reasonId    String
+  description String?
+  status      ReportStatus       @default(PENDING)
+  createdAt   DateTime           @default(now())
+
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  adminNote   String?
+  adminAction AdminAction?
+
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id])
+  reviewedByUser User?        @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  reason         ReportReason @relation(fields: [reasonId], references: [id])
 
   @@index([reporterId])
   @@index([targetId])
@@ -486,53 +544,76 @@ model Report {
 }
 
 model SubscriptionPlan {
-  id                         String         @id @default(cuid())
-  name                       String         @unique
-  description                String?
-  displayOrder               Int            @default(0)
-  isActive                   Boolean        @default(true)
-  monthlyPrice               Float          @default(0)
-  maxTrackDurationMin        Int            @default(180)
-  maxTrackSizeGB             Float?
-  monthlyListenersCap        Int?
-  allowedDownloads           Int            @default(0)
-  enableMonetization         Boolean        @default(false)
-  enablePlaylistMonetization Boolean        @default(false)
+  id String @id @default(cuid())
+
+  // Basic Info
+  name         String  @unique // "Free", "Pro", "Pro Plus", etc.
+  description  String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  // Pricing
+  monthlyPrice Float @default(0)
+
+  // Upload Features
+  monthlyUploadMinutes Int    @default(180) // Total allowed upload minutes per month
+  maxTrackDurationMin  Int    @default(180)
+  maxTrackSizeGB       Float?
+
+  // Listeners & Reach
+  monthlyListenersCap Int?
+  allowedDownloads    Int  @default(0)
+
+  // Monetization & Visibility
+  enableMonetization         Boolean @default(false)
+  enablePlaylistMonetization Boolean @default(false)
   minRevenueShare            Float?
-  allowReplace               Boolean        @default(false)
-  allowAdvancedTabAccess     Boolean        @default(false)
-  allowScheduledRelease      Boolean        @default(false)
-  allowDirectDownload        Boolean        @default(false)
-  allowOfflineListening      Boolean        @default(false)
-  adFree                     Boolean        @default(false)
-  analytics                  Boolean        @default(false)
-  advancedAnalytics          Boolean        @default(false)
-  allowCollaborativeTrack    Boolean        @default(false)
-  releaseScheduling          Boolean        @default(false)
-  premiumStatistics          Boolean        @default(false)
-  prioritySupport            Boolean        @default(false)
-  createdAt                  DateTime       @default(now())
-  updatedAt                  DateTime       @updatedAt
-  monthlyUploadMinutes       Int            @default(180)
-  subscriptions              Subscription[]
+
+  // Features
+  allowReplace           Boolean @default(false)
+  allowAdvancedTabAccess Boolean @default(false)
+  allowScheduledRelease  Boolean @default(false)
+  allowDirectDownload    Boolean @default(false)
+  allowOfflineListening  Boolean @default(false)
+  adFree                 Boolean @default(false)
+  analytics              Boolean @default(false)
+  advancedAnalytics      Boolean @default(false)
+
+  // Collaboration & Pro Features
+  allowCollaborativeTrack Boolean @default(false)
+  releaseScheduling       Boolean @default(false)
+  premiumStatistics       Boolean @default(false)
+
+  // Support
+  prioritySupport Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  subscriptions Subscription[]
 }
 
 model Subscription {
-  id              String            @id @default(uuid())
-  userId          String
-  startedAt       DateTime          @default(now())
+  id     String  @id @default(uuid())
+  userId String
+  planId String?
+
+  startedAt       DateTime  @default(now())
   endedAt         DateTime?
-  uploadedMinutes Int               @default(0)
-  autoRenew       Boolean           @default(true)
-  billingCycle    String            @default("monthly")
-  createdAt       DateTime          @default(now())
-  planId          String?
   renewalDate     DateTime?
-  status          String            @default("active")
-  updatedAt       DateTime          @default(now()) @updatedAt
-  payments        Payment[]
-  plan            SubscriptionPlan? @relation(fields: [planId], references: [id])
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  uploadedMinutes Int       @default(0)
+
+  billingCycle String  @default("monthly")
+  status       String  @default("active")
+  autoRenew    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     SubscriptionPlan? @relation(fields: [planId], references: [id])
+  payments Payment[]
 
   @@index([userId])
   @@index([planId])
@@ -545,22 +626,12 @@ model Payment {
   amount         Decimal       @db.Decimal(10, 2)
   status         PaymentStatus
   paidAt         DateTime      @default(now())
-  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
-  user           User          @relation(fields: [userId], references: [id])
+
+  user         User         @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([subscriptionId])
-}
-
-model UserTrackProgress {
-  userId          String
-  trackId         String
-  progressSeconds Int      @default(0)
-  updatedAt       DateTime
-  Track           Track    @relation(fields: [trackId], references: [id])
-  User            User     @relation(fields: [userId], references: [id])
-
-  @@id([userId, trackId])
 }
 
 enum LoginMethod {
