@@ -308,5 +308,35 @@ async updateCollection(
 }
 
 
+async deleteCollection(collectionId: string, userId: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new NotFoundException('Collection not found');
+
+  // Hard delete — order matters: likes → tracks → collection
+  await this.prisma.collectionLike.deleteMany({
+    where: { collectionId },
+  });
+
+  await this.prisma.collectionTrack.deleteMany({
+    where: { collectionId },
+  });
+
+  await this.prisma.collection.delete({
+    where: { id: collectionId },
+  });
+
+  try {
+    await this.searchIndex.removeCollection(collectionId);
+  } catch {
+    // OpenSearch unavailable — skip silently
+  }
+
+  return { message: 'Collection deleted successfully' };
+}
+
 
 }

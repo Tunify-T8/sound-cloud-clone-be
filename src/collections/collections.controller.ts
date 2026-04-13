@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Put,
+  Delete,
   Body,
   UseGuards,
   Request,
@@ -111,6 +112,20 @@ updateCollection(
     req.user?.userId ?? '',
     dto,
     coverFile,
+  );
+}
+
+
+
+@Delete(':id')
+@UseGuards(JwtAccessGuard)
+deleteCollection(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+) {
+  return this.collectionsService.deleteCollection(
+    id,
+    req.user?.userId ?? '',
   );
 }
 
