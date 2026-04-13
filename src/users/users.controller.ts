@@ -12,6 +12,8 @@ import {
   UploadedFiles,
   BadRequestException,
   ParseUUIDPipe,
+  DefaultValuePipe,
+  ParseIntPipe,
   // ParseFilePipe,
   // MaxFileSizeValidator,
   // FileTypeValidator,
@@ -184,6 +186,24 @@ export class UsersController {
     @Query('limit') limit: number = 10,
   ) {
     return this.usersService.getFollowingList(id, page, limit);
+  }
+
+  // ─── GET /:id/tracks ───────────────────────────────────────
+  //gets track list of a user
+  @Get(':id/tracks')
+  @UseGuards(JwtAccessGuard)
+  getPublicUserTracks(
+    @Param('id', ParseUUIDPipe) targetUserId: string,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.usersService.getPublicTracks(
+      targetUserId,
+      user.userId,
+      page,
+      limit,
+    );
   }
 
   // ─── PATCH /me/social-links ───────────────────────────────────────
