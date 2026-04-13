@@ -22,7 +22,7 @@ export class CollectionsService {
   async create(
     userId: string,
     dto: CreateCollectionDto,
-    coverFile?: Express.Multer.File,
+    coverFile?: any,
   ) {
     // 1. If ALBUM, user must be ARTIST
     if (dto.type === 'ALBUM') {

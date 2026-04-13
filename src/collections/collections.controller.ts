@@ -38,7 +38,7 @@ export class CollectionsController {
         fileIsRequired: false,
       }),
     )
-    coverFile?: Express.Multer.File,
+    coverFile?: any,
   ) {
     return this.collectionsService.create(
       req.user?.userId ?? '',
