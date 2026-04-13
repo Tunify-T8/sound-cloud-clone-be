@@ -12,6 +12,7 @@ import { SearchIndexService } from '../search-index/search-index.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { CollectionType } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { UpdateCollectionDto } from './dto/update-collection.dto';
 
 @Injectable()
 export class CollectionsService {
@@ -243,6 +244,69 @@ async getCollectionByToken(token: string) {
     updatedAt: collection.updatedAt.toISOString(),
   };
 }
+
+
+async updateCollection(
+  collectionId: string,
+  userId: string,
+  dto: UpdateCollectionDto,
+  coverFile?: any,
+) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new NotFoundException('Collection not found');
+
+  // Handle privacy change
+  let secretToken = collection.secretToken;
+  if (dto.privacy !== undefined) {
+    const isPublic = dto.privacy === 'public';
+    if (isPublic) {
+      secretToken = null;
+    } else if (!collection.secretToken) {
+      // Was public, now going private — generate token
+      secretToken = randomBytes(16).toString('hex');
+    }
+  }
+
+  // Handle cover image upload
+  let coverUrl = collection.coverUrl;
+  if (coverFile) {
+    coverUrl = await this.storage.uploadImage(coverFile);
+  }
+
+  const updated = await this.prisma.collection.update({
+    where: { id: collectionId },
+    data: {
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.description !== undefined && { description: dto.description }),
+      ...(dto.privacy !== undefined && { isPublic: dto.privacy === 'public' }),
+      secretToken,
+      coverUrl,
+    },
+  });
+
+  try {
+    await this.searchIndex.indexCollection(updated.id);
+  } catch {
+    // OpenSearch unavailable — skip silently
+  }
+
+  return {
+    id: updated.id,
+    title: updated.title,
+    description: updated.description,
+    type: updated.type,
+    privacy: updated.isPublic ? 'public' : 'private',
+    secretToken: updated.isPublic ? null : updated.secretToken,
+    coverUrl: updated.coverUrl,
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+  };
+}
+
 
 
 }

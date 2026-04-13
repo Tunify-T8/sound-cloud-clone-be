@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Put,
   Body,
   UseGuards,
   Request,
@@ -18,6 +19,9 @@ import { CreateCollectionDto } from './dto/create-collection.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtOptionalGuard } from '../auth/guards/jwt-optional.guard';
+import { UpdateCollectionDto } from './dto/update-collection.dto';
+
+
 interface AuthRequest extends Request {
   user?: { userId: string };
 }
@@ -82,5 +86,33 @@ getCollectionById(
     req.user?.userId,
   );
 }
+
+
+@Put(':id')
+@UseGuards(JwtAccessGuard)
+@UseInterceptors(FileInterceptor('cover'))
+updateCollection(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+  @Body() dto: UpdateCollectionDto,
+  @UploadedFile(
+    new ParseFilePipe({
+      validators: [
+        new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+        new FileTypeValidator({ fileType: /image\/(jpeg|png|gif|webp)/ }),
+      ],
+      fileIsRequired: false,
+    }),
+  )
+  coverFile?: any,
+) {
+  return this.collectionsService.updateCollection(
+    id,
+    req.user?.userId ?? '',
+    dto,
+    coverFile,
+  );
+}
+
 
 }
