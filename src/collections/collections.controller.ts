@@ -11,12 +11,13 @@ import {
   FileTypeValidator,
   Get,
   Query,
+  Param,
 } from '@nestjs/common';
 import { CollectionsService } from './collections.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-
+import { JwtOptionalGuard } from '../auth/guards/jwt-optional.guard';
 interface AuthRequest extends Request {
   user?: { userId: string };
 }
@@ -63,4 +64,17 @@ getMyCollections(
     type,
   );
 }
+
+@Get(':id')
+@UseGuards(JwtOptionalGuard)
+getCollectionById(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+) {
+  return this.collectionsService.getCollectionById(
+    id,
+    req.user?.userId,
+  );
+}
+
 }

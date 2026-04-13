@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger ,
+
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -157,6 +158,50 @@ try {
     page,
     limit,
     hasMore: skip + collections.length < total,
+  };
+}
+
+async getCollectionById(collectionId: string, userId?: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+    include: {
+      _count: {
+        select: {
+          tracks: true,
+          likes: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+
+  // 404 if not found
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // Private collection — only owner can see it (no secret token path here)
+  if (!collection.isPublic && collection.userId !== userId) {
+    throw new NotFoundException('Collection not found');
+  }
+
+  return {
+    id: collection.id,
+    title: collection.title,
+    description: collection.description,
+    type: collection.type,
+    privacy: collection.isPublic ? 'public' : 'private',
+    coverUrl: collection.coverUrl,
+    trackCount: collection._count.tracks,
+    likeCount: collection._count.likes,
+    owner: collection.user,
+    createdAt: collection.createdAt.toISOString(),
+    updatedAt: collection.updatedAt.toISOString(),
   };
 }
 
