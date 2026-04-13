@@ -129,5 +129,21 @@ deleteCollection(
   );
 }
 
+@Get(':id/tracks')
+@UseGuards(JwtOptionalGuard)
+getCollectionTracks(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+  @Query('page') page = '1',
+  @Query('limit') limit = '10',
+) {
+  return this.collectionsService.getCollectionTracks(
+    id,
+    req.user?.userId,
+    Math.max(1, parseInt(page)),
+    Math.min(50, Math.max(1, parseInt(limit))),
+  );
+}
+
 
 }

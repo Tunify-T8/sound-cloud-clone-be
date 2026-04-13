@@ -339,4 +339,66 @@ async deleteCollection(collectionId: string, userId: string) {
 }
 
 
+async getCollectionTracks(
+  collectionId: string,
+  userId: string | undefined,
+  page: number,
+  limit: number,
+) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  if (!collection.isPublic && collection.userId !== userId) {
+    throw new NotFoundException('Collection not found');
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [collectionTracks, total] = await Promise.all([
+    this.prisma.collectionTrack.findMany({
+      where: { collectionId },
+      skip,
+      take: limit,
+      orderBy: { position: 'asc' },
+      include: {
+        track: {
+          select: {
+            id: true,
+            title: true,
+            durationSeconds: true,
+            coverUrl: true,
+            genreId: true,
+            isPublic: true,
+            user: {
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    this.prisma.collectionTrack.count({ where: { collectionId } }),
+  ]);
+
+  return {
+    data: collectionTracks.map((ct) => ({
+      position: ct.position,
+      addedAt: ct.addedAt.toISOString(),
+      track: ct.track,
+    })),
+    total,
+    page,
+    limit,
+    hasMore: skip + collectionTracks.length < total,
+  };
+}
+
+
 }
