@@ -416,6 +416,7 @@ model Collection {
   title       String
   description String?
   coverUrl    String?
+  secretToken String?        @unique
   type        CollectionType
   isPublic    Boolean        @default(true)
   createdAt   DateTime       @default(now())

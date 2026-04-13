@@ -14,7 +14,7 @@ import { FeedModule } from './feed/feed.module';
 import { SearchModule } from './search/search.module';
 import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
-
+import { CollectionsModule } from './collections/collections.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -33,6 +33,7 @@ import { OpensearchService } from './opensearch/opensearch.service';
     }),
     FeedModule,
     SearchModule,
+    CollectionsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],
