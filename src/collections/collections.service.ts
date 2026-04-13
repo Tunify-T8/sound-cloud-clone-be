@@ -206,4 +206,43 @@ async getCollectionById(collectionId: string, userId?: string) {
 }
 
 
+async getCollectionByToken(token: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { secretToken: token, isDeleted: false },
+    include: {
+      _count: {
+        select: {
+          tracks: true,
+          likes: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  return {
+    id: collection.id,
+    title: collection.title,
+    description: collection.description,
+    type: collection.type,
+    privacy: 'private',
+    coverUrl: collection.coverUrl,
+    trackCount: collection._count.tracks,
+    likeCount: collection._count.likes,
+    owner: collection.user,
+    createdAt: collection.createdAt.toISOString(),
+    updatedAt: collection.updatedAt.toISOString(),
+  };
+}
+
+
 }

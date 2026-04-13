@@ -65,6 +65,12 @@ getMyCollections(
   );
 }
 
+
+@Get('token/:token')
+getCollectionByToken(@Param('token') token: string) {
+  return this.collectionsService.getCollectionByToken(token);
+}
+
 @Get(':id')
 @UseGuards(JwtOptionalGuard)
 getCollectionById(
