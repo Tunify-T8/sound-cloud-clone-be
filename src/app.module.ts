@@ -28,7 +28,7 @@ import { CommentsModule } from './comments/comments.module';
     FollowsModule,
     BullModule.forRoot({
       redis: {
-        host: 'localhost',
+        host: process.env.REDIS_HOST || 'localhost',
         port: 6379,
       },
     }),
