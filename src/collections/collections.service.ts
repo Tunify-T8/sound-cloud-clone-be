@@ -563,6 +563,29 @@ async likeCollection(collectionId: string, userId: string) {
 
 
 
+async unlikeCollection(collectionId: string, userId: string) {
+  // 1. Verify collection exists
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // 2. Verify like exists
+  const like = await this.prisma.collectionLike.findFirst({
+    where: { collectionId, userId },
+  });
+  if (!like) throw new NotFoundException('Like not found');
+
+  // 3. Delete like
+  await this.prisma.collectionLike.delete({
+    where: { id: like.id },
+  });
+
+  return { message: 'Collection unliked' };
+}
+
+
+
 
 
 
