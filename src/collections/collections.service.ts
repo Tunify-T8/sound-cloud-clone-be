@@ -13,6 +13,7 @@ import { CreateCollectionDto } from './dto/create-collection.dto';
 import { CollectionType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
+import { AddTrackDto } from './dto/add-track.dto';
 
 @Injectable()
 export class CollectionsService {
@@ -398,6 +399,51 @@ async getCollectionTracks(
     limit,
     hasMore: skip + collectionTracks.length < total,
   };
+}
+
+
+async addTrack(collectionId: string, userId: string, dto: AddTrackDto) {
+  // 1. Verify collection exists and user is owner
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, userId, isDeleted: false },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // 2. Verify track exists and is not deleted
+  const track = await this.prisma.track.findFirst({
+    where: { id: dto.trackId, isDeleted: false },
+  });
+  if (!track) throw new NotFoundException('Track not found');
+
+  // 3. Album rule: track must belong to the owner
+  if (collection.type === 'ALBUM' && track.userId !== userId) {
+    throw new BadRequestException('Album can only contain your own tracks');
+  }
+
+  // 4. Check duplicate
+  const existing = await this.prisma.collectionTrack.findFirst({
+    where: { collectionId, trackId: dto.trackId },
+  });
+  if (existing) throw new BadRequestException('Track already in collection');
+
+  // 5. Calculate next position
+  const maxPos = await this.prisma.collectionTrack.aggregate({
+    where: { collectionId },
+    _max: { position: true },
+  });
+  const position = (maxPos._max.position ?? 0) + 1;
+
+  // 6. Create
+  const collectionTrack = await this.prisma.collectionTrack.create({
+    data: { collectionId, trackId: dto.trackId, position },
+  });
+
+  // 7. Re-index
+  try {
+    await this.searchIndex.indexCollection(collectionId);
+  } catch { /* OpenSearch unavailable */ }
+
+  return collectionTrack;
 }
 
 

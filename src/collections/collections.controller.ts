@@ -14,6 +14,7 @@ import {
   Get,
   Query,
   Param,
+  Req,
 } from '@nestjs/common';
 import { CollectionsService } from './collections.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
@@ -21,7 +22,7 @@ import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtOptionalGuard } from '../auth/guards/jwt-optional.guard';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
-
+import { AddTrackDto } from './dto/add-track.dto';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -143,6 +144,17 @@ getCollectionTracks(
     Math.max(1, parseInt(page)),
     Math.min(50, Math.max(1, parseInt(limit))),
   );
+}
+
+@Post(':id/tracks/add')
+@UseGuards(JwtAccessGuard)
+async addTrack(
+  @Param('id') id: string,
+  @Body() dto: AddTrackDto,
+  @Req() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.addTrack(id, userId, dto);
 }
 
 
