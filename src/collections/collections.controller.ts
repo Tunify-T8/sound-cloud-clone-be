@@ -206,4 +206,10 @@ async unlikeCollection(
 
 
 
+@Get(':id/embed')
+async getEmbed(@Param('id') id: string) {
+  return this.collectionsService.getEmbed(id);
+}
+
+
 }

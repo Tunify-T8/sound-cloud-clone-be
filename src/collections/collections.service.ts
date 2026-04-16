@@ -588,7 +588,17 @@ async unlikeCollection(collectionId: string, userId: string) {
 
 
 
+async getEmbed(collectionId: string) {
+  // 1. Verify collection exists and is public
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false, isPublic: true },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
 
+  return {
+    embedCode: `<iframe src="https://tunify.duckdns.org/embed/collections/${collectionId}" width="100%" height="166" frameborder="0"></iframe>`,
+  };
+}
 
 
 
