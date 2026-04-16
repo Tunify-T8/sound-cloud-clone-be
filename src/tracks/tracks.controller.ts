@@ -22,6 +22,8 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { PlaybackContextDto } from './dto/playback-context.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
+import { use } from 'passport';
+import type Multer from 'multer';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -264,9 +266,10 @@ export class TracksController {
     @Request() req: AuthRequest,
     @Param('id',ParseUUIDPipe) trackId: string,
     @Body('text') text: string,
+    @Body('timestamp') timestamp: number,
   ) {
     // Implement comment creation logic here
-    return this.tracksService.addComment(trackId, req.user?.userId ?? '', text);
+    return this.tracksService.addComment(trackId, req.user?.userId ?? '', text, timestamp);
   }
 
  @Get(':id/likes')

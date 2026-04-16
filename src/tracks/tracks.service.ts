@@ -12,6 +12,10 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
+import { time } from 'console';
+import { timestamp } from 'rxjs';
+import { availableFormats } from 'fluent-ffmpeg';
+import type Multer from 'multer';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 import { SearchIndexService } from '../search-index/search-index.service';
 
@@ -1280,7 +1284,7 @@ export class TracksService {
     };
   }
 
-  async addComment(trackId: string, userId: string, text: string) {
+  async addComment(trackId: string, userId: string, text: string, timestamp: number) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1296,6 +1300,7 @@ export class TracksService {
         userId: userId,
         trackId: trackId,
         content: text,
+        timestamp: timestamp,
       },
     });
 
@@ -1312,6 +1317,7 @@ export class TracksService {
         text: comment.content,
         likesCount: 0,
         repliesCount: 0,
+        timestamp: comment.timestamp,
         createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
@@ -1378,6 +1384,7 @@ export class TracksService {
         text: comment.content,
         likesCount: comment._count.likes,
         repliesCount: comment._count.replies,
+        timestamp: comment.timestamp,
         createdAt: comment.createdAt.toISOString(),
       })),
       page: validPage,

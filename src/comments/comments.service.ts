@@ -77,7 +77,7 @@ export class CommentsService {
 
         return{ 
             replyId: reply.id,
-            commentId: commentId,
+            commentId: commentId,  //to be changed to parentID
             userId: userId,
             username: user.username,
             avatarUrl: user.avatarUrl,
@@ -115,13 +115,15 @@ export class CommentsService {
         return {
             replies: replies.map(reply => ({
                 replyId: reply.id,
-                commentId: commentId,
-                userId: reply.userId,
+                commentId: commentId,  // to be changed to parentID
+                userId: reply.userId,  // user must be nested instead of flat
                 username: reply.user.username,
                 avatarUrl: reply.user.avatarUrl,
                 text: reply.content,
                 likesCount: reply._count.likes,
-                repliesCount: reply._count.replies,
+                repliesCount: reply._count.replies, 
+                // add the following fields: is liked, createdat
+
             }))
         };
 
