@@ -183,4 +183,16 @@ async reorderTracks(
 }
 
 
+@Post(':id/like')
+@UseGuards(JwtAccessGuard)
+async likeCollection(
+  @Param('id') id: string,
+  @Req() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.likeCollection(id, userId);
+}
+
+
+
 }

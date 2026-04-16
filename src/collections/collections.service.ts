@@ -540,5 +540,33 @@ async reorderTracks(collectionId: string, userId: string, dto: ReorderTracksDto)
 
 
 
+async likeCollection(collectionId: string, userId: string) {
+  // 1. Verify collection exists
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // 2. Check duplicate like
+  const existing = await this.prisma.collectionLike.findFirst({
+    where: { collectionId, userId },
+  });
+  if (existing) throw new BadRequestException('Already liked');
+
+  // 3. Create like
+  await this.prisma.collectionLike.create({
+    data: { collectionId, userId },
+  });
+
+  return { message: 'Collection liked' };
+}
+
+
+
+
+
+
+
+
 
 }
