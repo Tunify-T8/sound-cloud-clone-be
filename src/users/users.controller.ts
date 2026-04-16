@@ -26,7 +26,6 @@ import { CollectionType, SocialPlatform } from '@prisma/client';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ParseSocialPlatformPipe } from './pipes/parse-social-platform.pipe';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { use } from 'passport';
 
 interface AuthRequest extends Request {
   user?: { userId: string };

@@ -3,6 +3,10 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "resolvePackageJsonExports": true,
+    "baseUrl": ".",
+    "paths": {
+      "src/*": ["src/*"]
+    },
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": true,

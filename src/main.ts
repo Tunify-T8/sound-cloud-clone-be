@@ -15,6 +15,11 @@ async function bootstrap() {
     prefix: '/uploads',
   });
 
+  // serve API docs (ReDoc)
+  app.useStaticAssets(path.join(process.cwd()), {
+    prefix: '/',
+  });
+
   // ─── CORS ──────────────────────────────────────────────────────
   app.enableCors({
     origin: [

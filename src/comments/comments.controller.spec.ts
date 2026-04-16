@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CommentsController } from './comments.controller';
 import { CommentsService } from './comments.service';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
@@ -7,7 +8,6 @@ import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 
 const USER_ID = 'user-123';
 const COMMENT_ID = 'comment-abc';
-const TRACK_ID = 'track-xyz';
 
 const mockCommentResponse = {
   message: 'Comment deleted successfully',
@@ -399,7 +399,6 @@ describe('CommentsController', () => {
 
   describe('Error handling', () => {
     it('propagates NotFoundException from service when comment not found', async () => {
-      const { NotFoundException } = require('@nestjs/common');
       service.deleteComment.mockRejectedValue(
         new NotFoundException('Comment not found')
       );
@@ -410,7 +409,6 @@ describe('CommentsController', () => {
     });
 
     it('propagates ForbiddenException when user is unauthorized', async () => {
-      const { ForbiddenException } = require('@nestjs/common');
       service.deleteComment.mockRejectedValue(
         new ForbiddenException('You can only delete your own comments')
       );
