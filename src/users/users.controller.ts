@@ -18,7 +18,7 @@ import {
   // MaxFileSizeValidator,
   // FileTypeValidator,
 } from '@nestjs/common';
-import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
+import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UsersService } from './users.service';
 import * as usersDecorator from './users.decorator';
@@ -176,6 +176,17 @@ export class UsersController {
   ) {
     return this.usersService.getFollowerList(id, page, limit);
   }
+
+  @Get(':id/reposts')
+  @UseGuards(JwtAccessGuard)
+  getUserReposts(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.usersService.getReposts(userId, page, limit);
+  }
+
 
   // ─── GET /:id/following ───────────────────────────────────────
   //gets following list of a user
