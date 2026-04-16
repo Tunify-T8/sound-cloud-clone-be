@@ -158,4 +158,16 @@ async addTrack(
 }
 
 
+@Post(':id/tracks/remove')
+@UseGuards(JwtAccessGuard)
+async removeTrack(
+  @Param('id') id: string,
+  @Body() dto: AddTrackDto,
+  @Req() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.removeTrack(id, userId, dto);
+}
+
+
 }

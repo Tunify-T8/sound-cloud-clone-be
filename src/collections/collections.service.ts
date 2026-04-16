@@ -447,4 +447,51 @@ async addTrack(collectionId: string, userId: string, dto: AddTrackDto) {
 }
 
 
+
+async removeTrack(collectionId: string, userId: string, dto: AddTrackDto) {
+  // 1. Verify collection exists and user is owner
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, userId, isDeleted: false },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // 2. Verify track is in collection
+  const collectionTrack = await this.prisma.collectionTrack.findFirst({
+    where: { collectionId, trackId: dto.trackId },
+  });
+  if (!collectionTrack) throw new NotFoundException('Track not in collection');
+
+  // 3. Delete it
+  await this.prisma.collectionTrack.delete({
+    where: { id: collectionTrack.id },
+  });
+
+  // 4. Re-normalize positions
+  const remaining = await this.prisma.collectionTrack.findMany({
+    where: { collectionId },
+    orderBy: { position: 'asc' },
+  });
+
+  await this.prisma.$transaction(
+    remaining.map((ct, index) =>
+      this.prisma.collectionTrack.update({
+        where: { id: ct.id },
+        data: { position: index + 1 },
+      }),
+    ),
+  );
+
+  // 5. Re-index
+  try {
+    await this.searchIndex.indexCollection(collectionId);
+  } catch { /* OpenSearch unavailable */ }
+
+  return { message: 'Track removed successfully' };
+}
+
+
+
+
+
+
 }
