@@ -316,6 +316,14 @@ export class TracksController {
     );
   }
 
+
+  @Get(':id/engagement')
+  @UseGuards(JwtAccessGuard)
+  async getEngagement(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string) 
+  {
+    return this.tracksService.getEngagementMetrics(trackId, req.user?.userId ?? '');
+  }
+
 }
-
-

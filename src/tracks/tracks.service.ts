@@ -1396,6 +1396,51 @@ export class TracksService {
     };
   }
 
+  async getEngagementMetrics(trackId: string, userId: string) 
+  {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const [likesCount, repostsCount, commentsCount, playsCount] =
+      await this.prisma.$transaction([
+        this.prisma.trackLike.count({ where: { trackId } }),
+        this.prisma.repost.count({ where: { trackId } }),
+        this.prisma.comment.count({ where: { trackId } }),
+        this.prisma.playHistory.count({ where: { trackId } }),
+      ]);
+
+      const isLiked: boolean = await this.prisma.trackLike.findFirst({
+        where: {
+          trackId,
+          userId,
+        },
+      }) !== null;
+
+      const isReposted: boolean = await this.prisma.repost.findFirst({
+        where: {
+          trackId,
+          userId,
+        },
+      }) !== null;
+
+
+    return {
+      trackId: track.id,
+      likesCount,
+      repostsCount,
+      commentsCount,
+      playsCount,
+      isLiked,
+      isReposted,
+    };
+  }
+
   async getStreamUrl(trackId: string, userId: string, privateToken?: string) {
     // 1. Fetch track
     const track = await this.prisma.track.findUnique({
