@@ -75,12 +75,20 @@ export class CommentsService {
             throw new NotFoundException('User not found');
         }
 
+        const parentUsername = await this.prisma.user.findUnique({
+            where: { id: parentComment.userId },
+            select: { username: true },
+        });
+
         return{ 
             replyId: reply.id,
             commentId: commentId,  //to be changed to parentID
-            userId: userId,
-            username: user.username,
-            avatarUrl: user.avatarUrl,
+            parentUsername: parentUsername?.username || 'Unknown',
+            user: {
+                userId: userId,
+                username: user.username,
+                avatarUrl: user.avatarUrl,
+            },
             text: text,
             likesCount: 0,
             createdAt: reply.createdAt,
