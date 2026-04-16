@@ -14,6 +14,7 @@ import { CollectionType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { AddTrackDto } from './dto/add-track.dto';
+import { ReorderTracksDto } from './dto/reorder-tracks.dto';    
 
 @Injectable()
 export class CollectionsService {
@@ -489,6 +490,52 @@ async removeTrack(collectionId: string, userId: string, dto: AddTrackDto) {
   return { message: 'Track removed successfully' };
 }
 
+
+async reorderTracks(collectionId: string, userId: string, dto: ReorderTracksDto) {
+  // 1. Verify collection exists and user is owner
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, userId, isDeleted: false },
+  });
+  if (!collection) throw new NotFoundException('Collection not found');
+
+  // 2. Get current tracks
+  const currentTracks = await this.prisma.collectionTrack.findMany({
+    where: { collectionId },
+  });
+
+  // 3. Verify same set of tracks
+  const currentIds = currentTracks.map((ct) => ct.trackId).sort();
+  const incomingIds = [...dto.trackIds].sort();
+  const same =
+    currentIds.length === incomingIds.length &&
+    currentIds.every((id, i) => id === incomingIds[i]);
+
+  if (!same) {
+    throw new BadRequestException(
+      'trackIds must contain exactly the current tracks in the collection',
+    );
+  }
+
+  // 4. Build a map: trackId -> collectionTrack.id
+  const trackMap = new Map(currentTracks.map((ct) => [ct.trackId, ct.id]));
+
+  // 5. Update positions in a transaction
+  await this.prisma.$transaction(
+    dto.trackIds.map((trackId, index) =>
+      this.prisma.collectionTrack.update({
+        where: { id: trackMap.get(trackId) },
+        data: { position: index + 1 },
+      }),
+    ),
+  );
+
+  // 6. Re-index
+  try {
+    await this.searchIndex.indexCollection(collectionId);
+  } catch { /* OpenSearch unavailable */ }
+
+  return { message: 'Tracks reordered successfully' };
+}
 
 
 

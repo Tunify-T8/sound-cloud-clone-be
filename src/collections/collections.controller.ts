@@ -23,6 +23,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtOptionalGuard } from '../auth/guards/jwt-optional.guard';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { AddTrackDto } from './dto/add-track.dto';
+import { ReorderTracksDto } from './dto/reorder-tracks.dto';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -167,6 +168,18 @@ async removeTrack(
 ) {
   const userId = req.user?.userId ?? '';
   return this.collectionsService.removeTrack(id, userId, dto);
+}
+
+
+@Put(':id/tracks/reorder')
+@UseGuards(JwtAccessGuard)
+async reorderTracks(
+  @Param('id') id: string,
+  @Body() dto: ReorderTracksDto,
+  @Req() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.reorderTracks(id, userId, dto);
 }
 
 
