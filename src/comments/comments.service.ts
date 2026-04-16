@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class CommentsService {
@@ -96,6 +96,12 @@ export class CommentsService {
             throw new NotFoundException('Parent comment not found');
         }
 
+            const validPage = Math.max(1, page);
+            const validLimit = Math.max(1, Math.min(limit, 100));
+            const skip = (validPage - 1) * validLimit;
+
+
+        
         const replies = await this.prisma.comment.findMany({
             where: { parentCommentId: commentId, isDeleted: false },
             include: {
@@ -105,26 +111,51 @@ export class CommentsService {
                         replies: true, 
                         likes: true,
                     },
-                    
+                },
+                likes: { //to check if the user has liked the comment
+                    where: { userId: userId },
+                    select: { id: true },
                 },
             },
             orderBy: { createdAt: 'asc' },
-            skip: (page - 1) * limit,
-            take: limit,
+            skip: (validPage - 1) * validLimit,
+            take: validLimit,
         });
+
+
+
+        const parentUsername = await this.prisma.user.findUnique({
+            where: { id: parentComment.userId },
+            select: { username: true },
+        });
+
+        const totalCount = await this.prisma.comment.count({
+            where: { parentCommentId: commentId, isDeleted: false },
+        });
+
+
         return {
             replies: replies.map(reply => ({
                 replyId: reply.id,
-                commentId: commentId,  // to be changed to parentID
-                userId: reply.userId,  // user must be nested instead of flat
-                username: reply.user.username,
-                avatarUrl: reply.user.avatarUrl,
+                parentId: commentId,
+                parentUsername: parentUsername?.username || 'Unknown',
+                user: {
+                    userId: reply.userId,
+                    username: reply.user.username,
+                    avatarUrl: reply.user.avatarUrl,
+                },
                 text: reply.content,
                 likesCount: reply._count.likes,
-                repliesCount: reply._count.replies, 
-                // add the following fields: is liked, createdat
-
-            }))
+                repliesCount: reply._count.replies,
+                isLiked: !!reply.likes[0],
+                createdAt: reply.createdAt,
+            })),
+            page: validPage,
+            limit: validLimit,
+            total: totalCount,
+            totalPages: Math.ceil(totalCount / validLimit),
+            hasNextPage: skip + replies.length < totalCount,
+            hasPreviousPage: skip > 0,
         };
 
     }
