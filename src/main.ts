@@ -1,3 +1,6 @@
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first'); // prefer IPv4 over IPv6
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -10,6 +13,11 @@ async function bootstrap() {
   // serve uploads folder as static files
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
     prefix: '/uploads',
+  });
+
+  // serve API docs (ReDoc)
+  app.useStaticAssets(path.join(process.cwd()), {
+    prefix: '/',
   });
 
   // ─── CORS ──────────────────────────────────────────────────────

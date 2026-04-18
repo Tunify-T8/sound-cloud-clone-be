@@ -1,0 +1,1003 @@
+openapi: 3.0.0
+info:
+  title: SoundCloud Clone API
+  version: 1.0.0
+  description: API documentation for comments, tracks engagement, and user interactions
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+paths:
+  # ===== COMMENTS ENDPOINTS =====
+  /comments/{id}:
+    delete:
+      summary: Delete a comment
+      tags:
+        - Comments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Comment ID to delete
+      responses:
+        '200':
+          description: Comment deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteCommentResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Not authorized to delete this comment
+        '404':
+          description: Comment not found
+
+  /comments/{id}/replies:
+    post:
+      summary: Add a reply to a comment
+      tags:
+        - Comments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Parent comment ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Reply text content
+      responses:
+        '201':
+          description: Reply added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddReplyResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Parent comment not found
+
+    get:
+      summary: Get replies for a comment with pagination
+      tags:
+        - Comments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Parent comment ID
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Number of replies per page
+      responses:
+        '200':
+          description: Replies retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRepliesResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Parent comment not found
+
+  /comments/{id}/like:
+    post:
+      summary: Like a comment
+      tags:
+        - Comments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Comment ID to like
+      responses:
+        '200':
+          description: Comment liked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeCommentResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Already liked this comment
+        '404':
+          description: Comment not found
+
+    delete:
+      summary: Unlike a comment
+      tags:
+        - Comments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Comment ID to unlike
+      responses:
+        '200':
+          description: Comment unliked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnlikeCommentResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Have not liked this comment
+        '404':
+          description: Comment not found
+
+  # ===== TRACKS ENGAGEMENT ENDPOINTS =====
+  /tracks/{id}/like:
+    post:
+      summary: Like a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID to like
+      responses:
+        '200':
+          description: Track liked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeTrackResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Already liked this track
+        '404':
+          description: Track not found
+
+    delete:
+      summary: Unlike a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID to unlike
+      responses:
+        '200':
+          description: Track unliked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnlikeTrackResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Have not liked this track
+        '404':
+          description: Track not found
+
+  /tracks/{id}/repost:
+    post:
+      summary: Repost a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID to repost
+      responses:
+        '200':
+          description: Track reposted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepostTrackResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Already reposted this track
+        '404':
+          description: Track not found
+
+    delete:
+      summary: Remove a repost
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID to unrepost
+      responses:
+        '200':
+          description: Repost removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnrepostTrackResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Have not reposted this track
+        '404':
+          description: Track not found
+
+  /tracks/{id}/comments:
+    post:
+      summary: Add a comment to a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+                - timestamp
+              properties:
+                text:
+                  type: string
+                  description: Comment text content
+                timestamp:
+                  type: number
+                  description: Timestamp in seconds where the comment was made
+      responses:
+        '201':
+          description: Comment added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddTrackCommentResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Track not found
+
+    get:
+      summary: Get comments on a track with pagination
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Comments per page
+      responses:
+        '200':
+          description: Comments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTrackCommentsResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Track not found
+
+  /tracks/{id}/likes:
+    get:
+      summary: Get users who liked a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Users per page
+      responses:
+        '200':
+          description: Track likes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTrackLikesResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Track not found
+
+  /tracks/{id}/reposts:
+    get:
+      summary: Get users who reposted a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Users per page
+      responses:
+        '200':
+          description: Track reposts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTrackRepostsResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Track not found
+
+  /tracks/{id}/engagement:
+    get:
+      summary: Get engagement metrics for a track
+      tags:
+        - Tracks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Track ID
+      responses:
+        '200':
+          description: Engagement metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEngagementResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Track not found
+
+  # ===== USERS ENDPOINTS =====
+  /users/me/liked-tracks:
+    get:
+      summary: Get current user's liked tracks
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Tracks per page
+      responses:
+        '200':
+          description: Liked tracks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLikedTracksResponse'
+        '401':
+          description: Unauthorized
+
+  /users/me/reposts:
+    get:
+      summary: Get current user's reposts
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Reposts per page
+      responses:
+        '200':
+          description: Reposts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRepostsResponse'
+        '401':
+          description: Unauthorized
+
+  /users/{id}/reposts:
+    get:
+      summary: Get another user's reposts
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User ID
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Reposts per page
+      responses:
+        '200':
+          description: User reposts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserRepostsResponse'
+        '401':
+          description: Unauthorized
+        '404':
+          description: User not found
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ===== COMMENTS SCHEMAS =====
+    DeleteCommentResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Comment deleted successfully
+        commentCount:
+          type: integer
+          description: Updated comment count after deletion
+
+    AddReplyResponse:
+      type: object
+      properties:
+        replyId:
+          type: string
+          format: uuid
+        commentId:
+          type: string
+          format: uuid
+          description: Parent comment ID
+        parentUsername:
+          type: string
+          description: Username of the parent comment author
+        user:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+            username:
+              type: string
+            avatarUrl:
+              type: string
+              nullable: true
+        text:
+          type: string
+        likesCount:
+          type: integer
+          default: 0
+        createdAt:
+          type: string
+          format: date-time
+
+    Reply:
+      type: object
+      properties:
+        replyId:
+          type: string
+          format: uuid
+        parentId:
+          type: string
+          format: uuid
+        parentUsername:
+          type: string
+        user:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+            username:
+              type: string
+            avatarUrl:
+              type: string
+              nullable: true
+        text:
+          type: string
+        likesCount:
+          type: integer
+        repliesCount:
+          type: integer
+        isLiked:
+          type: boolean
+          description: Whether the current user has liked this reply
+        createdAt:
+          type: string
+          format: date-time
+
+    GetRepliesResponse:
+      type: object
+      properties:
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reply'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+
+    LikeCommentResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Comment liked successfully
+        likesCount:
+          type: integer
+
+    UnlikeCommentResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Comment unliked successfully
+        likesCount:
+          type: integer
+
+    # ===== TRACKS SCHEMAS =====
+    LikeTrackResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Track liked successfully
+        likesCount:
+          type: integer
+
+    UnlikeTrackResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Track unliked successfully
+        likesCount:
+          type: integer
+
+    RepostTrackResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Track reposted successfully
+        repostsCount:
+          type: integer
+
+    UnrepostTrackResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Repost removed successfully
+        repostsCount:
+          type: integer
+
+    AddTrackCommentResponse:
+      type: object
+      properties:
+        commentId:
+          type: string
+          format: uuid
+        trackId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        text:
+          type: string
+        timestamp:
+          type: number
+          description: Timestamp in seconds
+        likesCount:
+          type: integer
+          default: 0
+        createdAt:
+          type: string
+          format: date-time
+
+    TrackComment:
+      type: object
+      properties:
+        commentId:
+          type: string
+          format: uuid
+        trackId:
+          type: string
+          format: uuid
+        user:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+            username:
+              type: string
+            avatarUrl:
+              type: string
+              nullable: true
+        text:
+          type: string
+        timestamp:
+          type: number
+        likesCount:
+          type: integer
+        repliesCount:
+          type: integer
+        isLiked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    GetTrackCommentsResponse:
+      type: object
+      properties:
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackComment'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+
+    UserPreview:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        isCertified:
+          type: boolean
+
+    GetTrackLikesResponse:
+      type: object
+      properties:
+        likes:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPreview'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+
+    Repost:
+      type: object
+      properties:
+        repostId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        isCertified:
+          type: boolean
+        repostedAt:
+          type: string
+          format: date-time
+
+    GetTrackRepostsResponse:
+      type: object
+      properties:
+        reposts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Repost'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+
+    GetEngagementResponse:
+      type: object
+      properties:
+        trackId:
+          type: string
+          format: uuid
+        likesCount:
+          type: integer
+        commentsCount:
+          type: integer
+        repostsCount:
+          type: integer
+        isLiked:
+          type: boolean
+          description: Whether current user has liked the track
+        isReposted:
+          type: boolean
+          description: Whether current user has reposted the track
+        isSaved:
+          type: boolean
+          description: Whether current user has saved the track
+
+    # ===== USERS SCHEMAS =====
+    TrackInList:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        audioUrl:
+          type: string
+        coverUrl:
+          type: string
+          nullable: true
+        duration:
+          type: integer
+        likesCount:
+          type: integer
+        commentsCount:
+          type: integer
+        repostsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    GetLikedTracksResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackInList'
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+
+    RepostInList:
+      type: object
+      properties:
+        repostId:
+          type: string
+          format: uuid
+        repostedAt:
+          type: string
+          format: date-time
+        track:
+          $ref: '#/components/schemas/TrackInList'
+
+    GetRepostsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RepostInList'
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+
+    GetUserRepostsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RepostInList'
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean

@@ -396,6 +396,7 @@ model Comment {
   isDeleted Boolean   @default(false)
   deletedAt DateTime?
   deletedBy String?
+  timestamp  Int?      @default(0) //null at replies, set at top-level comments
 
   user          User      @relation(fields: [userId], references: [id])
   track         Track     @relation(fields: [trackId], references: [id])

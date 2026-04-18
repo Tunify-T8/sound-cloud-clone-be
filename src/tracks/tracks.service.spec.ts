@@ -5,6 +5,7 @@ import { TracksService } from './tracks.service';
 import { StorageService } from '../storage/storage.service';
 import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SearchIndexService } from '../search-index/search-index.service';
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -56,6 +57,12 @@ const baseTrack = {
   deletedBy: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-02T00:00:00Z'),
+  _count: {
+    likes: 0,
+    reposts: 0,
+    comments: 0,
+    playHistory: 0,
+  },
 };
 
 const baseTrackWithRelations = {
@@ -83,6 +90,7 @@ const mockFile: Express.Multer.File = {
 const makePrismaMock = () => ({
   genre: {
     findUnique: jest.fn(),
+    upsert: jest.fn(),
   },
   subGenre: {
     findUnique: jest.fn(),
@@ -107,16 +115,48 @@ const makePrismaMock = () => ({
     create: jest.fn(),
     deleteMany: jest.fn(),
   },
+  trackLike: {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    create: jest.fn(),
+    delete: jest.fn(),
+    count: jest.fn(),
+  },
+  repost: {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    create: jest.fn(),
+    delete: jest.fn(),
+    count: jest.fn(),
+  },
+  comment: {
+    create: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+  },
+  playHistory: {
+    count: jest.fn(),
+  },
   user: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
   },
   subscription: {
     findFirst: jest.fn(),
   },
+  $transaction: jest.fn(),
 });
 
 const makeQueueMock = () => ({
   add: jest.fn().mockResolvedValue({}),
+});
+
+const makeSearchIndexMock = () => ({
+  indexTrack: jest.fn().mockResolvedValue({}),
+  updateTrack: jest.fn().mockResolvedValue({}),
+  deleteTrack: jest.fn().mockResolvedValue({}),
+  removeTrack: jest.fn().mockResolvedValue({}),
+  search: jest.fn().mockResolvedValue([]),
 });
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
@@ -127,12 +167,26 @@ describe('TracksService', () => {
   let storage: { uploadImage: jest.Mock; uploadAudio: jest.Mock };
   let audio: { extractDuration: jest.Mock };
   let queue: ReturnType<typeof makeQueueMock>;
+  let searchIndex: ReturnType<typeof makeSearchIndexMock>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     storage = { uploadImage: jest.fn(), uploadAudio: jest.fn() };
     audio = { extractDuration: jest.fn() };
     queue = makeQueueMock();
+    searchIndex = makeSearchIndexMock();
+
+    // Set default return values for commonly used mocks
+    prisma.trackLike.findMany.mockResolvedValue([]);
+    prisma.trackLike.count.mockResolvedValue(0);
+    prisma.repost.findMany.mockResolvedValue([]);
+    prisma.repost.count.mockResolvedValue(0);
+    prisma.comment.findMany.mockResolvedValue([]);
+    prisma.comment.count.mockResolvedValue(0);
+    prisma.playHistory.count.mockResolvedValue(0);
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.genre.upsert.mockResolvedValue({ id: 'genre-1', label: 'music_hiphop' });
+    prisma.$transaction.mockResolvedValue([0, 0, 0, 0]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -140,6 +194,7 @@ describe('TracksService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
         { provide: AudioService, useValue: audio },
+        { provide: SearchIndexService, useValue: searchIndex },
         { provide: getQueueToken('tracks'), useValue: queue },
       ],
     }).compile();
@@ -194,7 +249,7 @@ describe('TracksService', () => {
       });
       // Verify formatted response structure
       expect(result).toMatchObject({
-        trackId: TRACK_ID,
+        id: TRACK_ID,
         status: 'finished',
         privacy: 'public',
         artists: expect.any(Array),
@@ -1023,6 +1078,566 @@ describe('TracksService', () => {
       await expect(
         service.replaceAudio(TRACK_ID, USER_ID, mockFile),
       ).resolves.not.toThrow();
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // likeTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('likeTrack()', () => {
+    it('creates a like and returns track info with updated count', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(baseTrack)
+        .mockResolvedValueOnce({ ...baseTrack, _count: { likes: 5 } });
+      prisma.trackLike.findFirst.mockResolvedValue(null);
+      prisma.trackLike.create.mockResolvedValue({
+        id: 'like-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      });
+
+      const result = await service.likeTrack(TRACK_ID, USER_ID);
+
+      expect(prisma.track.findUnique).toHaveBeenCalledWith({
+        where: { id: TRACK_ID, isDeleted: false },
+      });
+      expect(prisma.trackLike.create).toHaveBeenCalledWith({
+        data: {
+          user: { connect: { id: USER_ID } },
+          track: { connect: { id: TRACK_ID } },
+        },
+      });
+      expect(result.message).toBe('Track liked successfully');
+      expect(result.data.likesCount).toBe(5);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.likeTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('throws ForbiddenException when user already liked the track', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.trackLike.findFirst.mockResolvedValue({
+        id: 'like-existing',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      });
+
+      await expect(service.likeTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'You already liked this track'
+      );
+    });
+
+    it('throws NotFoundException if track not found after liking', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(baseTrack)
+        .mockResolvedValueOnce(null);
+      prisma.trackLike.findFirst.mockResolvedValue(null);
+      prisma.trackLike.create.mockResolvedValue({
+        id: 'like-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      });
+
+      await expect(service.likeTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'Track not found after liking'
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // unlikeTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('unlikeTrack()', () => {
+    it('deletes a like and returns track info with updated count', async () => {
+      const existingLike = { id: 'like-1', trackId: TRACK_ID, userId: USER_ID };
+      prisma.track.findUnique
+        .mockResolvedValueOnce(baseTrack)
+        .mockResolvedValueOnce({ ...baseTrack, _count: { likes: 4 } });
+      prisma.trackLike.findFirst.mockResolvedValue(existingLike);
+      prisma.trackLike.delete.mockResolvedValue(existingLike);
+
+      const result = await service.unlikeTrack(TRACK_ID, USER_ID);
+
+      expect(prisma.trackLike.delete).toHaveBeenCalledWith({
+        where: { id: 'like-1' },
+      });
+      expect(result.message).toBe('Track unliked successfully');
+      expect(result.data.likesCount).toBe(4);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.unlikeTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('throws ForbiddenException when user has not liked the track', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.trackLike.findFirst.mockResolvedValue(null);
+
+      await expect(service.unlikeTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'You have not liked this track'
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // getTrackLikes()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackLikes()', () => {
+    it('returns paginated likes with user information', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.trackLike.count.mockResolvedValue(25);
+      prisma.trackLike.findMany.mockResolvedValue([
+        {
+          id: 'like-1',
+          trackId: TRACK_ID,
+          userId: 'user-1',
+          createdAt: new Date(),
+          user: {
+            id: 'user-1',
+            username: 'liker1',
+            avatarUrl: 'https://example.com/avatar1.jpg',
+          },
+        },
+      ]);
+
+      const result = await service.getTrackLikes(TRACK_ID, 1, 20);
+
+      expect(result.trackId).toBe(TRACK_ID);
+      expect(result.title).toBe('Test Track');
+      expect(result.likes).toHaveLength(1);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.total).toBe(25);
+      expect(result.totalPages).toBe(2);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.hasPreviousPage).toBe(false);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.getTrackLikes(TRACK_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('validates and constrains pagination parameters', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.trackLike.count.mockResolvedValue(0);
+      prisma.trackLike.findMany.mockResolvedValue([]);
+
+      // Request with limit > 100 (should cap at 100)
+      await service.getTrackLikes(TRACK_ID, 1, 200);
+
+      expect(prisma.trackLike.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          take: 100,
+        })
+      );
+    });
+
+    it('indicates hasPreviousPage when not on first page', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.trackLike.count.mockResolvedValue(100);
+      prisma.trackLike.findMany.mockResolvedValue([]);
+
+      const result = await service.getTrackLikes(TRACK_ID, 3, 20);
+
+      expect(result.hasPreviousPage).toBe(true);
+      expect(result.hasNextPage).toBe(true);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // repostTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('repostTrack()', () => {
+    it('creates a repost and returns track info with updated count', async () => {
+      prisma.track.findUnique
+        .mockResolvedValueOnce(baseTrack)
+        .mockResolvedValueOnce({ ...baseTrack, _count: { reposts: 3 } });
+      prisma.repost.findFirst.mockResolvedValue(null);
+      prisma.repost.create.mockResolvedValue({
+        id: 'repost-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      });
+
+      const result = await service.repostTrack(TRACK_ID, USER_ID);
+
+      expect(prisma.repost.create).toHaveBeenCalledWith({
+        data: {
+          user: { connect: { id: USER_ID } },
+          track: { connect: { id: TRACK_ID } },
+        },
+      });
+      expect(result.message).toBe('Track reposted successfully');
+      expect(result.data.repostsCount).toBe(3);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.repostTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('throws ForbiddenException when user already reposted the track', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.repost.findFirst.mockResolvedValue({
+        id: 'repost-existing',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      });
+
+      await expect(service.repostTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'You already reposted this track'
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // unrepostTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('unrepostTrack()', () => {
+    it('deletes a repost and returns track info with updated count', async () => {
+      const existingRepost = {
+        id: 'repost-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        createdAt: new Date(),
+      };
+      prisma.track.findUnique
+        .mockResolvedValueOnce(baseTrack)
+        .mockResolvedValueOnce({ ...baseTrack, _count: { reposts: 2 } });
+      prisma.repost.findFirst.mockResolvedValue(existingRepost);
+      prisma.repost.delete.mockResolvedValue(existingRepost);
+
+      const result = await service.unrepostTrack(TRACK_ID, USER_ID);
+
+      expect(prisma.repost.delete).toHaveBeenCalledWith({
+        where: { id: 'repost-1' },
+      });
+      expect(result.message).toBe('Track unreposted successfully');
+      expect(result.data.repostsCount).toBe(2);
+    });
+
+    it('throws ForbiddenException when user has not reposted the track', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.repost.findFirst.mockResolvedValue(null);
+
+      await expect(service.unrepostTrack(TRACK_ID, USER_ID)).rejects.toThrow(
+        'You have not reposted this track'
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // getTrackReposts()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackReposts()', () => {
+    it('returns paginated reposts with user information', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.repost.count.mockResolvedValue(10);
+      prisma.repost.findMany.mockResolvedValue([
+        {
+          id: 'repost-1',
+          trackId: TRACK_ID,
+          userId: 'user-1',
+          createdAt: new Date(),
+          user: {
+            id: 'user-1',
+            username: 'reposter1',
+            avatarUrl: 'https://example.com/avatar1.jpg',
+          },
+        },
+      ]);
+
+      const result = await service.getTrackReposts(TRACK_ID, 1, 20);
+
+      expect(result.trackId).toBe(TRACK_ID);
+      expect(result.reposts).toHaveLength(1);
+      expect(result.page).toBe(1);
+      expect(result.total).toBe(10);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.hasPreviousPage).toBe(false);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.getTrackReposts(TRACK_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('correctly calculates pagination', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.repost.count.mockResolvedValue(100);
+      prisma.repost.findMany.mockResolvedValue(
+        Array(20).fill(null).map((_, i) => ({
+          id: `repost-${i}`,
+          trackId: TRACK_ID,
+          userId: `user-${i}`,
+          createdAt: new Date(),
+          user: {
+            id: `user-${i}`,
+            username: `user${i}`,
+            avatarUrl: `https://example.com/avatar${i}.jpg`,
+          },
+        }))
+      );
+
+      const result = await service.getTrackReposts(TRACK_ID, 2, 20);
+
+      expect(prisma.repost.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 20, // (2-1) * 20
+          take: 20,
+        })
+      );
+      expect(result.page).toBe(2);
+      expect(result.hasPreviousPage).toBe(true);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // addComment()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('addComment()', () => {
+    it('creates a comment and returns comment info with total count', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.comment.create.mockResolvedValue({
+        id: 'comment-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        content: 'Great track!',
+        timestamp: 30,
+        parentCommentId: null,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: USER_ID,
+        username: 'commenter',
+        avatarUrl: 'https://example.com/avatar.jpg',
+      });
+      prisma.comment.count.mockResolvedValue(5);
+
+      const result = await service.addComment(
+        TRACK_ID,
+        USER_ID,
+        'Great track!',
+        30
+      );
+
+      expect(prisma.comment.create).toHaveBeenCalledWith({
+        data: {
+          userId: USER_ID,
+          trackId: TRACK_ID,
+          content: 'Great track!',
+          timestamp: 30,
+        },
+      });
+      expect(result.comment.text).toBe('Great track!');
+      expect(result.comment.username).toBe('commenter');
+      expect(result.commentsCount).toBe(5);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.addComment(TRACK_ID, USER_ID, 'text', 0)
+      ).rejects.toThrow('Track not found');
+    });
+
+    it('returns Unknown username when user not found', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.comment.create.mockResolvedValue({
+        id: 'comment-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+        content: 'text',
+        timestamp: 0,
+        parentCommentId: null,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.comment.count.mockResolvedValue(1);
+
+      const result = await service.addComment(
+        TRACK_ID,
+        USER_ID,
+        'text',
+        0
+      );
+
+      expect(result.comment.username).toBe('Unknown');
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // getTrackComments()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackComments()', () => {
+    it('returns paginated comments with metadata', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.comment.count.mockResolvedValue(15);
+      
+      // Return all 15 comments so hasNextPage calculation works correctly
+      const mockComments = Array(15).fill(null).map((_, i) => ({
+        id: `comment-${i}`,
+        trackId: TRACK_ID,
+        userId: `user-${i % 3}`,
+        content: `Comment ${i}`,
+        timestamp: 30 + i,
+        parentCommentId: null,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        user: { 
+          id: `user-${i % 3}`, 
+          username: `commenter${i % 3}`, 
+          avatarUrl: null 
+        },
+        _count: { replies: i % 3, likes: i % 5 },
+      }));
+      
+      prisma.comment.findMany.mockResolvedValue(mockComments);
+
+      const result = await service.getTrackComments(TRACK_ID, 1, 20);
+
+      expect(result.comments.length).toBe(15);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.total).toBe(15);
+      expect(result.totalPages).toBe(1);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.hasPreviousPage).toBe(false);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(service.getTrackComments(TRACK_ID)).rejects.toThrow(
+        'Track not found'
+      );
+    });
+
+    it('validates and constrains limit to max 100', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.comment.count.mockResolvedValue(0);
+      prisma.comment.findMany.mockResolvedValue([]);
+
+      await service.getTrackComments(TRACK_ID, 1, 500);
+
+      expect(prisma.comment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          take: 100,
+        })
+      );
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // getEngagementMetrics()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getEngagementMetrics()', () => {
+    it('returns engagement metrics with user-specific flags', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.$transaction.mockResolvedValue([10, 5, 20, 100]);
+      prisma.trackLike.findFirst
+        .mockResolvedValueOnce({ id: 'like-1' })
+        .mockResolvedValueOnce(null);
+      prisma.repost.findFirst.mockResolvedValue(null);
+
+      const result = await service.getEngagementMetrics(TRACK_ID, USER_ID);
+
+      expect(result.trackId).toBe(TRACK_ID);
+      expect(result.likesCount).toBe(10);
+      expect(result.repostsCount).toBe(5);
+      expect(result.commentsCount).toBe(20);
+      expect(result.playsCount).toBe(100);
+      expect(result.isLiked).toBe(true);
+      expect(result.isReposted).toBe(false);
+    });
+
+    it('throws NotFoundException when track does not exist', async () => {
+      prisma.track.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getEngagementMetrics(TRACK_ID, USER_ID)
+      ).rejects.toThrow('Track not found');
+    });
+
+    it('uses transaction for atomic count queries', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.$transaction.mockResolvedValue([0, 0, 0, 0]);
+      prisma.trackLike.findFirst.mockResolvedValue(null);
+      prisma.repost.findFirst.mockResolvedValue(null);
+
+      await service.getEngagementMetrics(TRACK_ID, USER_ID);
+
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        expect.any(Promise),
+        expect.any(Promise),
+        expect.any(Promise),
+        expect.any(Promise),
+      ]);
+    });
+
+    it('correctly evaluates isLiked and isReposted flags', async () => {
+      prisma.track.findUnique.mockResolvedValue(baseTrack);
+      prisma.$transaction.mockResolvedValue([5, 3, 10, 50]);
+      prisma.trackLike.findFirst.mockResolvedValue({
+        id: 'like-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+      });
+      prisma.repost.findFirst.mockResolvedValue({
+        id: 'repost-1',
+        trackId: TRACK_ID,
+        userId: USER_ID,
+      });
+
+      const result = await service.getEngagementMetrics(TRACK_ID, USER_ID);
+
+      expect(result.isLiked).toBe(true);
+      expect(result.isReposted).toBe(true);
     });
   });
 });
