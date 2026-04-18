@@ -26,7 +26,7 @@ import { CollectionType, SocialPlatform } from '@prisma/client';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ParseSocialPlatformPipe } from './pipes/parse-social-platform.pipe';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-
+import { JwtOptionalGuard } from '../auth/guards/jwt-optional.guard';
 interface AuthRequest extends Request {
   user?: { userId: string };
 }
@@ -287,4 +287,43 @@ export class UsersController {
   getUploadMinutes(@Param('id', ParseUUIDPipe) userId: string) {
     return this.usersService.getUploadMinutes(userId);
   }
+
+
+
+@Get(':username/collections')
+@UseGuards(JwtOptionalGuard)
+getUserCollections(
+  @Param('username') username: string,
+  @Query('page') page: number = 1,
+  @Query('limit') limit: number = 10,
+  @Request() req?: AuthRequest,
+) {
+  const requesterId = req?.user?.userId;
+  return this.usersService.getUserCollections(username, requesterId, +page, +limit);
+}
+
+@Get(':username/albums')
+@UseGuards(JwtOptionalGuard)
+getUserAlbums(
+  @Param('username') username: string,
+  @Query('page') page: number = 1,
+  @Query('limit') limit: number = 10,
+  @Request() req?: AuthRequest,
+) {
+  const requesterId = req?.user?.userId;
+  return this.usersService.getUserCollections(username, requesterId, +page, +limit, CollectionType.ALBUM);
+}
+
+@Get(':username/playlists')
+@UseGuards(JwtOptionalGuard)
+getUserPlaylists(
+  @Param('username') username: string,
+  @Query('page') page: number = 1,
+  @Query('limit') limit: number = 10,
+  @Request() req?: AuthRequest,
+) {
+  const requesterId = req?.user?.userId;
+  return this.usersService.getUserCollections(username, requesterId, +page, +limit, CollectionType.PLAYLIST);
+}
+
 }

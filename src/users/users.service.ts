@@ -845,4 +845,77 @@ export class UsersService {
       ),
     };
   }
+
+
+
+
+async getUserCollections(
+  username: string,
+  requesterId: string | undefined,
+  page: number = 1,
+  limit: number = 10,
+  type?: CollectionType,
+) {
+  // 1. Find user by username
+  const user = await this.prisma.user.findUnique({
+    where: { username },
+  });
+  if (!user) throw new NotFoundException('User not found');
+
+  const isOwner = requesterId === user.id;
+  const skip = (page - 1) * limit;
+
+  // 2. Build where clause
+  const where = {
+    userId: user.id,
+    isDeleted: false,
+    ...(type ? { type } : {}),
+    ...(!isOwner ? { isPublic: true } : {}),
+  };
+
+  const [collections, total] = await Promise.all([
+    this.prisma.collection.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        coverUrl: true,
+        isPublic: true,
+        type: true,
+        createdAt: true,
+        _count: {
+          select: {
+            tracks: true,
+            likes: true,
+          },
+        },
+      },
+    }),
+    this.prisma.collection.count({ where }),
+  ]);
+
+  return {
+    data: collections.map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      coverUrl: c.coverUrl,
+      isPublic: c.isPublic,
+      type: c.type,
+      tracksCount: c._count.tracks,
+      likesCount: c._count.likes,
+      createdAt: c.createdAt,
+    })),
+    total,
+    page,
+    limit,
+    hasMore: skip + collections.length < total,
+  };
+}
+
+
 }

@@ -18,9 +18,16 @@ export class SearchIndexService {
   ) {}
 
   // runs automatically when the module initializes
-  async onModuleInit(): Promise<void> {
+ async onModuleInit(): Promise<void> {
+  try {
     await this.initIndexes();
+  } catch (err) {
+    this.logger.warn(
+      'OpenSearch unavailable — skipping index initialization. Search features will not work.',
+    );
+    this.logger.debug(err);
   }
+}
 
   async initIndexes(): Promise<void> {
     const indexes = [
