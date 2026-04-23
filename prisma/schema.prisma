@@ -458,7 +458,7 @@ model Conversation {
   createdAt DateTime           @default(now())
   updatedAt DateTime?           @updatedAt
   isDeleted Boolean            @default(false)
-  DeletedAt DateTime?
+  deletedAt DateTime?
 
   user1    User      @relation("ConversationUser1", fields: [user1Id], references: [id])
   user2    User      @relation("ConversationUser2", fields: [user2Id], references: [id])
