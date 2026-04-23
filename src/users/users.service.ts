@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
@@ -1004,5 +1004,39 @@ async getUserCollections(
       hasNextPage: skip + conversations.length < total,
       hasPreviousPage: skip > 0,
     };
+  }
+
+  async createConversation(userId: string, otherUserId: string) {
+    if (userId === otherUserId) {
+      throw new BadRequestException('Cannot create conversation with yourself');
+    }
+
+    // Check if conversation already exists
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        OR: [
+          { user1Id: userId, user2Id: otherUserId },
+          { user1Id: otherUserId, user2Id: userId },
+        ],
+      },
+    });
+
+    if (existing) {
+      return {
+        conversationId: existing.id,
+      }
+    }
+
+    // Create new conversation
+    const conversation = await this.prisma.conversation.create({
+      data: {
+        user1Id: userId,
+        user2Id: otherUserId,
+      },
+    });
+
+    return {
+      conversationId: conversation.id,
+    }
   }
 }

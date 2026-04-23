@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Patch,
+  Post,
   Body,
   Delete,
   Request,
@@ -52,6 +53,15 @@ export class UsersController {
     @Query('limit') limit: number = 20,
   ) {
     return this.usersService.getMyConversations(user.userId, page, limit);
+  }
+ 
+  @Post('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  createConversation(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Body('userId') otherUserId: string,
+  ) {
+    return this.usersService.createConversation(user.userId, otherUserId);
   }
 
   // ─── GET /me/social-links ───────────────────────────────────────
