@@ -64,6 +64,13 @@ export class UsersController {
     return this.usersService.createConversation(user.userId, otherUserId);
   }
 
+  @Get('me/messages/unread-count')
+  @UseGuards(JwtAccessGuard)
+  getUnreadMessagesCount(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getUnreadMessagesCount(user.userId);
+  }
   // ─── GET /me/social-links ───────────────────────────────────────
   //returns my social links
   @Get('me/social-links')

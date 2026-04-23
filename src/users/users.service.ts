@@ -1039,4 +1039,21 @@ async getUserCollections(
       conversationId: conversation.id,
     }
   }
+
+  async getUnreadMessagesCount(userId: string) {
+    const count = await this.prisma.message.count({
+      where: {
+        read: false,
+        senderId: { not: userId },
+        conversation: {
+          OR: [
+            { user1Id: userId },
+            { user2Id: userId },
+          ],
+        },
+      },
+    })
+
+    return count;
+  }
 }
