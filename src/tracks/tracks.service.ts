@@ -13,7 +13,7 @@ import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
-import { SearchIndexService } from '../search-index/search-index.service';
+//import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
   status: 'playable' | 'preview' | 'blocked';
@@ -35,7 +35,7 @@ export class TracksService {
     private storage: StorageService,
     private audio: AudioService,
     private prisma: PrismaService,
-    private readonly searchIndexService: SearchIndexService,
+    //private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
   ) {}
 
@@ -311,7 +311,7 @@ export class TracksService {
       throw new NotFoundException('Track not found after creation');
     }
 
-    await this.searchIndexService.indexTrack(track.id);
+    //await this.searchIndexService.indexTrack(track.id);
 
     // Return formatted response matching getTrack() format
     return {
@@ -811,7 +811,7 @@ export class TracksService {
         })
       : null;
 
-    await this.searchIndexService.indexTrack(trackId);
+    //await this.searchIndexService.indexTrack(trackId);
 
     // 10. Return formatted response matching create() and getTrack() format
     return {
@@ -868,7 +868,7 @@ export class TracksService {
       },
     });
 
-    await this.searchIndexService.removeTrack(trackId);
+    //await this.searchIndexService.removeTrack(trackId);
 
     return { message: 'Track deleted successfully' };
   }

@@ -18,9 +18,9 @@ export class SearchIndexService {
   ) {}
 
   // runs automatically when the module initializes
-  async onModuleInit(): Promise<void> {
-    await this.initIndexes();
-  }
+  //async onModuleInit(): Promise<void> {
+  //  await this.initIndexes();
+  //}
 
   async initIndexes(): Promise<void> {
     const indexes = [
