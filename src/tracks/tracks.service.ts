@@ -1343,7 +1343,9 @@ export class TracksService {
 
     // Get total count
     const totalCount = await this.prisma.comment.count({
-      where: { trackId },
+      where: { trackId, 
+        parentCommentId: null, // only count top-level comments for pagination
+       },
     });
 
     // Get comments for the current page
