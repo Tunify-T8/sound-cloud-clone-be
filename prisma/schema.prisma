@@ -65,7 +65,8 @@ model User {
 
   conversations1 Conversation[] @relation("ConversationUser1")
   conversations2 Conversation[] @relation("ConversationUser2")
-  sentMessages   Message[]
+  sentMessages     Message[]
+  sharedInMessages Message[] @relation("MessageSharedUser")
 
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationsTriggered  Notification[]           @relation("NotificationActor")
@@ -189,6 +190,7 @@ model Track {
   publisher   String?
   isrc        String?
   pLine       String?
+  
 
   // Audio
   audioUrl          String
@@ -249,6 +251,7 @@ model Track {
   comments           Comment[]
   collectionTracks   CollectionTrack[]
   playHistory        PlayHistory[]
+  messages Message[]
 
   @@index([userId])
   @@index([genreId])
@@ -428,6 +431,7 @@ model Collection {
   user   User              @relation(fields: [userId], references: [id])
   tracks CollectionTrack[]
   likes  CollectionLike[]
+  messages Message[]
 
   @@index([userId])
 }
@@ -465,18 +469,33 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   conversationId String
   senderId       String
-  content        String
-  createdAt      DateTime @default(now())
-  read           Boolean   @default(false)
+  
+  // Content type determines which relation is populated
+  type    MessageType @default(TEXT)
+  content        String?             // For TEXT type only
+  
+  // Optional relations based on contentType
+  trackId        String?             // For TRACK_LIKE, ALBUM, UPLOAD
+  collectionId   String?             // For PLAYLIST, ALBUM
+  userId         String?             // For USER
+  
+  createdAt      DateTime     @default(now())
+  read           Boolean      @default(false)
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
   sender       User         @relation(fields: [senderId], references: [id])
+  track        Track?       @relation(fields: [trackId], references: [id])
+  collection   Collection?  @relation(fields: [collectionId], references: [id])
+  sharedUser   User?        @relation("MessageSharedUser", fields: [userId], references: [id])
 
   @@index([conversationId])
   @@index([senderId])
+  @@index([trackId])
+  @@index([collectionId])
+  @@index([userId])
 }
 
 model Notification {
@@ -707,6 +726,15 @@ enum NotificationType {
   new_message
   system
   subscription
+}
+
+enum MessageType {
+  TEXT
+  TRACK_LIKE
+  USER
+  PLAYLIST
+  ALBUM
+  UPLOAD
 }
 
 enum ReferenceType {

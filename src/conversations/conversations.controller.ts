@@ -24,4 +24,15 @@ export class ConversationsController {
     ) {
         return this.conversationsService.deleteConversation(req.user.userId, conversationId);
     }
+
+    @Get(':id/messages')
+    @UseGuards(JwtAccessGuard)
+    getMessages(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 20,
+    ) {
+        return this.conversationsService.getMessages(req.user.userId, conversationId, page, limit);
+    }
 }
