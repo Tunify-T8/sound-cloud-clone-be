@@ -7,6 +7,7 @@ import { TracksProcessor } from './tracks.processor';
 import { BullModule } from '@nestjs/bull';
 import { AuthModule } from '../auth/auth.module';
 import { SearchModule } from '../search/search.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SearchModule } from '../search/search.module';
     AudioModule,
     SearchModule,
     BullModule.registerQueue({ name: 'tracks' }),
+    NotificationsModule
   ],
   controllers: [TracksController],
   providers: [TracksService, TracksProcessor],

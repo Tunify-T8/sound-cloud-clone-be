@@ -7,6 +7,7 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InjectQueue } from '@nestjs/bull';
 import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
@@ -17,6 +18,7 @@ import { timestamp } from 'rxjs';
 import { availableFormats } from 'fluent-ffmpeg';
 import type Multer from 'multer';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
+import { NotificationType, ReferenceType } from '@prisma/client';
 //import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
@@ -41,6 +43,7 @@ export class TracksService {
     private prisma: PrismaService,
     //private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async resolvePlayability(
@@ -989,6 +992,14 @@ export class TracksService {
       },
     });
 
+    await this.notificationsService.createNotification({
+      recipientId: track.userId,
+      actorId: userId,
+      type: NotificationType.track_liked,
+      referenceType: ReferenceType.track,
+      referenceId: trackId,
+    });
+
     const updatedTrack = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
@@ -1152,6 +1163,14 @@ export class TracksService {
       },
     });
 
+    await this.notificationsService.createNotification({
+      recipientId: track.userId,
+      actorId: userId,
+      type: NotificationType.track_reposted,
+      referenceType: ReferenceType.track,
+      referenceId: trackId,
+    });
+
     const updatedTrack = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
@@ -1284,7 +1303,12 @@ export class TracksService {
     };
   }
 
-  async addComment(trackId: string, userId: string, text: string, timestamp: number) {
+  async addComment(
+    trackId: string,
+    userId: string,
+    text: string,
+    timestamp: number,
+  ) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1302,6 +1326,15 @@ export class TracksService {
         content: text,
         timestamp: timestamp,
       },
+    });
+
+    // ── Notify track owner ──
+    await this.notificationsService.createNotification({
+      recipientId: track.userId, // track owner
+      actorId: userId, // commenter
+      type: NotificationType.track_commented,
+      referenceType: ReferenceType.comment,
+      referenceId: comment.id,
     });
 
     const user = await this.prisma.user.findUnique({
@@ -1352,7 +1385,7 @@ export class TracksService {
 
     // Get comments for the current page
     const allcomments = await this.prisma.comment.findMany({
-      where: { 
+      where: {
         trackId,
         parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
       },
@@ -1399,8 +1432,7 @@ export class TracksService {
     };
   }
 
-  async getEngagementMetrics(trackId: string, userId: string) 
-  {
+  async getEngagementMetrics(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1418,20 +1450,21 @@ export class TracksService {
         this.prisma.playHistory.count({ where: { trackId } }),
       ]);
 
-      const isLiked: boolean = await this.prisma.trackLike.findFirst({
+    const isLiked: boolean =
+      (await this.prisma.trackLike.findFirst({
         where: {
           trackId,
           userId,
         },
-      }) !== null;
+      })) !== null;
 
-      const isReposted: boolean = await this.prisma.repost.findFirst({
+    const isReposted: boolean =
+      (await this.prisma.repost.findFirst({
         where: {
           trackId,
           userId,
         },
-      }) !== null;
-
+      })) !== null;
 
     return {
       trackId: track.id,
