@@ -42,6 +42,44 @@ export class ConversationsController {
         @Request() req,
         @Param('id', new ParseUUIDPipe()) conversationId: string,
     ) {
-        return this.conversationsService.markAsRead(req.user.userId, conversationId);
+        return this.conversationsService.markAs(req.user.userId, conversationId, true);
+    }
+
+    @Post(':id/unread')
+    @UseGuards(JwtAccessGuard)
+    markAsUnread(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+    ) {
+        return this.conversationsService.markAs(req.user.userId, conversationId, false);
+    }
+
+    @Post(':id/archive')
+    @UseGuards(JwtAccessGuard)
+    archiveConversation(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+    ) {
+        return this.conversationsService.archiveConversation(req.user.userId, conversationId);
+    }
+
+    @Post(':id/block')
+    @UseGuards(JwtAccessGuard)
+    blockUser(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+        @Body('removeComments') removeComments: boolean,
+        @Body('reportSpam') reportSpam: boolean,
+    ) {
+        return this.conversationsService.blockUser(req.user.userId, conversationId, removeComments, reportSpam);
+    }
+
+    @Post('unblock/:blockedUserId')
+    @UseGuards(JwtAccessGuard)
+    unblockUser(
+        @Request() req,
+        @Param('blockedUserId', new ParseUUIDPipe()) blockedUserId: string,
+    ) {
+        return this.conversationsService.unblockUser(req.user.userId, blockedUserId);
     }
 }

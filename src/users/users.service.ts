@@ -925,12 +925,28 @@ async getUserCollections(
     const validLimit = Math.max(1, Math.min(limit, 100));
     const skip = (validPage - 1) * validLimit;
 
+    // Get list of users who have blocked this user
+    const blockedByUsers = (await this.prisma.userBlock.findMany({
+      where: { blockedId: userId },
+      select: { blockerId: true },
+    })).map(b => b.blockerId);
+
     // Get conversations with related messages and users
     const conversations = await this.prisma.conversation.findMany({
         where: {
-          OR: [
-            { user1Id: userId },
-            { user2Id: userId },
+          AND: [
+            {
+              OR: [
+                { user1Id: userId },
+                { user2Id: userId },
+              ],
+            },
+            {
+              AND: [
+                { user1Id: { notIn: blockedByUsers } },
+                { user2Id: { notIn: blockedByUsers } },
+              ],
+            },
           ],
         },
         include: {
@@ -966,9 +982,19 @@ async getUserCollections(
 
       const total = await this.prisma.conversation.count({
         where: {
-          OR: [
-            { user1Id: userId },
-            { user2Id: userId },
+          AND: [
+            {
+              OR: [
+                { user1Id: userId },
+                { user2Id: userId },
+              ],
+            },
+            {
+              AND: [
+                { user1Id: { notIn: blockedByUsers } },
+                { user2Id: { notIn: blockedByUsers } },
+              ],
+            },
           ],
         },
       });

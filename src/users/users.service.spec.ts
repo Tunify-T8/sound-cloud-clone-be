@@ -56,6 +56,9 @@ const mockPrisma = {
   message: {
     count: jest.fn(),
   },
+  userBlock: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -1021,6 +1024,7 @@ describe('getPublicTracks', () => {
   // ── getMyConversations ────────────────────────────────────
   describe('getMyConversations', () => {
     it('should return paginated conversations with correct format', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
       mockPrisma.conversation.count.mockResolvedValue(1);
 
@@ -1040,6 +1044,7 @@ describe('getPublicTracks', () => {
     });
 
     it('should correctly identify other user when user1 is the authenticated user', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
       mockPrisma.conversation.count.mockResolvedValue(1);
 
@@ -1057,6 +1062,7 @@ describe('getPublicTracks', () => {
         user1: { id: 'other-user-456', username: 'otheruser' },
         user2: { id: 'user-123', username: 'testuser' },
       };
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([reversedConversation]);
       mockPrisma.conversation.count.mockResolvedValue(1);
 
@@ -1066,6 +1072,7 @@ describe('getPublicTracks', () => {
     });
 
     it('should return correct pagination values for page 2', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue(Array(15).fill(mockConversation));
       mockPrisma.conversation.count.mockResolvedValue(50);
 
@@ -1080,6 +1087,7 @@ describe('getPublicTracks', () => {
     });
 
     it('should return empty items array when user has no conversations', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([]);
       mockPrisma.conversation.count.mockResolvedValue(0);
 

@@ -42,6 +42,17 @@ export class ConversationsService {
             throw new ForbiddenException('User is not part of the conversation');
         }
 
+        // Check if user is blocked from this conversation
+        const blockedUserIds = (await this.prisma.userBlock.findMany({
+            where: { blockedId: userId },
+            select: { blockerId: true },
+        })).map(b => b.blockerId);
+
+        const otherUserId = conversation.user1Id === userId ? conversation.user2Id : conversation.user1Id;
+        if (blockedUserIds.includes(otherUserId)) {
+            throw new ForbiddenException('You are blocked by this user');
+        }
+
         const validPage = Math.max(1, page);
         const validLimit = Math.max(1, Math.min(limit, 100));
         const skip = (validPage - 1) * validLimit;
@@ -130,7 +141,7 @@ export class ConversationsService {
     }
 
 
-    async markAsRead(userId: string, conversationId: string) {
+    async markAs(userId: string, conversationId: string, flag: boolean) {
         const conversation = await this.prisma.conversation.findUnique({
             where: { id: conversationId, isDeleted: false },
         });
@@ -145,9 +156,92 @@ export class ConversationsService {
 
         await this.prisma.conversation.update({
             where: { id: conversationId },
-            data: { isRead: true },
+            data: { isRead: flag },
         });
 
-        return { message: `Conversation ${conversationId} marked as read for user ${userId}` };
+        return { message: `Conversation ${conversationId} marked as ${flag ? 'read' : 'unread'} for user ${userId}` };
+    }
+
+    async archiveConversation(userId: string, conversationId: string) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId, isDeleted: false },
+        });
+        if (!conversation) {
+            throw new NotFoundException('Conversation not found');
+        }
+
+        // Check if the user is part of the conversation
+        if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+            throw new ForbiddenException('User is not part of the conversation');
+        }
+
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { status: 'ARCHIVED' },
+        });
+        return { message: `Conversation ${conversationId} archived for user ${userId}` };
+    }
+
+    async blockUser(userId: string, conversationId: string, removeComments: boolean, reportSpam: boolean) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId, isDeleted: false },
+        });
+
+        if (!conversation) {
+            throw new NotFoundException('Conversation not found');
+        }
+
+        // Check if the user is part of the conversation
+        if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+            throw new ForbiddenException('User is not part of the conversation');
+        }
+
+        const blockedUserId = conversation.user1Id === userId ? conversation.user2Id : conversation.user1Id;
+
+        // Update conversation, remove follows, and create block in transaction
+        const userBlock = await this.prisma.$transaction(async (tx) => {
+            await tx.conversation.update({
+                where: { id: conversationId },
+                data: { status: 'BLOCKED' },
+            });
+
+            // Remove follows in both directions
+            await tx.follow.deleteMany({
+                where: {
+                    OR: [
+                        { followerId: userId, followingId: blockedUserId },
+                        { followerId: blockedUserId, followingId: userId },
+                    ],
+                },
+            });
+
+            // Create the block record
+            return await tx.userBlock.create({
+                data: {
+                    blockerId: userId,
+                    blockedId: blockedUserId,
+                    removeComments,
+                    reportSpam,
+                },
+            });
+        });
+
+        return { message: 'User blocked successfully', blockedUserId, blockId: userBlock.id };
+    }
+
+    async unblockUser(userId: string, blockedUserId: string) {
+        const userBlock = await this.prisma.userBlock.findUnique({
+            where: { blockerId_blockedId: { blockerId: userId, blockedId: blockedUserId } },
+        });
+
+        if (!userBlock) {
+            throw new NotFoundException('User not blocked');
+        }
+
+        await this.prisma.userBlock.delete({
+            where: { id: userBlock.id },
+        });
+
+        return { message: 'User unblocked successfully' };
     }
 }
