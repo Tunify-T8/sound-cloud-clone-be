@@ -16,6 +16,7 @@ import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
 import { CollectionsModule } from './collections/collections.module';
 import { CommentsModule } from './comments/comments.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CommentsModule } from './comments/comments.module';
     SearchModule,
     CollectionsModule,
     CommentsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],
