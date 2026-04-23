@@ -191,6 +191,8 @@ export class UsersService {
       this.prisma.track.findMany({
         where: {
           userId: userId,
+          isDeleted: false,
+          isHidden: false,
         },
         skip,
         take: limit,
