@@ -1348,7 +1348,10 @@ export class TracksService {
 
     // Get comments for the current page
     const allcomments = await this.prisma.comment.findMany({
-      where: { trackId },
+      where: { 
+        trackId,
+        parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
+      },
       skip,
       take: validLimit,
       include: {
