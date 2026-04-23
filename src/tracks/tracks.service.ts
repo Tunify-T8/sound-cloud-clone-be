@@ -12,6 +12,10 @@ import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
+import { time } from 'console';
+import { timestamp } from 'rxjs';
+import { availableFormats } from 'fluent-ffmpeg';
+import type Multer from 'multer';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 //import { SearchIndexService } from '../search-index/search-index.service';
 
@@ -1256,10 +1260,16 @@ export class TracksService {
       },
     });
 
+    const totalPages = Math.ceil(totalCount / validLimit);
+    const hasNextPage = validPage < totalPages;
+    const hasPreviousPage = validPage > 1;
+
     return {
+      trackId: track.id,
+      title: track.title,
       reposts: allreposts.map((repost) => ({
         user: {
-          userId: repost.user.id,
+          id: repost.user.id,
           username: repost.user.username,
           avatarUrl: repost.user.avatarUrl,
         },
@@ -1267,14 +1277,14 @@ export class TracksService {
       })),
       page: validPage,
       limit: validLimit,
-      totalCount: totalCount,
-      totalPages: Math.ceil(totalCount / validLimit),
-      hasNextPage: skip + allreposts.length < totalCount,
-      hasPreviousPage: skip > 0,
+      total: totalCount,
+      totalPages,
+      hasNextPage,
+      hasPreviousPage,
     };
   }
 
-  async addComment(trackId: string, userId: string, text: string) {
+  async addComment(trackId: string, userId: string, text: string, timestamp: number) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1290,6 +1300,7 @@ export class TracksService {
         userId: userId,
         trackId: trackId,
         content: text,
+        timestamp: timestamp,
       },
     });
 
@@ -1306,6 +1317,7 @@ export class TracksService {
         text: comment.content,
         likesCount: 0,
         repliesCount: 0,
+        timestamp: comment.timestamp,
         createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
@@ -1340,7 +1352,10 @@ export class TracksService {
 
     // Get comments for the current page
     const allcomments = await this.prisma.comment.findMany({
-      where: { trackId },
+      where: { 
+        trackId,
+        parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
+      },
       skip,
       take: validLimit,
       include: {
@@ -1365,21 +1380,67 @@ export class TracksService {
       comments: allcomments.map((comment) => ({
         commentId: comment.id,
         user: {
-          userId: comment.user.id,
+          id: comment.user.id,
           username: comment.user.username,
           avatarUrl: comment.user.avatarUrl,
         },
         text: comment.content,
         likesCount: comment._count.likes,
         repliesCount: comment._count.replies,
+        timestamp: comment.timestamp,
         createdAt: comment.createdAt.toISOString(),
       })),
       page: validPage,
       limit: validLimit,
-      totalCount: totalCount,
+      total: totalCount,
       totalPages: Math.ceil(totalCount / validLimit),
       hasNextPage: skip + allcomments.length < totalCount,
       hasPreviousPage: skip > 0,
+    };
+  }
+
+  async getEngagementMetrics(trackId: string, userId: string) 
+  {
+    //checking if track exists
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) {
+      throw new NotFoundException('Track not found');
+    }
+
+    const [likesCount, repostsCount, commentsCount, playsCount] =
+      await this.prisma.$transaction([
+        this.prisma.trackLike.count({ where: { trackId } }),
+        this.prisma.repost.count({ where: { trackId } }),
+        this.prisma.comment.count({ where: { trackId } }),
+        this.prisma.playHistory.count({ where: { trackId } }),
+      ]);
+
+      const isLiked: boolean = await this.prisma.trackLike.findFirst({
+        where: {
+          trackId,
+          userId,
+        },
+      }) !== null;
+
+      const isReposted: boolean = await this.prisma.repost.findFirst({
+        where: {
+          trackId,
+          userId,
+        },
+      }) !== null;
+
+
+    return {
+      trackId: track.id,
+      likesCount,
+      repostsCount,
+      commentsCount,
+      playsCount,
+      isLiked,
+      isReposted,
     };
   }
 

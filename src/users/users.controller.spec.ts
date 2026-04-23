@@ -17,6 +17,7 @@ const mockUsersService = {
   getFollowerList: jest.fn(),
   getFollowingList: jest.fn(),
   getFavoriteGenres: jest.fn(),
+  getPublicTracks: jest.fn(),
   updateSocialLinks: jest.fn(),
   updateUserProfile: jest.fn(),
   deleteSocialLink: jest.fn(),
@@ -116,7 +117,51 @@ describe('UsersController', () => {
       );
     });
   });
+  // ── getPublicUserTracks (controller) ───────────────────────
+  describe('getPublicUserTracks', () => {
+    it('should call service with correct params', async () => {
+      const mockResult = {
+        data: [],
+        meta: { page: 1, limit: 10, total: 0, hasMore: false },
+      };
 
+      mockUsersService.getPublicTracks.mockResolvedValue(mockResult);
+
+      const result = await controller.getPublicUserTracks(
+        'target-user-1',
+        mockJwtPayload as any,
+        1,
+        10,
+      );
+
+      expect(mockUsersService.getPublicTracks).toHaveBeenCalledWith(
+        'target-user-1',
+        'user-123',
+        1,
+        10,
+      );
+
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should pass correct pagination values', async () => {
+      mockUsersService.getPublicTracks.mockResolvedValue({});
+
+      await controller.getPublicUserTracks(
+        'target-user-1',
+        mockJwtPayload as any,
+        2,
+        5,
+      );
+
+      expect(mockUsersService.getPublicTracks).toHaveBeenCalledWith(
+        'target-user-1',
+        'user-123',
+        2,
+        5,
+      );
+    });
+  });
   // ── getReposts ────────────────────────────────────────────
   describe('getReposts', () => {
     it('should call service with userId and pagination', async () => {

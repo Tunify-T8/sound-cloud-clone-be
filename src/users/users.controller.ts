@@ -12,11 +12,13 @@ import {
   UploadedFiles,
   BadRequestException,
   ParseUUIDPipe,
+  DefaultValuePipe,
+  ParseIntPipe,
   // ParseFilePipe,
   // MaxFileSizeValidator,
   // FileTypeValidator,
 } from '@nestjs/common';
-import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
+import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UsersService } from './users.service';
 import * as usersDecorator from './users.decorator';
@@ -24,6 +26,7 @@ import { CollectionType, SocialPlatform } from '@prisma/client';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { ParseSocialPlatformPipe } from './pipes/parse-social-platform.pipe';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { use } from 'passport';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -175,6 +178,17 @@ export class UsersController {
     return this.usersService.getFollowerList(id, page, limit);
   }
 
+  @Get(':id/reposts')
+  @UseGuards(JwtAccessGuard)
+  getUserReposts(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.usersService.getReposts(userId, page, limit);
+  }
+
+
   // ─── GET /:id/following ───────────────────────────────────────
   //gets following list of a user
   @Get(':id/following')
@@ -184,6 +198,24 @@ export class UsersController {
     @Query('limit') limit: number = 10,
   ) {
     return this.usersService.getFollowingList(id, page, limit);
+  }
+
+  // ─── GET /:id/tracks ───────────────────────────────────────
+  //gets track list of a user
+  @Get(':id/tracks')
+  @UseGuards(JwtAccessGuard)
+  getPublicUserTracks(
+    @Param('id', ParseUUIDPipe) targetUserId: string,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.usersService.getPublicTracks(
+      targetUserId,
+      user.userId,
+      page,
+      limit,
+    );
   }
 
   // ─── PATCH /me/social-links ───────────────────────────────────────
