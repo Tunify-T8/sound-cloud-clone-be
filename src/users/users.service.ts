@@ -856,66 +856,153 @@ async getUserCollections(
   limit: number = 10,
   type?: CollectionType,
 ) {
-  // 1. Find user by username
-  const user = await this.prisma.user.findUnique({
-    where: { username },
-  });
-  if (!user) throw new NotFoundException('User not found');
+    // 1. Find user by username
+    const user = await this.prisma.user.findUnique({
+      where: { username },
+    });
+    if (!user) throw new NotFoundException('User not found');
 
-  const isOwner = requesterId === user.id;
-  const skip = (page - 1) * limit;
+    const isOwner = requesterId === user.id;
+    const skip = (page - 1) * limit;
 
-  // 2. Build where clause
-  const where = {
-    userId: user.id,
-    isDeleted: false,
-    ...(type ? { type } : {}),
-    ...(!isOwner ? { isPublic: true } : {}),
-  };
+    // 2. Build where clause
+    const where = {
+      userId: user.id,
+      isDeleted: false,
+      ...(type ? { type } : {}),
+      ...(!isOwner ? { isPublic: true } : {}),
+    };
 
-  const [collections, total] = await Promise.all([
-    this.prisma.collection.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        coverUrl: true,
-        isPublic: true,
-        type: true,
-        createdAt: true,
-        _count: {
-          select: {
-            tracks: true,
-            likes: true,
+    const [collections, total] = await Promise.all([
+      this.prisma.collection.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          coverUrl: true,
+          isPublic: true,
+          type: true,
+          createdAt: true,
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
+            },
           },
         },
-      },
-    }),
-    this.prisma.collection.count({ where }),
-  ]);
+      }),
+      this.prisma.collection.count({ where }),
+    ]);
 
-  return {
-    data: collections.map((c) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      coverUrl: c.coverUrl,
-      isPublic: c.isPublic,
-      type: c.type,
-      tracksCount: c._count.tracks,
-      likesCount: c._count.likes,
-      createdAt: c.createdAt,
-    })),
-    total,
-    page,
-    limit,
-    hasMore: skip + collections.length < total,
-  };
-}
+    return {
+      data: collections.map((c) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        coverUrl: c.coverUrl,
+        isPublic: c.isPublic,
+        type: c.type,
+        tracksCount: c._count.tracks,
+        likesCount: c._count.likes,
+        createdAt: c.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      hasMore: skip + collections.length < total,
+    };
+  }
 
+  async getMyConversations(userId: string, page: number = 1, limit: number = 20) {
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
 
+    // Get conversations with related messages and users
+    const conversations = await this.prisma.conversation.findMany({
+        where: {
+          OR: [
+            { user1Id: userId },
+            { user2Id: userId },
+          ],
+        },
+        include: {
+          user1: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+          user2: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              content: true,
+              createdAt: true,
+              read: true,
+              senderId: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: validLimit,
+      }); 
+
+      const total = await this.prisma.conversation.count({
+        where: {
+          OR: [
+            { user1Id: userId },
+            { user2Id: userId },
+          ],
+        },
+      });
+    
+
+    // Format response
+    const items = conversations.map((conv) => {
+      const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
+      const lastMessage = conv.messages[0];
+
+      // Count unread messages from the other user
+      const unreadCount = conv.messages.filter(
+        (msg) => !msg.read && msg.senderId !== userId,
+      ).length;
+
+      return {
+        conversationId: conv.id,
+        otherUser: {
+          id: otherUser.id,
+          displayName: otherUser.displayName || 'Unknown User',
+          avatarUrl: otherUser.avatarUrl,
+        },
+        lastMessagePreview: lastMessage?.content || null,
+        lastMessageAt: lastMessage?.createdAt || null,
+        unreadCount,
+      };
+    });
+
+    return {
+      items,
+      page: validPage,
+      limit: validLimit,
+      total,
+      totalPages: Math.ceil(total / validLimit),
+      hasNextPage: skip + conversations.length < total,
+      hasPreviousPage: skip > 0,
+    };
+  }
 }

@@ -44,6 +44,16 @@ export class UsersController {
     return this.usersService.getCurrentUser(user.userId);
   }
 
+  @Get('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  getMyConversations(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    return this.usersService.getMyConversations(user.userId, page, limit);
+  }
+
   // ─── GET /me/social-links ───────────────────────────────────────
   //returns my social links
   @Get('me/social-links')
