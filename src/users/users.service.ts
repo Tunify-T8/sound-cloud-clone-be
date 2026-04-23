@@ -1052,8 +1052,8 @@ async getUserCollections(
           ],
         },
       },
-    })
+    });
 
-    return count;
+    return { unreadCount: count };
   }
 }
