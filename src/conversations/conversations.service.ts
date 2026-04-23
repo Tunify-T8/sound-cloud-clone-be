@@ -128,4 +128,26 @@ export class ConversationsService {
             hasPreviousPage: skip > 0,
         };
     }
+
+
+    async markAsRead(userId: string, conversationId: string) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId, isDeleted: false },
+        });
+        if (!conversation) {
+            throw new NotFoundException('Conversation not found');
+        }
+
+        // Check if the user is part of the conversation
+        if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+            throw new ForbiddenException('User is not part of the conversation');
+        }
+
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { isRead: true },
+        });
+
+        return { message: `Conversation ${conversationId} marked as read for user ${userId}` };
+    }
 }

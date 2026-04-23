@@ -35,4 +35,13 @@ export class ConversationsController {
     ) {
         return this.conversationsService.getMessages(req.user.userId, conversationId, page, limit);
     }
+
+    @Post(':id/read')
+    @UseGuards(JwtAccessGuard)
+    markAsRead(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+    ) {
+        return this.conversationsService.markAsRead(req.user.userId, conversationId);
+    }
 }

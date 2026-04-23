@@ -459,6 +459,7 @@ model Conversation {
   updatedAt DateTime?           @updatedAt
   isDeleted Boolean            @default(false)
   deletedAt DateTime?
+  isRead    Boolean            @default(false)
 
   user1    User      @relation("ConversationUser1", fields: [user1Id], references: [id])
   user2    User      @relation("ConversationUser2", fields: [user2Id], references: [id])
@@ -757,6 +758,7 @@ enum CollectionType {
 enum ConversationStatus {
   ACTIVE
   ARCHIVED
+  BLOCKED
 }
 
 enum ReportedEntityType {
