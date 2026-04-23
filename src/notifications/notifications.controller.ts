@@ -12,11 +12,10 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-  Post,
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
-import { NotificationType, ReferenceType } from '@prisma/client';
+import { NotificationType} from '@prisma/client';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
