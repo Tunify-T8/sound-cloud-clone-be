@@ -47,6 +47,18 @@ const mockPrisma = {
   playHistory: {
     groupBy: jest.fn(),
   },
+  conversation: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    count: jest.fn(),
+    create: jest.fn(),
+  },
+  message: {
+    count: jest.fn(),
+  },
+  userBlock: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -98,6 +110,34 @@ const mockCollection = {
   isPublic: true,
   createdAt: new Date(),
   _count: { tracks: 3, likes: 10 },
+};
+
+const mockConversation = {
+  id: 'conv-123',
+  user1Id: 'user-123',
+  user2Id: 'other-user-456',
+  status: 'ACTIVE',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  user1: {
+    id: 'user-123',
+    displayName: 'Test User',
+    avatarUrl: null,
+  },
+  user2: {
+    id: 'other-user-456',
+    displayName: 'Other User',
+    avatarUrl: 'https://example.com/avatar.jpg',
+  },
+  messages: [
+    {
+      id: 'msg-1',
+      content: 'Hello there!',
+      createdAt: new Date(),
+      read: false,
+      senderId: 'other-user-456',
+    },
+  ],
 };
 
 // ── Mock Storage ─────────────────────────────────────────────
@@ -978,6 +1018,170 @@ describe('getPublicTracks', () => {
       expect(result[0]).toHaveProperty('label');
       // count must not be exposed to the client
       expect(result[0]).not.toHaveProperty('count');
+    });
+  });
+
+  // ── getMyConversations ────────────────────────────────────
+  describe('getMyConversations', () => {
+    it('should return paginated conversations with correct format', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].conversationId).toBe('conv-123');
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+      expect(result.items[0].lastMessagePreview).toBe('Hello there!');
+      expect(result.items[0].unreadCount).toBe(1);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.total).toBe(1);
+      expect(result.totalPages).toBe(1);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.hasPreviousPage).toBe(false);
+    });
+
+    it('should correctly identify other user when user1 is the authenticated user', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+      expect(result.items[0].otherUser.displayName).toBe('Other User');
+    });
+
+    it('should correctly identify other user when user2 is the authenticated user', async () => {
+      const reversedConversation = {
+        ...mockConversation,
+        user1Id: 'other-user-456',
+        user2Id: 'user-123',
+        user1: { id: 'other-user-456', username: 'otheruser' },
+        user2: { id: 'user-123', username: 'testuser' },
+      };
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([reversedConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+    });
+
+    it('should return correct pagination values for page 2', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue(Array(15).fill(mockConversation));
+      mockPrisma.conversation.count.mockResolvedValue(50);
+
+      const result = await service.getMyConversations('user-123', 2, 15);
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(15);
+      expect(result.total).toBe(50);
+      expect(result.totalPages).toBe(4);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.hasPreviousPage).toBe(true);
+    });
+
+    it('should return empty items array when user has no conversations', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.count.mockResolvedValue(0);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(result.hasNextPage).toBe(false);
+    });
+  });
+
+  // ── createConversation ────────────────────────────────────
+  describe('createConversation', () => {
+    it('should create a new conversation between two users', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(null);
+      mockPrisma.conversation.create.mockResolvedValue(mockConversation);
+
+      const result = await service.createConversation('user-123', 'other-user-456');
+
+      expect(result.conversationId).toBe('conv-123');
+      expect(mockPrisma.conversation.create).toHaveBeenCalledWith({
+        data: {
+          user1Id: 'user-123',
+          user2Id: 'other-user-456',
+        },
+      });
+    });
+
+    it('should return existing conversation if one already exists', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(mockConversation);
+
+      const result = await service.createConversation('user-123', 'other-user-456');
+
+      expect(result.conversationId).toBe('conv-123');
+      expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
+    });
+
+    it('should find existing conversation regardless of user order', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(mockConversation);
+
+      await service.createConversation('other-user-456', 'user-123');
+
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { user1Id: 'other-user-456', user2Id: 'user-123' },
+            { user1Id: 'user-123', user2Id: 'other-user-456' },
+          ],
+        },
+      });
+    });
+
+    it('should throw BadRequestException when trying to message self', async () => {
+      await expect(service.createConversation('user-123', 'user-123')).rejects.toThrow(
+        'Cannot create conversation with yourself',
+      );
+    });
+  });
+
+  // ── getUnreadMessagesCount ────────────────────────────────
+  describe('getUnreadMessagesCount', () => {
+    it('should return unread message count', async () => {
+      mockPrisma.message.count.mockResolvedValue(5);
+
+      const result = await service.getUnreadMessagesCount('user-123');
+
+      expect(result.unreadCount).toBe(5);
+    });
+
+    it('should return zero when no unread messages', async () => {
+      mockPrisma.message.count.mockResolvedValue(0);
+
+      const result = await service.getUnreadMessagesCount('user-123');
+
+      expect(result.unreadCount).toBe(0);
+    });
+
+    it('should only count unread messages from other users', async () => {
+      mockPrisma.message.count.mockResolvedValue(3);
+
+      await service.getUnreadMessagesCount('user-123');
+
+      expect(mockPrisma.message.count).toHaveBeenCalledWith({
+        where: {
+          read: false,
+          senderId: { not: 'user-123' },
+          conversation: {
+            OR: [
+              { user1Id: 'user-123' },
+              { user2Id: 'user-123' },
+            ],
+          },
+        },
+      });
     });
   });
 });

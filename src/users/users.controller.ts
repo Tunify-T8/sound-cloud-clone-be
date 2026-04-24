@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Patch,
+  Post,
   Body,
   Delete,
   Request,
@@ -44,6 +45,32 @@ export class UsersController {
     return this.usersService.getCurrentUser(user.userId);
   }
 
+  @Get('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  getMyConversations(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    return this.usersService.getMyConversations(user.userId, page, limit);
+  }
+ 
+  @Post('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  createConversation(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Body('userId') otherUserId: string,
+  ) {
+    return this.usersService.createConversation(user.userId, otherUserId);
+  }
+
+  @Get('me/messages/unread-count')
+  @UseGuards(JwtAccessGuard)
+  getUnreadMessagesCount(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getUnreadMessagesCount(user.userId);
+  }
   // ─── GET /me/social-links ───────────────────────────────────────
   //returns my social links
   @Get('me/social-links')

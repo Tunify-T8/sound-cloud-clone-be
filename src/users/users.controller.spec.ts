@@ -21,6 +21,9 @@ const mockUsersService = {
   updateSocialLinks: jest.fn(),
   updateUserProfile: jest.fn(),
   deleteSocialLink: jest.fn(),
+  getMyConversations: jest.fn(),
+  createConversation: jest.fn(),
+  getUnreadMessagesCount: jest.fn(),
 };
 
 // ── Mock user extracted by @CurrentUser() decorator ──────────
@@ -595,6 +598,95 @@ describe('UsersController', () => {
         'user-123',
         SocialPlatform.INSTAGRAM,
       );
+    });
+  });
+
+  // ── getMyConversations ────────────────────────────────────
+  describe('getMyConversations', () => {
+    it('should call service with correct parameters', async () => {
+      const mockResponse = {
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      mockUsersService.getMyConversations.mockResolvedValue(mockResponse);
+
+      const result = await controller.getMyConversations(mockJwtPayload, 1, 20);
+
+      expect(mockUsersService.getMyConversations).toHaveBeenCalledWith(
+        'user-123',
+        1,
+        20,
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should use default pagination values', async () => {
+      const mockResponse = {
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      mockUsersService.getMyConversations.mockResolvedValue(mockResponse);
+
+      await controller.getMyConversations(mockJwtPayload);
+
+      expect(mockUsersService.getMyConversations).toHaveBeenCalledWith(
+        'user-123',
+        1,
+        20,
+      );
+    });
+  });
+
+  // ── createConversation ────────────────────────────────────
+  describe('createConversation', () => {
+    it('should call service with userId and otherUserId', async () => {
+      const mockResponse = { conversationId: 'conv-123' };
+      mockUsersService.createConversation.mockResolvedValue(mockResponse);
+
+      const result = await controller.createConversation(
+        mockJwtPayload,
+        'other-user-456',
+      );
+
+      expect(mockUsersService.createConversation).toHaveBeenCalledWith(
+        'user-123',
+        'other-user-456',
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  // ── getUnreadMessagesCount ────────────────────────────────
+  describe('getUnreadMessagesCount', () => {
+    it('should call service with userId', async () => {
+      const mockResponse = { unreadCount: 5 };
+      mockUsersService.getUnreadMessagesCount.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUnreadMessagesCount(mockJwtPayload);
+
+      expect(mockUsersService.getUnreadMessagesCount).toHaveBeenCalledWith(
+        'user-123',
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should return zero unread count', async () => {
+      const mockResponse = { unreadCount: 0 };
+      mockUsersService.getUnreadMessagesCount.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUnreadMessagesCount(mockJwtPayload);
+
+      expect(result.unreadCount).toBe(0);
     });
   });
 });
