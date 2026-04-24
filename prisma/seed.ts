@@ -11,6 +11,24 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Starting database seed...');
 
+  await prisma.comment.create({
+    data: {
+      trackId: '4bbca958-2349-4efb-bb8a-c823098e74b8',
+      userId: '2d566af9-38f1-42ee-8d83-53de7a97f240', // replace with any existing user id
+      content: 'This is a test comment for moderation testing',
+      timestamp: 0,
+    },
+  });
+
+  await prisma.comment.create({
+    data: {
+      trackId: '4bbca958-2349-4efb-bb8a-c823098e74b8',
+      userId: '94788713-4b6f-5eb1-0c4a-bf10cc85b256', // replace with any existing user id
+      content: 'This is another test comment for moderation testing',
+      timestamp: 0,
+    },
+  });
+
   // ── 1. Genres — always safe, uses upsert ──────────────────────
   const genres = [
     { label: 'Alternative Rock' },
@@ -65,6 +83,21 @@ async function main() {
     });
   }
   console.log(`Seeded ${genres.length} genres`);
+
+  // ── 1.5 Report Reasons — safe, uses createMany ───────────────
+  await prisma.reportReason.createMany({
+    data: [
+      { id: 'hate_speech', label: 'Hate speech' },
+      { id: 'spam', label: 'Spam' },
+      { id: 'copyright', label: 'Copyright violation' },
+      { id: 'inappropriate', label: 'Inappropriate content' },
+      { id: 'harassment', label: 'Harassment or bullying' },
+      { id: 'impersonation', label: 'Impersonation' },
+    ],
+    skipDuplicates: true,
+  });
+
+  console.log('Seeded report reasons');
 
   // ── 2. Subscription plans — always safe, uses upsert ─────────
   const freePlan = await prisma.subscriptionPlan.upsert({
