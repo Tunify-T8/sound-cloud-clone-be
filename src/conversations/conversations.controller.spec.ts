@@ -5,7 +5,6 @@ import { NotFoundException } from '@nestjs/common';
 
 describe('ConversationsController', () => {
   let controller: ConversationsController;
-  let conversationsService: ConversationsService;
 
   const mockConversationsService = {
     deleteConversation: jest.fn(),
