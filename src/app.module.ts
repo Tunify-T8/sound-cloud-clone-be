@@ -16,7 +16,18 @@ import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
 import { CollectionsModule } from './collections/collections.module';
 import { CommentsModule } from './comments/comments.module';
-import { ReportsModule } from './reports/reports.module';
+import { ModerationModule } from './moderation/moderation.module';
+import { AdminReportsController } from './moderation/admin-reports/admin-reports.controller';
+import { ReportsController } from './moderation/reports/reports.controller';
+import { ReportsService } from './moderation/reports/reports.service';
+import { AdminReportsService } from './moderation/admin-reports/admin-reports.service';
+import { AdminUsersService } from './moderation/admin-users/admin-users.service';
+import { AdminUsersController } from './moderation/admin-users/admin-users.controller';
+import { AdminContentController } from './moderation/admin-content/admin-content.controller';
+import { AdminContentService } from './moderation/admin-content/admin-content.service';
+import { HealthModule } from './health/health.module';
+import { AdminAnalyticsController } from './moderation/admin-analytics/admin-analytics.controller';
+import { AdminAnalyticsService } from './moderation/admin-analytics/admin-analytics.service';
 
 @Module({
   imports: [
@@ -38,9 +49,10 @@ import { ReportsModule } from './reports/reports.module';
     SearchModule,
     CollectionsModule,
     CommentsModule,
-    ReportsModule,
+    ModerationModule,
+    HealthModule,
   ],
-  controllers: [AppController],
-  providers: [AppService, SearchIndexService, OpensearchService],
+  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController],
+  providers: [AppService, SearchIndexService, OpensearchService, ReportsService, AdminReportsService, AdminUsersService, AdminContentService, AdminAnalyticsService],
 })
 export class AppModule {}
