@@ -56,7 +56,8 @@ export class CollectionsController {
       coverFile,
     );
   }
-  @Get('me')
+
+@Get('me')
 @UseGuards(JwtAccessGuard)
 getMyCollections(
   @Request() req: AuthRequest,

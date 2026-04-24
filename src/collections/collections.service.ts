@@ -65,10 +65,12 @@ export class CollectionsService {
       }
     }
 
-    // 3. Upload cover image if provided
+    // 3. Handle cover image - file upload takes precedence over direct URL
     let coverUrl: string | null = null;
     if (coverFile) {
       coverUrl = await this.storage.uploadImage(coverFile);
+    } else if (dto.coverUrl) {
+      coverUrl = dto.coverUrl;
     }
 
     // 4. Generate secret token for private collections
@@ -273,10 +275,12 @@ async updateCollection(
     }
   }
 
-  // Handle cover image upload
+  // Handle cover image - file upload takes precedence over direct URL
   let coverUrl = collection.coverUrl;
   if (coverFile) {
     coverUrl = await this.storage.uploadImage(coverFile);
+  } else if (dto.coverUrl !== undefined) {
+    coverUrl = dto.coverUrl;
   }
 
   const updated = await this.prisma.collection.update({
