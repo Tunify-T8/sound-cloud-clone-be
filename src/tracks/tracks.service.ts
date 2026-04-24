@@ -106,7 +106,7 @@ export class TracksService {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
           userId,
-          status: 'active',
+          status: 'ACTIVE',
           plan: { name: { in: ['PRO', 'GOPLUS'] } },
         },
       });
@@ -515,7 +515,7 @@ export class TracksService {
     });
 
     const trackComments = await this.prisma.comment.findMany({
-      where: { trackId: trackId },
+      where: { trackId: trackId, isDeleted: false },
     });
 
     const filteredTrack = {
@@ -1350,7 +1350,7 @@ export class TracksService {
         createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
-        where: { trackId },
+        where: { trackId, isDeleted: false },
       }),
     };
   }
@@ -1378,7 +1378,7 @@ export class TracksService {
     const totalCount = await this.prisma.comment.count({
       where: { trackId, 
         parentCommentId: null, // only count top-level comments for pagination
-       },
+        isDeleted: false },
     });
 
     // Get comments for the current page
@@ -1386,6 +1386,7 @@ export class TracksService {
       where: {
         trackId,
         parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
+        isDeleted: false, // exclude deleted comments
       },
       skip,
       take: validLimit,
@@ -1444,7 +1445,7 @@ export class TracksService {
       await this.prisma.$transaction([
         this.prisma.trackLike.count({ where: { trackId } }),
         this.prisma.repost.count({ where: { trackId } }),
-        this.prisma.comment.count({ where: { trackId } }),
+        this.prisma.comment.count({ where: { trackId, isDeleted: false } }),
         this.prisma.playHistory.count({ where: { trackId } }),
       ]);
 

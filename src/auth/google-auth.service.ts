@@ -252,7 +252,7 @@ export class GoogleAuthService {
           data: {
             user: { connect: { id: user.id } },
             plan: { connect: { id: freePlan.id } },
-            status: 'active',
+            status: 'ACTIVE',
             billingCycle: 'monthly',
           },
         });

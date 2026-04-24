@@ -65,7 +65,8 @@ model User {
 
   conversations1 Conversation[] @relation("ConversationUser1")
   conversations2 Conversation[] @relation("ConversationUser2")
-  sentMessages   Message[]
+  sentMessages     Message[]
+  sharedInMessages Message[] @relation("MessageSharedUser")
 
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationsTriggered  Notification[]           @relation("NotificationActor")
@@ -189,6 +190,7 @@ model Track {
   publisher   String?
   isrc        String?
   pLine       String?
+  
 
   // Audio
   audioUrl          String
@@ -249,6 +251,7 @@ model Track {
   comments           Comment[]
   collectionTracks   CollectionTrack[]
   playHistory        PlayHistory[]
+  messages Message[]
 
   @@index([userId])
   @@index([genreId])
@@ -428,6 +431,7 @@ model Collection {
   user   User              @relation(fields: [userId], references: [id])
   tracks CollectionTrack[]
   likes  CollectionLike[]
+  messages Message[]
 
   @@index([userId])
 }
@@ -452,6 +456,10 @@ model Conversation {
   user2Id   String
   status    ConversationStatus @default(ACTIVE)
   createdAt DateTime           @default(now())
+  updatedAt DateTime?           @updatedAt
+  isDeleted Boolean            @default(false)
+  deletedAt DateTime?
+  isRead    Boolean            @default(false)
 
   user1    User      @relation("ConversationUser1", fields: [user1Id], references: [id])
   user2    User      @relation("ConversationUser2", fields: [user2Id], references: [id])
@@ -462,17 +470,33 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   conversationId String
   senderId       String
-  content        String
-  createdAt      DateTime @default(now())
+  
+  // Content type determines which relation is populated
+  type    MessageType @default(TEXT)
+  content        String?             // For TEXT type only
+  
+  // Optional relations based on contentType
+  trackId        String?             // For TRACK_LIKE, ALBUM, UPLOAD
+  collectionId   String?             // For PLAYLIST, ALBUM
+  userId         String?             // For USER
+  
+  createdAt      DateTime     @default(now())
+  read           Boolean      @default(false)
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
   sender       User         @relation(fields: [senderId], references: [id])
+  track        Track?       @relation(fields: [trackId], references: [id])
+  collection   Collection?  @relation(fields: [collectionId], references: [id])
+  sharedUser   User?        @relation("MessageSharedUser", fields: [userId], references: [id])
 
   @@index([conversationId])
   @@index([senderId])
+  @@index([trackId])
+  @@index([collectionId])
+  @@index([userId])
 }
 
 model Notification {
@@ -556,6 +580,7 @@ model SubscriptionPlan {
 
   // Pricing
   monthlyPrice Float @default(0)
+  yearlyPrice  Float @default(0)   
 
   // Upload Features
   monthlyUploadMinutes Int    @default(180) // Total allowed upload minutes per month
@@ -607,8 +632,9 @@ model Subscription {
   uploadedMinutes Int       @default(0)
 
   billingCycle String  @default("monthly")
-  status       String  @default("active")
+  status       SubscriptionStatus  @default(ACTIVE)
   autoRenew    Boolean @default(true)
+  trialEndsAt     DateTime?  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -628,6 +654,11 @@ model Payment {
   amount         Decimal       @db.Decimal(10, 2)
   status         PaymentStatus
   paidAt         DateTime      @default(now())
+  paymentMethod  String    // "card" | "paypal" | "apple"
+  cardLast4      String?   // only for card
+  cardBrand      String?   // only for card
+  cardExpiryMonth Int?
+  cardExpiryYear  Int?
 
   user         User         @relation(fields: [userId], references: [id])
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
@@ -648,6 +679,13 @@ enum UserType {
   LISTENER
   ARTIST
   ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  TRIAL
 }
 
 enum Visibility {
@@ -705,6 +743,15 @@ enum NotificationType {
   subscription
 }
 
+enum MessageType {
+  TEXT
+  TRACK_LIKE
+  USER
+  PLAYLIST
+  ALBUM
+  UPLOAD
+}
+
 enum ReferenceType {
   track
   user
@@ -725,6 +772,7 @@ enum CollectionType {
 enum ConversationStatus {
   ACTIVE
   ARCHIVED
+  BLOCKED
 }
 
 enum ReportedEntityType {
