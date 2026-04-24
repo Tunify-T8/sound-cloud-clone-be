@@ -19,7 +19,6 @@ import { CommentsModule } from './comments/comments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
