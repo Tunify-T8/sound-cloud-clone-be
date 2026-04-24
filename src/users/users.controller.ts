@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Patch,
+  Post,
   Body,
   Delete,
   Request,
@@ -12,11 +13,13 @@ import {
   UploadedFiles,
   BadRequestException,
   ParseUUIDPipe,
+  DefaultValuePipe,
+  ParseIntPipe,
   // ParseFilePipe,
   // MaxFileSizeValidator,
   // FileTypeValidator,
 } from '@nestjs/common';
-import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
+import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UsersService } from './users.service';
 import * as usersDecorator from './users.decorator';
@@ -42,6 +45,32 @@ export class UsersController {
     return this.usersService.getCurrentUser(user.userId);
   }
 
+  @Get('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  getMyConversations(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    return this.usersService.getMyConversations(user.userId, page, limit);
+  }
+ 
+  @Post('me/conversations')
+  @UseGuards(JwtAccessGuard)
+  createConversation(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Body('userId') otherUserId: string,
+  ) {
+    return this.usersService.createConversation(user.userId, otherUserId);
+  }
+
+  @Get('me/messages/unread-count')
+  @UseGuards(JwtAccessGuard)
+  getUnreadMessagesCount(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getUnreadMessagesCount(user.userId);
+  }
   // ─── GET /me/social-links ───────────────────────────────────────
   //returns my social links
   @Get('me/social-links')
@@ -175,6 +204,17 @@ export class UsersController {
     return this.usersService.getFollowerList(id, page, limit);
   }
 
+  @Get(':id/reposts')
+  @UseGuards(JwtAccessGuard)
+  getUserReposts(
+    @Param('id', ParseUUIDPipe) userId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.usersService.getReposts(userId, page, limit);
+  }
+
+
   // ─── GET /:id/following ───────────────────────────────────────
   //gets following list of a user
   @Get(':id/following')
@@ -184,6 +224,24 @@ export class UsersController {
     @Query('limit') limit: number = 10,
   ) {
     return this.usersService.getFollowingList(id, page, limit);
+  }
+
+  // ─── GET /:id/tracks ───────────────────────────────────────
+  //gets track list of a user
+  @Get(':id/tracks')
+  @UseGuards(JwtAccessGuard)
+  getPublicUserTracks(
+    @Param('id', ParseUUIDPipe) targetUserId: string,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.usersService.getPublicTracks(
+      targetUserId,
+      user.userId,
+      page,
+      limit,
+    );
   }
 
   // ─── PATCH /me/social-links ───────────────────────────────────────

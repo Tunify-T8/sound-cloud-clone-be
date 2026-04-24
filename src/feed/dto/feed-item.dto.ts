@@ -1,4 +1,5 @@
 export class ActionDto {
+  id: string;
   username: string;
   action: 'repost' | 'post';
   date: string;
@@ -6,7 +7,9 @@ export class ActionDto {
 }
 
 export class FeedPostDto {
-  id: string;
+  trackId: string;
+  artistId: string;
+  artistAvatarUrl: string;
   action: ActionDto;
   title: string;
   artist: string;
@@ -23,6 +26,7 @@ export class FeedPostDto {
 
   isLiked: boolean;
   isReposted: boolean;
+  artistIsCertified: boolean;
 }
 
 export class FeedListDto {

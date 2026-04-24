@@ -12,6 +12,7 @@ import * as usersDecorator from 'src/users/users.decorator';
 import { FeedService } from './feed.service';
 import { GetTrendingQueryDto } from './dto/trending.dto';
 import { GetDiscoverQueryDto } from './dto/discover.dto';
+import { JwtOptionalGuard } from 'src/auth/guards/jwt-optional.guard';
 
 @Controller('feed')
 export class FeedController {
@@ -43,10 +44,21 @@ export class FeedController {
   }
 
   @Get('discover')
+  @UseGuards(JwtOptionalGuard)
   getDiscover(
     @Query() query: GetDiscoverQueryDto,
     @Optional() @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
   ) {
     return this.feedService.getDiscover(query, user?.userId);
+  }
+
+  @Get('suggested-artists')
+  @UseGuards(JwtOptionalGuard)
+  getSuggestedArtists(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Optional() @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
+  ) {
+    return this.feedService.getSuggestedArtists(page, limit, user?.userId);
   }
 }

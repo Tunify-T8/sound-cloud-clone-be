@@ -9,6 +9,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { StorageService } from 'src/storage/storage.service';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 // ── Mock Prisma ───────────────────────────────────────────────
 const mockPrisma = {
@@ -45,6 +46,18 @@ const mockPrisma = {
   },
   playHistory: {
     groupBy: jest.fn(),
+  },
+  conversation: {
+    findMany: jest.fn(),
+    findFirst: jest.fn(),
+    count: jest.fn(),
+    create: jest.fn(),
+  },
+  message: {
+    count: jest.fn(),
+  },
+  userBlock: {
+    findMany: jest.fn(),
   },
   $transaction: jest.fn(),
 };
@@ -99,26 +112,61 @@ const mockCollection = {
   _count: { tracks: 3, likes: 10 },
 };
 
+const mockConversation = {
+  id: 'conv-123',
+  user1Id: 'user-123',
+  user2Id: 'other-user-456',
+  status: 'ACTIVE',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  user1: {
+    id: 'user-123',
+    displayName: 'Test User',
+    avatarUrl: null,
+  },
+  user2: {
+    id: 'other-user-456',
+    displayName: 'Other User',
+    avatarUrl: 'https://example.com/avatar.jpg',
+  },
+  messages: [
+    {
+      id: 'msg-1',
+      content: 'Hello there!',
+      createdAt: new Date(),
+      read: false,
+      senderId: 'other-user-456',
+    },
+  ],
+};
+
 // ── Mock Storage ─────────────────────────────────────────────
 const mockStorage = {
   uploadImage: jest.fn(),
   deleteFile: jest.fn(),
 };
 
+const mockSearchIndexService = {
+  indexUser: jest.fn(),
+  indexTrack: jest.fn(),
+  indexCollection: jest.fn(),
+};
+
 describe('UsersService', () => {
   let service: UsersService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsersService,
-        { provide: PrismaService, useValue: mockPrisma },
-        { provide: StorageService, useValue: mockStorage },
-      ],
-    }).compile();
+beforeEach(async () => {
+  const module: TestingModule = await Test.createTestingModule({
+    providers: [
+      UsersService,
+      { provide: PrismaService, useValue: mockPrisma },
+      { provide: StorageService, useValue: mockStorage },
+      { provide: SearchIndexService, useValue: mockSearchIndexService }, // ✅ ADD THIS
+    ],
+  }).compile();
 
-    service = module.get<UsersService>(UsersService);
-  });
+  service = module.get<UsersService>(UsersService);
+});
 
   afterEach(() => jest.clearAllMocks());
 
@@ -250,12 +298,157 @@ describe('UsersService', () => {
       expect(result.hasMore).toBe(true);
     });
   });
+// ── getPublicTracks ────────────────────────────────────────
+describe('getPublicTracks', () => {
+  const baseTrack = {
+    id: 'track-1',
+    title: 'Test Track',
+    coverUrl: null,
+    durationSeconds: 180,
+    createdAt: new Date(),
+    transcodingStatus: 'COMPLETED',
+    isPublic: true,
+    releaseDate: null,
+    waveformUrl: null,
+    genre: { label: 'Hip Hop' },
+    user: {
+      id: 'user-123',
+      username: 'testuser',
+      displayName: 'Test User',
+      avatarUrl: null,
+      isCertified: false,
+    },
+    trackArtists: [],
+    _count: {
+      likes: 5,
+      reposts: 2,
+      comments: 3,
+      playHistory: 10,
+    },
+  };
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return public tracks when viewer is not owner', async () => {
+    mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
+    mockPrisma.track.count.mockResolvedValue(1);
+
+    mockPrisma.trackLike.findMany.mockResolvedValue([]);
+    mockPrisma.repost.findMany.mockResolvedValue([]);
+
+    const result = await service.getPublicTracks(
+      'target-user',
+      'viewer-user',
+      1,
+      10,
+    );
+
+    expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'target-user',
+          isDeleted: false,
+          isPublic: true, // ✅ important check
+        }),
+      }),
+    );
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].privacy).toBe('public');
+  });
+
+  it('should include private tracks when viewer is owner', async () => {
+    const privateTrack = { ...baseTrack, isPublic: false };
+
+    mockPrisma.track.findMany.mockResolvedValue([privateTrack]);
+    mockPrisma.track.count.mockResolvedValue(1);
+
+    mockPrisma.trackLike.findMany.mockResolvedValue([]);
+    mockPrisma.repost.findMany.mockResolvedValue([]);
+
+    const result = await service.getPublicTracks(
+      'user-123',
+      'user-123',
+      1,
+      10,
+    );
+
+    expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          isDeleted: false, // no isPublic filter
+        }),
+      }),
+    );
+
+    expect(result.data[0].privacy).toBe('private');
+  });
+
+  it('should correctly set interaction flags', async () => {
+    mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
+    mockPrisma.track.count.mockResolvedValue(1);
+
+    mockPrisma.trackLike.findMany.mockResolvedValue([
+      { trackId: 'track-1' },
+    ]);
+
+    mockPrisma.repost.findMany.mockResolvedValue([
+      { trackId: 'track-1' },
+    ]);
+
+    const result = await service.getPublicTracks(
+      'target-user',
+      'viewer-user',
+      1,
+      10,
+    );
+
+    expect(result.data[0].interaction.isLiked).toBe(true);
+    expect(result.data[0].interaction.isReposted).toBe(true);
+  });
+
+  it('should return empty list when no tracks', async () => {
+    mockPrisma.track.findMany.mockResolvedValue([]);
+    mockPrisma.track.count.mockResolvedValue(0);
+
+    mockPrisma.trackLike.findMany.mockResolvedValue([]);
+    mockPrisma.repost.findMany.mockResolvedValue([]);
+
+    const result = await service.getPublicTracks(
+      'target-user',
+      'viewer-user',
+      1,
+      10,
+    );
+
+    expect(result.data).toEqual([]);
+    expect(result.meta.hasMore).toBe(false);
+  });
+
+  it('should correctly calculate hasMore', async () => {
+    mockPrisma.track.findMany.mockResolvedValue(Array(10).fill(baseTrack));
+    mockPrisma.track.count.mockResolvedValue(25);
+
+    mockPrisma.trackLike.findMany.mockResolvedValue([]);
+    mockPrisma.repost.findMany.mockResolvedValue([]);
+
+    const result = await service.getPublicTracks(
+      'target-user',
+      'viewer-user',
+      1,
+      10,
+    );
+
+    expect(result.meta.hasMore).toBe(true);
+  });
+});
   // ── getReposts ────────────────────────────────────────────
   describe('getReposts', () => {
     const mockRepost = {
       id: 'repost-123',
-      createdAt: new Date(),
+      createdAt: new Date('2026-04-15'),
       track: mockTrack,
     };
 
@@ -268,6 +461,52 @@ describe('UsersService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].repostId).toBe('repost-123');
       expect(result.data[0].track.id).toBe('track-123');
+      expect(result.data[0].track.title).toBe('Test Track');
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should return multiple reposts with correct pagination', async () => {
+      const mockReposts = [mockRepost, mockRepost, mockRepost];
+      mockPrisma.repost.findMany.mockResolvedValue(mockReposts);
+      mockPrisma.repost.count.mockResolvedValue(3);
+
+      const result = await service.getReposts('user-123', 1, 10);
+
+      expect(result.data).toHaveLength(3);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should correctly calculate hasMore when more pages exist', async () => {
+      mockPrisma.repost.findMany.mockResolvedValue(Array(10).fill(mockRepost));
+      mockPrisma.repost.count.mockResolvedValue(25);
+
+      const result = await service.getReposts('user-123', 1, 10);
+
+      expect(result.hasMore).toBe(true);
+      expect(result.data).toHaveLength(10);
+    });
+
+    it('should apply correct skip and take values for page 2', async () => {
+      mockPrisma.repost.findMany.mockResolvedValue([mockRepost]);
+      mockPrisma.repost.count.mockResolvedValue(15);
+
+      await service.getReposts('user-123', 2, 10);
+
+      expect(mockPrisma.repost.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 10, // (2-1) * 10
+          take: 10,
+        }),
+      );
+    });
+
+    it('should return empty array when user has no reposts', async () => {
+      mockPrisma.repost.findMany.mockResolvedValue([]);
+      mockPrisma.repost.count.mockResolvedValue(0);
+
+      const result = await service.getReposts('user-123', 1, 10);
+
+      expect(result.data).toEqual([]);
       expect(result.hasMore).toBe(false);
     });
   });
@@ -316,7 +555,7 @@ describe('UsersService', () => {
   describe('getLikedTracks', () => {
     const mockLike = {
       id: 'like-123',
-      createdAt: new Date(),
+      createdAt: new Date('2026-04-14'),
       track: mockTrack,
     };
 
@@ -329,7 +568,64 @@ describe('UsersService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0].likedAt).toEqual(mockLike.createdAt);
       expect(result.data[0].track.id).toBe('track-123');
+      expect(result.data[0].track.title).toBe('Test Track');
       expect(result.hasMore).toBe(false);
+    });
+
+    it('should return multiple liked tracks', async () => {
+      const mockLikes = Array(5).fill(mockLike);
+      mockPrisma.trackLike.findMany.mockResolvedValue(mockLikes);
+      mockPrisma.trackLike.count.mockResolvedValue(5);
+
+      const result = await service.getLikedTracks('user-123', 1, 10);
+
+      expect(result.data).toHaveLength(5);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should correctly calculate hasMore when more pages exist', async () => {
+      mockPrisma.trackLike.findMany.mockResolvedValue(Array(10).fill(mockLike));
+      mockPrisma.trackLike.count.mockResolvedValue(25);
+
+      const result = await service.getLikedTracks('user-123', 1, 10);
+
+      expect(result.hasMore).toBe(true);
+      expect(result.data).toHaveLength(10);
+    });
+
+    it('should apply correct skip and take values for different pages', async () => {
+      mockPrisma.trackLike.findMany.mockResolvedValue([mockLike]);
+      mockPrisma.trackLike.count.mockResolvedValue(50);
+
+      await service.getLikedTracks('user-123', 3, 20);
+
+      expect(mockPrisma.trackLike.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 40, // (3-1) * 20
+          take: 20,
+        }),
+      );
+    });
+
+    it('should return empty array when user has no liked tracks', async () => {
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.trackLike.count.mockResolvedValue(0);
+
+      const result = await service.getLikedTracks('user-123', 1, 10);
+
+      expect(result.data).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should include track metadata like engagement counts', async () => {
+      mockPrisma.trackLike.findMany.mockResolvedValue([mockLike]);
+      mockPrisma.trackLike.count.mockResolvedValue(1);
+
+      const result = await service.getLikedTracks('user-123', 1, 10);
+
+      expect(result.data[0].track).toHaveProperty('likesCount');
+      expect(result.data[0].track).toHaveProperty('commentsCount');
+      expect(result.data[0].track).toHaveProperty('repostsCount');
     });
   });
 
@@ -722,6 +1018,170 @@ describe('UsersService', () => {
       expect(result[0]).toHaveProperty('label');
       // count must not be exposed to the client
       expect(result[0]).not.toHaveProperty('count');
+    });
+  });
+
+  // ── getMyConversations ────────────────────────────────────
+  describe('getMyConversations', () => {
+    it('should return paginated conversations with correct format', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].conversationId).toBe('conv-123');
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+      expect(result.items[0].lastMessagePreview).toBe('Hello there!');
+      expect(result.items[0].unreadCount).toBe(1);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.total).toBe(1);
+      expect(result.totalPages).toBe(1);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.hasPreviousPage).toBe(false);
+    });
+
+    it('should correctly identify other user when user1 is the authenticated user', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+      expect(result.items[0].otherUser.displayName).toBe('Other User');
+    });
+
+    it('should correctly identify other user when user2 is the authenticated user', async () => {
+      const reversedConversation = {
+        ...mockConversation,
+        user1Id: 'other-user-456',
+        user2Id: 'user-123',
+        user1: { id: 'other-user-456', username: 'otheruser' },
+        user2: { id: 'user-123', username: 'testuser' },
+      };
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([reversedConversation]);
+      mockPrisma.conversation.count.mockResolvedValue(1);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items[0].otherUser.id).toBe('other-user-456');
+    });
+
+    it('should return correct pagination values for page 2', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue(Array(15).fill(mockConversation));
+      mockPrisma.conversation.count.mockResolvedValue(50);
+
+      const result = await service.getMyConversations('user-123', 2, 15);
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(15);
+      expect(result.total).toBe(50);
+      expect(result.totalPages).toBe(4);
+      expect(result.hasNextPage).toBe(true);
+      expect(result.hasPreviousPage).toBe(true);
+    });
+
+    it('should return empty items array when user has no conversations', async () => {
+      mockPrisma.userBlock.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.findMany.mockResolvedValue([]);
+      mockPrisma.conversation.count.mockResolvedValue(0);
+
+      const result = await service.getMyConversations('user-123', 1, 20);
+
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(result.hasNextPage).toBe(false);
+    });
+  });
+
+  // ── createConversation ────────────────────────────────────
+  describe('createConversation', () => {
+    it('should create a new conversation between two users', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(null);
+      mockPrisma.conversation.create.mockResolvedValue(mockConversation);
+
+      const result = await service.createConversation('user-123', 'other-user-456');
+
+      expect(result.conversationId).toBe('conv-123');
+      expect(mockPrisma.conversation.create).toHaveBeenCalledWith({
+        data: {
+          user1Id: 'user-123',
+          user2Id: 'other-user-456',
+        },
+      });
+    });
+
+    it('should return existing conversation if one already exists', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(mockConversation);
+
+      const result = await service.createConversation('user-123', 'other-user-456');
+
+      expect(result.conversationId).toBe('conv-123');
+      expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
+    });
+
+    it('should find existing conversation regardless of user order', async () => {
+      mockPrisma.conversation.findFirst.mockResolvedValue(mockConversation);
+
+      await service.createConversation('other-user-456', 'user-123');
+
+      expect(mockPrisma.conversation.findFirst).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { user1Id: 'other-user-456', user2Id: 'user-123' },
+            { user1Id: 'user-123', user2Id: 'other-user-456' },
+          ],
+        },
+      });
+    });
+
+    it('should throw BadRequestException when trying to message self', async () => {
+      await expect(service.createConversation('user-123', 'user-123')).rejects.toThrow(
+        'Cannot create conversation with yourself',
+      );
+    });
+  });
+
+  // ── getUnreadMessagesCount ────────────────────────────────
+  describe('getUnreadMessagesCount', () => {
+    it('should return unread message count', async () => {
+      mockPrisma.message.count.mockResolvedValue(5);
+
+      const result = await service.getUnreadMessagesCount('user-123');
+
+      expect(result.unreadCount).toBe(5);
+    });
+
+    it('should return zero when no unread messages', async () => {
+      mockPrisma.message.count.mockResolvedValue(0);
+
+      const result = await service.getUnreadMessagesCount('user-123');
+
+      expect(result.unreadCount).toBe(0);
+    });
+
+    it('should only count unread messages from other users', async () => {
+      mockPrisma.message.count.mockResolvedValue(3);
+
+      await service.getUnreadMessagesCount('user-123');
+
+      expect(mockPrisma.message.count).toHaveBeenCalledWith({
+        where: {
+          read: false,
+          senderId: { not: 'user-123' },
+          conversation: {
+            OR: [
+              { user1Id: 'user-123' },
+              { user2Id: 'user-123' },
+            ],
+          },
+        },
+      });
     });
   });
 });

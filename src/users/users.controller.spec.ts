@@ -17,9 +17,13 @@ const mockUsersService = {
   getFollowerList: jest.fn(),
   getFollowingList: jest.fn(),
   getFavoriteGenres: jest.fn(),
+  getPublicTracks: jest.fn(),
   updateSocialLinks: jest.fn(),
   updateUserProfile: jest.fn(),
   deleteSocialLink: jest.fn(),
+  getMyConversations: jest.fn(),
+  createConversation: jest.fn(),
+  getUnreadMessagesCount: jest.fn(),
 };
 
 // ── Mock user extracted by @CurrentUser() decorator ──────────
@@ -116,7 +120,51 @@ describe('UsersController', () => {
       );
     });
   });
+  // ── getPublicUserTracks (controller) ───────────────────────
+  describe('getPublicUserTracks', () => {
+    it('should call service with correct params', async () => {
+      const mockResult = {
+        data: [],
+        meta: { page: 1, limit: 10, total: 0, hasMore: false },
+      };
 
+      mockUsersService.getPublicTracks.mockResolvedValue(mockResult);
+
+      const result = await controller.getPublicUserTracks(
+        'target-user-1',
+        mockJwtPayload as any,
+        1,
+        10,
+      );
+
+      expect(mockUsersService.getPublicTracks).toHaveBeenCalledWith(
+        'target-user-1',
+        'user-123',
+        1,
+        10,
+      );
+
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should pass correct pagination values', async () => {
+      mockUsersService.getPublicTracks.mockResolvedValue({});
+
+      await controller.getPublicUserTracks(
+        'target-user-1',
+        mockJwtPayload as any,
+        2,
+        5,
+      );
+
+      expect(mockUsersService.getPublicTracks).toHaveBeenCalledWith(
+        'target-user-1',
+        'user-123',
+        2,
+        5,
+      );
+    });
+  });
   // ── getReposts ────────────────────────────────────────────
   describe('getReposts', () => {
     it('should call service with userId and pagination', async () => {
@@ -132,6 +180,102 @@ describe('UsersController', () => {
         1,
         10,
       );
+    });
+
+    it('should return reposts with pagination metadata', async () => {
+      const mockRepostsResponse = {
+        data: [
+          {
+            repostId: 'repost-1',
+            repostedAt: new Date(),
+            track: {
+              id: 'track-1',
+              title: 'Test Track',
+              audioUrl: 'https://example.com/audio.mp3',
+              coverUrl: null,
+              duration: 180,
+              likesCount: 10,
+              commentsCount: 2,
+              repostsCount: 1,
+              createdAt: new Date(),
+            },
+          },
+        ],
+        hasMore: false,
+      };
+
+      mockUsersService.getReposts.mockResolvedValue(mockRepostsResponse);
+
+      const result = await controller.getReposts(mockJwtPayload, 1, 10);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].repostId).toBe('repost-1');
+      expect(result.data[0].track.title).toBe('Test Track');
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
+  // ── getUserReposts ────────────────────────────────────────
+  describe('getUserReposts', () => {
+    it('should call service with userId and pagination', async () => {
+      mockUsersService.getReposts.mockResolvedValue({
+        data: [],
+        hasMore: false,
+      });
+
+      await controller.getUserReposts('user-456', 1, 10);
+
+      expect(mockUsersService.getReposts).toHaveBeenCalledWith(
+        'user-456',
+        1,
+        10,
+      );
+    });
+
+    it('should use default pagination when not provided', async () => {
+      mockUsersService.getReposts.mockResolvedValue({
+        data: [],
+        hasMore: false,
+      });
+
+      await controller.getUserReposts('user-456');
+
+      expect(mockUsersService.getReposts).toHaveBeenCalledWith(
+        'user-456',
+        1,
+        10,
+      );
+    });
+
+    it('should return another user reposts with tracks', async () => {
+      const mockUserRepostsResponse = {
+        data: [
+          {
+            repostId: 'repost-1',
+            repostedAt: new Date('2026-04-15'),
+            track: {
+              id: 'track-1',
+              title: 'Another User Track',
+              audioUrl: 'https://example.com/audio.mp3',
+              coverUrl: 'https://example.com/cover.png',
+              duration: 240,
+              likesCount: 50,
+              commentsCount: 5,
+              repostsCount: 3,
+              createdAt: new Date('2026-04-10'),
+            },
+          },
+        ],
+        hasMore: true,
+      };
+
+      mockUsersService.getReposts.mockResolvedValue(mockUserRepostsResponse);
+
+      const result = await controller.getUserReposts('user-456', 1, 10);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].track.title).toBe('Another User Track');
+      expect(result.hasMore).toBe(true);
     });
   });
 
@@ -187,6 +331,52 @@ describe('UsersController', () => {
         'user-123',
         1,
         10,
+      );
+    });
+
+    it('should return liked tracks with pagination metadata', async () => {
+      const mockLikedTracksResponse = {
+        data: [
+          {
+            id: 'track-1',
+            title: 'Liked Track',
+            description: 'A track I like',
+            audioUrl: 'https://example.com/audio.mp3',
+            coverUrl: 'https://example.com/cover.png',
+            duration: 180,
+            likesCount: 100,
+            commentsCount: 10,
+            repostsCount: 5,
+            createdAt: new Date(),
+          },
+        ],
+        page: 1,
+        limit: 10,
+        hasMore: false,
+      };
+
+      mockUsersService.getLikedTracks.mockResolvedValue(mockLikedTracksResponse);
+
+      const result = await controller.getLikedTracks(mockJwtPayload, 1, 10);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].title).toBe('Liked Track');
+      expect(result.data[0].likesCount).toBe(100);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should handle pagination with different page and limit', async () => {
+      mockUsersService.getLikedTracks.mockResolvedValue({
+        data: [],
+        hasMore: true,
+      });
+
+      await controller.getLikedTracks(mockJwtPayload, 2, 20);
+
+      expect(mockUsersService.getLikedTracks).toHaveBeenCalledWith(
+        'user-123',
+        2,
+        20,
       );
     });
   });
@@ -408,6 +598,95 @@ describe('UsersController', () => {
         'user-123',
         SocialPlatform.INSTAGRAM,
       );
+    });
+  });
+
+  // ── getMyConversations ────────────────────────────────────
+  describe('getMyConversations', () => {
+    it('should call service with correct parameters', async () => {
+      const mockResponse = {
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      mockUsersService.getMyConversations.mockResolvedValue(mockResponse);
+
+      const result = await controller.getMyConversations(mockJwtPayload, 1, 20);
+
+      expect(mockUsersService.getMyConversations).toHaveBeenCalledWith(
+        'user-123',
+        1,
+        20,
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should use default pagination values', async () => {
+      const mockResponse = {
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      mockUsersService.getMyConversations.mockResolvedValue(mockResponse);
+
+      await controller.getMyConversations(mockJwtPayload);
+
+      expect(mockUsersService.getMyConversations).toHaveBeenCalledWith(
+        'user-123',
+        1,
+        20,
+      );
+    });
+  });
+
+  // ── createConversation ────────────────────────────────────
+  describe('createConversation', () => {
+    it('should call service with userId and otherUserId', async () => {
+      const mockResponse = { conversationId: 'conv-123' };
+      mockUsersService.createConversation.mockResolvedValue(mockResponse);
+
+      const result = await controller.createConversation(
+        mockJwtPayload,
+        'other-user-456',
+      );
+
+      expect(mockUsersService.createConversation).toHaveBeenCalledWith(
+        'user-123',
+        'other-user-456',
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  // ── getUnreadMessagesCount ────────────────────────────────
+  describe('getUnreadMessagesCount', () => {
+    it('should call service with userId', async () => {
+      const mockResponse = { unreadCount: 5 };
+      mockUsersService.getUnreadMessagesCount.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUnreadMessagesCount(mockJwtPayload);
+
+      expect(mockUsersService.getUnreadMessagesCount).toHaveBeenCalledWith(
+        'user-123',
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should return zero unread count', async () => {
+      const mockResponse = { unreadCount: 0 };
+      mockUsersService.getUnreadMessagesCount.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUnreadMessagesCount(mockJwtPayload);
+
+      expect(result.unreadCount).toBe(0);
     });
   });
 });

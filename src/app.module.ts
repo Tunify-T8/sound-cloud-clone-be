@@ -15,6 +15,10 @@ import { SearchModule } from './search/search.module';
 import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
 import { CollectionsModule } from './collections/collections.module';
+import { CommentsModule } from './comments/comments.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ConversationsModule } from './conversations/conversations.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -27,13 +31,16 @@ import { CollectionsModule } from './collections/collections.module';
     FollowsModule,
     BullModule.forRoot({
       redis: {
-        host: 'localhost',
+        host: process.env.REDIS_HOST || 'localhost',
         port: 6379,
       },
     }),
     FeedModule,
     SearchModule,
     CollectionsModule,
+    CommentsModule,
+    NotificationsModule,
+    ConversationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],

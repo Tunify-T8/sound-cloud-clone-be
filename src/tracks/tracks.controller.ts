@@ -191,16 +191,11 @@ export class TracksController {
     return result;
   }
 
-  //--------------------TO BE ADDED IF WELL USE PATCH---------------------//
-  // @Patch(':id')
-  // async updateTrackJson(
-  //   @Param('id') trackId: string,
-  //   @Body() dto: UpdateTrackDto,
-  // ) {
-  //   const userId = 'b712d133-03c6-4229-b07e-6da113d23bb8';
-  //   const track = await this.tracksService.updateTrackJson(trackId, userId, dto);
-  //   return { track, statusCode: 200 };
-  // }
+  @Delete('me/listening-history')
+  @UseGuards(JwtAccessGuard)
+  async clearHistory(@Request() req: AuthRequest) {
+    return this.tracksService.clearListeningHistory(req.user?.userId ?? '');
+  }
 
   @Delete(':id')
   @UseGuards(JwtAccessGuard)
@@ -237,4 +232,96 @@ export class TracksController {
       file,
     );
   }
+
+ 
+  @Post(":id/like")
+  @UseGuards(JwtAccessGuard)
+  async likeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.likeTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Delete(":id/like")
+  @UseGuards(JwtAccessGuard)
+  async unlikeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.unlikeTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Post(":id/repost")
+  @UseGuards(JwtAccessGuard)
+  async repostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.repostTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Delete(":id/repost")
+  @UseGuards(JwtAccessGuard)
+  async unrepostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+    return this.tracksService.unrepostTrack(trackId, req.user?.userId ?? '');
+  }
+
+  @Post(':id/comments')
+  @UseGuards(JwtAccessGuard)
+  async addComment(
+    @Request() req: AuthRequest,
+    @Param('id',ParseUUIDPipe) trackId: string,
+    @Body('text') text: string,
+    @Body('timestamp') timestamp: number,
+  ) {
+    // Implement comment creation logic here
+    return this.tracksService.addComment(trackId, req.user?.userId ?? '', text, timestamp);
+  }
+
+ @Get(':id/likes')
+  @UseGuards(JwtAccessGuard)
+  async getTrackLikes(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    return this.tracksService.getTrackLikes(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
+  @Get(':id/reposts')
+  @UseGuards(JwtAccessGuard)
+  async getTrackReposts(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    // Implement getTrackReposts logic here
+    return this.tracksService.getTrackReposts(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
+  @Get(':id/comments')
+  @UseGuards(JwtAccessGuard)
+  async getTrackComments(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    // Implement getTrackComments logic here
+    return this.tracksService.getTrackComments(
+      trackId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
+
+  @Get(':id/engagement')
+  @UseGuards(JwtAccessGuard)
+  async getEngagement(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string) 
+  {
+    return this.tracksService.getEngagementMetrics(trackId, req.user?.userId ?? '');
+  }
+
 }

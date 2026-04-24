@@ -69,6 +69,15 @@ const makeServiceMock = () => ({
   updateTrack: jest.fn(),
   deleteTrack: jest.fn(),
   replaceAudio: jest.fn(),
+  likeTrack: jest.fn(),
+  unlikeTrack: jest.fn(),
+  getTrackLikes: jest.fn(),
+  repostTrack: jest.fn(),
+  unrepostTrack: jest.fn(),
+  getTrackReposts: jest.fn(),
+  addComment: jest.fn(),
+  getTrackComments: jest.fn(),
+  getEngagementMetrics: jest.fn(),
 });
 
 // Helper to build a typed AuthRequest
@@ -271,6 +280,237 @@ describe('TracksController', () => {
       await controller.replaceAudio({ user: undefined } as any, TRACK_ID, mockFile);
 
       expect(service.replaceAudio).toHaveBeenCalledWith(TRACK_ID, '', mockFile);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /tracks/:id/like  →  likeTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('likeTrack()', () => {
+    it('calls service.likeTrack with trackId and userId', async () => {
+      const likeResult = { message: 'Track liked successfully', likesCount: 42 };
+      service.likeTrack.mockResolvedValue(likeResult);
+
+      const result = await controller.likeTrack(makeReq(), TRACK_ID);
+
+      expect(service.likeTrack).toHaveBeenCalledWith(TRACK_ID, USER_ID);
+      expect(result).toEqual(likeResult);
+    });
+
+    it('falls back to empty string when userId is undefined', async () => {
+      service.likeTrack.mockResolvedValue({});
+
+      await controller.likeTrack({ user: undefined } as any, TRACK_ID);
+
+      expect(service.likeTrack).toHaveBeenCalledWith(TRACK_ID, '');
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DELETE /tracks/:id/like  →  unlikeTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('unlikeTrack()', () => {
+    it('calls service.unlikeTrack with trackId and userId', async () => {
+      const unlikeResult = { message: 'Track unliked successfully', likesCount: 41 };
+      service.unlikeTrack.mockResolvedValue(unlikeResult);
+
+      const result = await controller.unlikeTrack(makeReq(), TRACK_ID);
+
+      expect(service.unlikeTrack).toHaveBeenCalledWith(TRACK_ID, USER_ID);
+      expect(result).toEqual(unlikeResult);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /tracks/:id/repost  →  repostTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('repostTrack()', () => {
+    it('calls service.repostTrack with trackId and userId', async () => {
+      const repostResult = { message: 'Track reposted successfully', repostsCount: 15 };
+      service.repostTrack.mockResolvedValue(repostResult);
+
+      const result = await controller.repostTrack(makeReq(), TRACK_ID);
+
+      expect(service.repostTrack).toHaveBeenCalledWith(TRACK_ID, USER_ID);
+      expect(result).toEqual(repostResult);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DELETE /tracks/:id/repost  →  unrepostTrack()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('unrepostTrack()', () => {
+    it('calls service.unrepostTrack with trackId and userId', async () => {
+      const unrepostResult = { message: 'Repost removed successfully', repostsCount: 14 };
+      service.unrepostTrack.mockResolvedValue(unrepostResult);
+
+      const result = await controller.unrepostTrack(makeReq(), TRACK_ID);
+
+      expect(service.unrepostTrack).toHaveBeenCalledWith(TRACK_ID, USER_ID);
+      expect(result).toEqual(unrepostResult);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /tracks/:id/comments  →  addComment()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('addComment()', () => {
+    it('calls service.addComment with trackId, userId, text, and timestamp', async () => {
+      const commentResult = {
+        commentId: 'comment-123',
+        text: 'Great track!',
+        timestamp: 42,
+        likesCount: 0,
+      };
+      service.addComment.mockResolvedValue(commentResult);
+
+      const result = await controller.addComment(makeReq(), TRACK_ID, 'Great track!', 42);
+
+      expect(service.addComment).toHaveBeenCalledWith(TRACK_ID, USER_ID, 'Great track!', 42);
+      expect(result).toEqual(commentResult);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /tracks/:id/likes  →  getTrackLikes()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackLikes()', () => {
+    it('calls service.getTrackLikes with parsed pagination params', async () => {
+      const likesResult = {
+        likes: [
+          { userId: 'user-1', username: 'user1', displayName: 'User One', avatarUrl: null, isCertified: false },
+        ],
+        page: 1,
+        limit: 20,
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      service.getTrackLikes.mockResolvedValue(likesResult);
+
+      const result = await controller.getTrackLikes(TRACK_ID, '1', '20');
+
+      expect(service.getTrackLikes).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+      expect(result).toEqual(likesResult);
+    });
+
+    it('uses default page and limit when not provided', async () => {
+      service.getTrackLikes.mockResolvedValue({ likes: [], page: 1, limit: 20 });
+
+      await controller.getTrackLikes(TRACK_ID);
+
+      expect(service.getTrackLikes).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /tracks/:id/reposts  →  getTrackReposts()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackReposts()', () => {
+    it('calls service.getTrackReposts with parsed pagination params', async () => {
+      const repostsResult = {
+        reposts: [
+          { repostId: 'repost-1', userId: 'user-2', username: 'user2', repostedAt: new Date() },
+        ],
+        page: 1,
+        limit: 20,
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      service.getTrackReposts.mockResolvedValue(repostsResult);
+
+      const result = await controller.getTrackReposts(TRACK_ID, '1', '20');
+
+      expect(service.getTrackReposts).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+      expect(result).toEqual(repostsResult);
+    });
+
+    it('uses default page and limit when not provided', async () => {
+      service.getTrackReposts.mockResolvedValue({ reposts: [], page: 1, limit: 20 });
+
+      await controller.getTrackReposts(TRACK_ID);
+
+      expect(service.getTrackReposts).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /tracks/:id/comments  →  getTrackComments()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getTrackComments()', () => {
+    it('calls service.getTrackComments with parsed pagination params', async () => {
+      const commentsResult = {
+        comments: [
+          {
+            commentId: 'comment-1',
+            text: 'Nice track',
+            timestamp: 30,
+            likesCount: 2,
+            repliesCount: 1,
+            isLiked: false,
+          },
+        ],
+        page: 1,
+        limit: 20,
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+      service.getTrackComments.mockResolvedValue(commentsResult);
+
+      const result = await controller.getTrackComments(TRACK_ID, '1', '20');
+
+      expect(service.getTrackComments).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+      expect(result).toEqual(commentsResult);
+    });
+
+    it('uses default page and limit when not provided', async () => {
+      service.getTrackComments.mockResolvedValue({ comments: [], page: 1, limit: 20 });
+
+      await controller.getTrackComments(TRACK_ID);
+
+      expect(service.getTrackComments).toHaveBeenCalledWith(TRACK_ID, 1, 20);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /tracks/:id/engagement  →  getEngagement()
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('getEngagement()', () => {
+    it('calls service.getEngagementMetrics with trackId and userId', async () => {
+      const engagementResult = {
+        trackId: TRACK_ID,
+        likesCount: 42,
+        commentsCount: 5,
+        repostsCount: 3,
+        isLiked: true,
+        isReposted: false,
+        isSaved: true,
+      };
+      service.getEngagementMetrics.mockResolvedValue(engagementResult);
+
+      const result = await controller.getEngagement(makeReq(), TRACK_ID);
+
+      expect(service.getEngagementMetrics).toHaveBeenCalledWith(TRACK_ID, USER_ID);
+      expect(result).toEqual(engagementResult);
+    });
+
+    it('falls back to empty string when userId is undefined', async () => {
+      service.getEngagementMetrics.mockResolvedValue({});
+
+      await controller.getEngagement({ user: undefined } as any, TRACK_ID);
+
+      expect(service.getEngagementMetrics).toHaveBeenCalledWith(TRACK_ID, '');
     });
   });
 });
