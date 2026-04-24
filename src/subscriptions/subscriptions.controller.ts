@@ -30,6 +30,12 @@ export class SubscriptionsController {
         return this.subscriptionsService.getMySubscription(req.user.userId);
     }
 
+    @Post('cancel')
+    @UseGuards(JwtAccessGuard)
+    cancelSubscription(@Request() req) {
+        return this.subscriptionsService.cancelSubscription(req.user.userId);
+    }
+    
     @Post('subscribe')
     @UseGuards(JwtAccessGuard)
     async subscribe(

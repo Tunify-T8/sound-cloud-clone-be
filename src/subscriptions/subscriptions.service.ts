@@ -167,4 +167,30 @@ export class SubscriptionsService {
         }
         return endDate;
     }
+
+    async cancelSubscription(userId: string) {
+        const subscription = await this.prisma.subscription.findFirst({
+            where: {
+                userId,
+                status: 'ACTIVE',
+            },
+        });
+
+        if (!subscription) {
+            throw new NotFoundException('No active subscription found to cancel');
+        }
+
+        await this.prisma.subscription.update({
+            where: { id: subscription.id },
+            data: {
+                status: 'CANCELLED',
+                autoRenew: false,
+            },
+        });
+
+        return {
+            message: 'Subscription cancelled successfully',
+            expiresAt: subscription.endedAt,
+        };
+    }
 }
