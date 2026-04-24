@@ -1,0 +1,541 @@
+module: "9"
+name: "Messaging & Track Sharing"
+description: "Real-time messaging system with WebSocket support and user blocking"
+version: "1.0.0"
+status: "Completed"
+
+database:
+  engine: "PostgreSQL"
+  orm: "Prisma"
+  features:
+    - soft_deletes: true
+    - polymorphic_relations: true
+
+rest_api:
+  base_url: "http://localhost:3000"
+  
+  conversations:
+    - endpoint: "GET /users/me/conversations"
+      description: "Get all conversations for the current user"
+      auth: true
+      query_params:
+        - name: "page"
+          type: "number"
+          default: 1
+        - name: "limit"
+          type: "number"
+          default: 20
+          max: 100
+      response:
+        type: "object"
+        properties:
+          page: "number"
+          limit: "number"
+          total: "number"
+          totalPages: "number"
+          hasNextPage: "boolean"
+          hasPreviousPage: "boolean"
+          data:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                id: "uuid"
+                user1Id: "uuid"
+                user2Id: "uuid"
+                status: "enum[ACTIVE, ARCHIVED, BLOCKED]"
+                unreadCount: "number"
+                lastMessage: "object"
+                updatedAt: "datetime"
+      features:
+        - filters_blocked_users: true
+        - pagination: true
+
+    - endpoint: "POST /users/me/conversations"
+      description: "Create or retrieve existing conversation with another user"
+      auth: true
+      body:
+        userId: "uuid"
+      response:
+        type: "object"
+        properties:
+          id: "uuid"
+          user1Id: "uuid"
+          user2Id: "uuid"
+          status: "enum[ACTIVE, ARCHIVED, BLOCKED]"
+          createdAt: "datetime"
+          updatedAt: "datetime"
+      validations:
+        - no_self_messaging: true
+        - returns_existing: true
+
+    - endpoint: "DELETE /conversations/{conversationId}"
+      description: "Delete (soft-delete) a conversation"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          message: "string"
+      constraints:
+        - only_conversation_owner_can_delete: true
+
+    - endpoint: "GET /conversations/{conversationId}/messages"
+      description: "Get messages in a conversation with pagination"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      query_params:
+        - name: "page"
+          type: "number"
+          default: 1
+        - name: "limit"
+          type: "number"
+          default: 20
+          max: 100
+      response:
+        type: "object"
+        properties:
+          page: "number"
+          limit: "number"
+          total: "number"
+          totalPages: "number"
+          hasNextPage: "boolean"
+          hasPreviousPage: "boolean"
+          data:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                id: "uuid"
+                conversationId: "uuid"
+                senderId: "uuid"
+                sender: "object"
+                type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
+                content: "string|null"
+                trackId: "uuid|null"
+                collectionId: "uuid|null"
+                userId: "uuid|null"
+                read: "boolean"
+                createdAt: "datetime"
+                attachment: "object"
+      features:
+        - blocking_enforcement: true
+        - batch_loaded_artists: true
+        - pagination: true
+
+    - endpoint: "POST /conversations/{conversationId}/read"
+      description: "Mark entire conversation as read"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          message: "string"
+
+    - endpoint: "POST /conversations/{conversationId}/unread"
+      description: "Mark entire conversation as unread"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          message: "string"
+
+    - endpoint: "POST /conversations/{conversationId}/archive"
+      description: "Archive a conversation (hide from inbox but keep messages)"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          id: "uuid"
+          conversationId: "uuid"
+          status: "ARCHIVED"
+          updatedAt: "datetime"
+
+    - endpoint: "POST /conversations/{conversationId}/block"
+      description: "Block a user from a conversation"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      body:
+        removeComments:
+          type: "boolean"
+          description: "Remove all comments from blocked user"
+        reportSpam:
+          type: "boolean"
+          description: "Mark user as spam reporter"
+      response:
+        type: "object"
+        properties:
+          message: "string"
+          blockedUserId: "uuid"
+          blockId: "uuid"
+      features:
+        - atomic_transaction: true
+        - removes_follows_bidirectionally: true
+        - updates_conversation_status: true
+        - optional_comment_removal: true
+
+    - endpoint: "POST /conversations/unblock/{blockedUserId}"
+      description: "Unblock a user"
+      auth: true
+      params:
+        - name: "blockedUserId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          message: "string"
+
+  unread_messages:
+    - endpoint: "GET /me/messages/unread-count"
+      description: "Get total count of unread messages across all conversations"
+      auth: true
+      response:
+        type: "object"
+        properties:
+          unreadCount: "number"
+      features:
+        - excludes_own_messages: true
+
+websocket:
+  namespace: "/conversations"
+  port: 3001
+  protocol: "Socket.IO"
+  authentication:
+    type: "JWT"
+    method: "query_param"
+    param_name: "token"
+    example: "ws://localhost:3001/conversations?token=YOUR_JWT_TOKEN"
+
+  events:
+    connection:
+      - event: "authenticated"
+        direction: "receive"
+        description: "Emitted when connection and authentication successful"
+        payload:
+          message: "Connected to messaging"
+
+    conversation_management:
+      - event: "conversation:join"
+        direction: "send"
+        description: "Join a conversation room to receive/send messages"
+        payload:
+          conversationId: "uuid"
+        response_events:
+          - event: "joined"
+            payload:
+              conversationId: "uuid"
+              message: "Joined conversation"
+
+      - event: "conversation:leave"
+        direction: "send"
+        description: "Leave a conversation room"
+        payload:
+          conversationId: "uuid"
+        response_events:
+          - event: "left"
+            payload:
+              conversationId: "uuid"
+
+    messaging:
+      - event: "message:send"
+        direction: "send"
+        description: "Send a message in real-time"
+        message_types:
+          - type: "TEXT"
+            required_fields: ["conversationId", "content", "type"]
+            example:
+              conversationId: "uuid"
+              content: "Hello!"
+              type: "TEXT"
+
+          - type: "TRACK_LIKE"
+            required_fields: ["conversationId", "trackId", "type"]
+            example:
+              conversationId: "uuid"
+              type: "TRACK_LIKE"
+              trackId: "track-uuid"
+            preview:
+              title: "string"
+              artistName: "string"
+              artworkUrl: "string|null"
+              durationSeconds: "number|null"
+
+          - type: "TRACK_UPLOAD"
+            required_fields: ["conversationId", "collectionId", "type"]
+            example:
+              conversationId: "uuid"
+              type: "TRACK_UPLOAD"
+              collectionId: "collection-uuid"
+            preview:
+              title: "string"
+              coverUrl: "string|null"
+
+          - type: "PLAYLIST"
+            required_fields: ["conversationId", "collectionId", "type"]
+            example:
+              conversationId: "uuid"
+              type: "PLAYLIST"
+              collectionId: "playlist-uuid"
+            preview:
+              title: "string"
+              coverUrl: "string|null"
+
+          - type: "ALBUM"
+            required_fields: ["conversationId", "collectionId", "type"]
+            example:
+              conversationId: "uuid"
+              type: "ALBUM"
+              collectionId: "album-uuid"
+            preview:
+              title: "string"
+              coverUrl: "string|null"
+
+          - type: "USER"
+            required_fields: ["conversationId", "userId", "type"]
+            example:
+              conversationId: "uuid"
+              type: "USER"
+              userId: "user-uuid"
+            preview:
+              username: "string"
+              avatarUrl: "string|null"
+
+        response_events:
+          - event: "message:sent"
+            payload:
+              messageId: "uuid"
+
+          - event: "message:received"
+            broadcast_scope: "conversation_room"
+            payload:
+              conversationId: "uuid"
+              message:
+                id: "uuid"
+                conversationId: "uuid"
+                sender:
+                  id: "uuid"
+                  username: "string"
+                  avatarUrl: "string|null"
+                type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
+                text: "string|null"
+                createdAt: "datetime"
+                read: "boolean"
+                attachment:
+                  id: "uuid|null"
+                  type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
+                  preview: "object|null"
+
+      - event: "message:markRead"
+        direction: "send"
+        description: "Mark a specific message as read"
+        payload:
+          conversationId: "uuid"
+          messageId: "uuid"
+        response_events:
+          - event: "read:success"
+            payload:
+              messageId: "uuid"
+
+          - event: "message:read"
+            broadcast_scope: "conversation_room"
+            payload:
+              conversationId: "uuid"
+              messageId: "uuid"
+
+    typing_indicators:
+      - event: "typing:start"
+        direction: "send"
+        description: "Notify others you're typing"
+        payload:
+          conversationId: "uuid"
+        response_events:
+          - event: "typing:active"
+            broadcast_scope: "other_users_in_room"
+            payload:
+              conversationId: "uuid"
+              userId: "uuid"
+
+      - event: "typing:stop"
+        direction: "send"
+        description: "Notify others you stopped typing"
+        payload:
+          conversationId: "uuid"
+        response_events:
+          - event: "typing:inactive"
+            broadcast_scope: "other_users_in_room"
+            payload:
+              conversationId: "uuid"
+              userId: "uuid"
+
+    error_handling:
+      - event: "error"
+        direction: "receive"
+        description: "Error response from server"
+        payload:
+          message: "string"
+
+features:
+  soft_deletes:
+    enabled: true
+    applies_to:
+      - conversations
+      - messages
+    implementation: "isDeleted boolean + deletedAt datetime"
+
+  user_blocking:
+    enabled: true
+    features:
+      - prevents_messaging: true
+      - removes_follows_bidirectionally: true
+      - prevents_blocked_user_messages: true
+      - atomic_transaction: true
+      - optional_comment_removal: true
+
+  message_types:
+    count: 6
+    polymorphic: true
+    types:
+      - TEXT
+      - TRACK_LIKE
+      - TRACK_UPLOAD
+      - PLAYLIST
+      - ALBUM
+      - USER
+    validation: "type-specific"
+    metadata: "rich_previews"
+
+  pagination:
+    enabled: true
+    max_limit: 100
+    default_limit: 20
+    formula: "skip = (page - 1) * limit"
+
+  real_time_broadcasting:
+    engine: "Socket.IO"
+    implementation: "conversation_rooms"
+    room_naming: "conversation:{conversationId}"
+
+  read_status:
+    per_message_tracking: true
+    constraints:
+      - cannot_mark_own_messages_as_read: true
+
+  typing_indicators:
+    enabled: true
+    persistence: "non_persistent"
+    scope: "real_time_only"
+
+security:
+  authentication:
+    type: "JWT"
+    where_enforced:
+      - all_rest_endpoints: true
+      - websocket_connection: true
+  blocking:
+    enforcement_level: "strict"
+    prevents:
+      - messaging: true
+      - viewing_blocked_user_messages: true
+  soft_delete_filtering:
+    enabled: true
+    applies_to_all_queries: true
+
+testing:
+  unit_tests:
+    - file: "src/conversations/conversations.service.spec.ts"
+      status: "passing"
+      count: 1
+    - file: "src/conversations/conversations.controller.spec.ts"
+      status: "passing"
+      count: 1
+    - file: "src/users/users.service.spec.ts"
+      status: "passing"
+      count: 54
+      includes: "5 conversation tests"
+    - file: "src/users/users.controller.spec.ts"
+      status: "passing"
+      count: 33
+      includes: "3 conversation tests"
+  
+  total_tests: 428
+  total_passing: 428
+  status: "all passing"
+
+  websocket_testing:
+    tool: "Postman WebSocket"
+    steps:
+      1: "Connect with JWT token (port 3001)"
+      2: "Add event listeners (authenticated, message:received, error, etc.)"
+      3: "Send conversation:join to connect to room"
+      4: "Send message:send to test messaging"
+      5: "Open second connection with different token"
+      6: "Verify messages appear in both connections"
+
+implementation:
+  files:
+    gateway: "src/conversations/conversations.gateway.ts"
+    service: "src/conversations/conversations.service.ts"
+    controller: "src/conversations/conversations.controller.ts"
+    module: "src/conversations/conversations.module.ts"
+    models: "prisma/schema.prisma"
+
+  architecture:
+    pattern: "Gateway -> Service -> Repository"
+    separation_of_concerns: true
+    layers:
+      - gateway: "WebSocket event handling (thin layer)"
+      - service: "Business logic, validation, database operations (thick layer)"
+      - controller: "HTTP REST endpoints"
+
+  design_patterns:
+    - socket_io_rooms: "conversation:{conversationId}"
+    - polymorphic_relations: "message type + conditional foreign keys"
+    - soft_deletes: "isDeleted + deletedAt pattern"
+    - atomic_transactions: "user blocking with cascading updates"
+
+changes_from_original:
+  removed:
+    - "POST /conversations/{conversationId}/messages endpoint"
+  added:
+    - "WebSocket namespace on port 3001"
+    - "6 WebSocket event handlers"
+    - "Polymorphic message model with 6 types"
+    - "User blocking with cascading follow removal"
+    - "Proper soft-delete enforcement"
+  replaced:
+    - "HTTP message sending -> WebSocket message:send event"
+    - "HTTP message reading -> HTTP GET with pagination + WebSocket message:received"
+
+deployment:
+  build: "npm run build"
+  test: "npm test"
+  start: "npm run start:dev"
+  websocket_port: 3001
+  http_port: 3000
+  cors: "origin: '*' (configurable)"
+
+documentation:
+  files:
+    - "WEBSOCKET_GUIDE.md"
+    - "Module_9_final.yaml"
+  coverage: "complete"
+  includes:
+    - all_endpoints: true
+    - all_events: true
+    - examples: true
+    - error_handling: true
+    - testing_guide: true

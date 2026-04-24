@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -243,5 +243,168 @@ export class ConversationsService {
         });
 
         return { message: 'User unblocked successfully' };
+    }
+
+    async createMessage(
+        userId: string,
+        conversationId: string,
+        type: any,
+        content?: string,
+        trackId?: string,
+        collectionId?: string,
+        sharedUserId?: string,
+    ) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId, isDeleted: false },
+        });
+
+        if (!conversation) {
+            throw new NotFoundException('Conversation not found');
+        }
+
+        // Check if user is part of conversation
+        if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+            throw new ForbiddenException('Not part of this conversation');
+        }
+
+        // Check if user is blocked
+        const blockedUserIds = (await this.prisma.userBlock.findMany({
+            where: { blockedId: userId },
+            select: { blockerId: true },
+        })).map(b => b.blockerId);
+
+        const otherUserId = conversation.user1Id === userId ? conversation.user2Id : conversation.user1Id;
+        if (blockedUserIds.includes(otherUserId)) {
+            throw new ForbiddenException('You are blocked by this user');
+        }
+
+        // Create message
+        const message = await this.prisma.message.create({
+            data: {
+                conversationId,
+                senderId: userId,
+                type: type as any,
+                content: type === 'TEXT' ? content : null,
+                trackId: type === 'TRACK_LIKE' ? trackId : null,
+                collectionId: type === 'PLAYLIST' || type === 'ALBUM' || type === 'TRACK_UPLOAD' ? collectionId : null,
+                userId: type === 'USER' ? sharedUserId : null,
+                read: false,
+            },
+            include: {
+                track: { select: { id: true, title: true, coverUrl: true, durationSeconds: true, userId: true } },
+                collection: { select: { id: true, title: true, coverUrl: true } },
+                sharedUser: { select: { id: true, username: true, avatarUrl: true } },
+                sender: { select: { id: true, username: true, avatarUrl: true } },
+            },
+        });
+
+        // Update conversation updatedAt
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { updatedAt: new Date() },
+        });
+
+        return message;
+    }
+
+    async getMessageById(messageId: string, userId?: string) {
+        const message = await this.prisma.message.findUnique({
+            where: { id: messageId },
+            include: {
+                conversation: true,
+                track: { select: { id: true, title: true, coverUrl: true, durationSeconds: true, userId: true } },
+                collection: { select: { id: true, title: true, coverUrl: true } },
+                sharedUser: { select: { id: true, username: true, avatarUrl: true } },
+                sender: { select: { id: true, username: true, avatarUrl: true } },
+            },
+        });
+
+        if (!message) {
+            throw new NotFoundException('Message not found');
+        }
+
+        // Verify user access if userId provided
+        if (userId) {
+            const conv = message.conversation;
+            if (conv.user1Id !== userId && conv.user2Id !== userId) {
+                throw new ForbiddenException('Cannot access this message');
+            }
+        }
+
+        return message;
+    }
+
+    async markMessageAsRead(userId: string, messageId: string, conversationId: string) {
+        const message = await this.prisma.message.findUnique({
+            where: { id: messageId },
+            include: { conversation: true },
+        });
+
+        if (!message || message.conversationId !== conversationId) {
+            throw new NotFoundException('Message not found');
+        }
+
+        // Verify user is in conversation
+        if (message.conversation.user1Id !== userId && message.conversation.user2Id !== userId) {
+            throw new ForbiddenException('Not part of this conversation');
+        }
+
+        // Only mark as read if user is not the sender
+        if (message.senderId === userId) {
+            throw new BadRequestException('Cannot mark your own message as read');
+        }
+
+        const updatedMessage = await this.prisma.message.update({
+            where: { id: messageId },
+            data: { read: true },
+        });
+
+        return updatedMessage;
+    }
+
+    async formatMessage(message: any) {
+        let attachment: any = null;
+        let preview: any = null;
+
+        if (message.type === 'TRACK_LIKE' && message.track) {
+            attachment = message.track.id;
+            const artist = await this.prisma.user.findUnique({
+                where: { id: message.track.userId },
+                select: { id: true, username: true },
+            });
+            preview = {
+                title: message.track.title || 'Unknown Track',
+                artistName: artist?.username || 'Unknown Artist',
+                artworkUrl: message.track.coverUrl || null,
+                durationSeconds: message.track.durationSeconds || null,
+            };
+        } else if (message.type === 'USER' && message.sharedUser) {
+            attachment = message.sharedUser.id;
+            preview = {
+                username: message.sharedUser.username,
+                avatarUrl: message.sharedUser.avatarUrl,
+            };
+        } else if ((message.type === 'PLAYLIST' || message.type === 'ALBUM' || message.type === 'TRACK_UPLOAD') && message.collection) {
+            attachment = message.collection.id;
+            preview = {
+                title: message.collection.title,
+                coverUrl: message.collection.coverUrl,
+            };
+        }
+
+        return {
+            id: message.id,
+            conversationId: message.conversationId,
+            sender: message.sender,
+            type: message.type,
+            text: message.content,
+            createdAt: message.createdAt,
+            read: message.read,
+            attachment: {
+                id: attachment,
+                type: message.type,
+                preview,
+            },
+        };
     }
 }
