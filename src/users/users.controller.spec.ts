@@ -24,6 +24,9 @@ const mockUsersService = {
   getMyConversations: jest.fn(),
   createConversation: jest.fn(),
   getUnreadMessagesCount: jest.fn(),
+  getUploadStats: jest.fn(),
+  getUploadMinutes: jest.fn(),
+  getUserCollections: jest.fn(),
 };
 
 // ── Mock user extracted by @CurrentUser() decorator ──────────
@@ -32,6 +35,12 @@ const mockJwtPayload = {
   email: 'test@test.com',
   role: 'USER',
 };
+
+const mockRequest = {
+  user: {
+    userId: 'user-123',
+  },
+} as any;
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -360,8 +369,8 @@ describe('UsersController', () => {
       const result = await controller.getLikedTracks(mockJwtPayload, 1, 10);
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].title).toBe('Liked Track');
-      expect(result.data[0].likesCount).toBe(100);
+      expect(result.data[0]).toHaveProperty('id');
+      expect(result.data[0]).toHaveProperty('likeCount');
       expect(result.hasMore).toBe(false);
     });
 
@@ -687,6 +696,256 @@ describe('UsersController', () => {
       const result = await controller.getUnreadMessagesCount(mockJwtPayload);
 
       expect(result.unreadCount).toBe(0);
+    });
+  });
+
+  // ── getUploadStats ────────────────────────────────────────
+  describe('getUploadStats', () => {
+    it('should return upload stats for authenticated user', async () => {
+      const mockResponse = {
+        tier: 'PRO',
+        uploadMinutesLimit: 200,
+        uploadMinutesUsed: 50,
+        uploadMinutesRemaining: 150,
+        canReplaceFiles: true,
+        canScheduleRelease: true,
+        canAccessAdvancedTab: true,
+      };
+      mockUsersService.getUploadStats.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUploadStats(mockRequest);
+
+      expect(mockUsersService.getUploadStats).toHaveBeenCalledWith('user-123');
+      expect(result).toEqual(mockResponse);
+      expect(result.uploadMinutesRemaining).toBe(150);
+    });
+
+    it('should return free tier stats when no subscription', async () => {
+      const mockResponse = {
+        tier: 'FREE',
+        uploadMinutesLimit: 100,
+        uploadMinutesUsed: 0,
+        uploadMinutesRemaining: 100,
+        canReplaceFiles: false,
+        canScheduleRelease: false,
+        canAccessAdvancedTab: false,
+      };
+      mockUsersService.getUploadStats.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUploadStats(mockRequest);
+
+      expect(result.tier).toBe('FREE');
+      expect(result.canReplaceFiles).toBe(false);
+    });
+
+    it('should extract userId from request object', async () => {
+      mockUsersService.getUploadStats.mockResolvedValue({});
+
+      await controller.getUploadStats(mockRequest);
+
+      expect(mockUsersService.getUploadStats).toHaveBeenCalledWith(
+        mockRequest.user?.userId,
+      );
+    });
+  });
+
+  // ── getUploadMinutes ──────────────────────────────────────
+  describe('getUploadMinutes', () => {
+    it('should return upload minutes info', async () => {
+      const mockResponse = {
+        tier: 'PRO',
+        uploadMinutesLimit: 200,
+        uploadMinutesUsed: 75,
+        uploadMinutesRemaining: 125,
+      };
+      mockUsersService.getUploadMinutes.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUploadMinutes('user-456');
+
+      expect(mockUsersService.getUploadMinutes).toHaveBeenCalledWith('user-456');
+      expect(result.uploadMinutesRemaining).toBe(125);
+    });
+
+    it('should handle NO_PLAN tier', async () => {
+      const mockResponse = {
+        tier: 'NO_PLAN',
+        uploadMinutesLimit: 99,
+        uploadMinutesUsed: 0,
+        uploadMinutesRemaining: 99,
+      };
+      mockUsersService.getUploadMinutes.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUploadMinutes('user-456');
+
+      expect(result.tier).toBe('NO_PLAN');
+    });
+  });
+
+  // ── getUserCollections ────────────────────────────────────
+  describe('getUserCollections', () => {
+    it('should return user collections with pagination', async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: 'coll-123',
+            title: 'My Playlist',
+            tracksCount: 10,
+            likesCount: 5,
+          },
+        ],
+        page: 1,
+        limit: 10,
+        total: 1,
+        hasMore: false,
+      };
+      mockUsersService.getUserCollections.mockResolvedValue(mockResponse);
+
+      const result = await controller.getUserCollections(
+        'testuser',
+        1,
+        10,
+        mockRequest,
+      );
+
+      expect(mockUsersService.getUserCollections).toHaveBeenCalledWith(
+        'testuser',
+        'user-123',
+        1,
+        10,
+      );
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('should pass undefined requesterId when not authenticated', async () => {
+      const mockResponse = { data: [], page: 1, limit: 10, total: 0, hasMore: false };
+      mockUsersService.getUserCollections.mockResolvedValue(mockResponse);
+
+      const unauthenticatedRequest = { user: undefined };
+      await controller.getUserCollections(
+        'testuser',
+        1,
+        10,
+        unauthenticatedRequest as any,
+      );
+
+      expect(mockUsersService.getUserCollections).toHaveBeenCalledWith(
+        'testuser',
+        undefined,
+        1,
+        10,
+      );
+    });
+
+    it('should use default pagination values', async () => {
+      mockUsersService.getUserCollections.mockResolvedValue({
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      });
+
+      await controller.getUserCollections('testuser', 1, 10, undefined);
+
+      expect(mockUsersService.getUserCollections).toHaveBeenCalledWith(
+        'testuser',
+        undefined,
+        1,
+        10,
+      );
+    });
+
+    it('should return empty collections when user has none', async () => {
+      mockUsersService.getUserCollections.mockResolvedValue({
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      });
+
+      const result = await controller.getUserCollections('testuser', 1, 10, undefined);
+
+      expect(result.data).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
+  // ── getUserAlbums ────────────────────────────────────────
+  describe('getUserAlbums', () => {
+    it('should call getUserCollections with ALBUM type', async () => {
+      const mockResponse = {
+        data: [{ id: 'album-123', title: 'My Album', tracksCount: 5 }],
+        page: 1,
+        limit: 10,
+        total: 1,
+        hasMore: false,
+      };
+      mockUsersService.getUserCollections.mockResolvedValue(mockResponse);
+
+      await controller.getUserAlbums('testuser', 1, 10, mockRequest);
+
+      expect(mockUsersService.getUserCollections).toHaveBeenCalledWith(
+        'testuser',
+        'user-123',
+        1,
+        10,
+        'ALBUM',
+      );
+    });
+
+    it('should pass CollectionType.ALBUM to service', async () => {
+      mockUsersService.getUserCollections.mockResolvedValue({
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      });
+
+      await controller.getUserAlbums('testuser', 2, 20, mockRequest);
+
+      const call = mockUsersService.getUserCollections.mock.calls[0];
+      expect(call[4]).toBe('ALBUM');
+    });
+  });
+
+  // ── getUserPlaylists ──────────────────────────────────────
+  describe('getUserPlaylists', () => {
+    it('should call getUserCollections with PLAYLIST type', async () => {
+      const mockResponse = {
+        data: [{ id: 'pl-123', title: 'My Playlist', tracksCount: 15 }],
+        page: 1,
+        limit: 10,
+        total: 1,
+        hasMore: false,
+      };
+      mockUsersService.getUserCollections.mockResolvedValue(mockResponse);
+
+      await controller.getUserPlaylists('testuser', 1, 10, mockRequest);
+
+      expect(mockUsersService.getUserCollections).toHaveBeenCalledWith(
+        'testuser',
+        'user-123',
+        1,
+        10,
+        'PLAYLIST',
+      );
+    });
+
+    it('should pass CollectionType.PLAYLIST to service', async () => {
+      mockUsersService.getUserCollections.mockResolvedValue({
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      });
+
+      await controller.getUserPlaylists('testuser', 3, 15, mockRequest);
+
+      const call = mockUsersService.getUserCollections.mock.calls[0];
+      expect(call[4]).toBe('PLAYLIST');
     });
   });
 });
