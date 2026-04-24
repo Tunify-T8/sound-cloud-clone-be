@@ -106,7 +106,7 @@ export class TracksService {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
           userId,
-          status: 'active',
+          status: 'ACTIVE',
           plan: { name: { in: ['PRO', 'GOPLUS'] } },
         },
       });
