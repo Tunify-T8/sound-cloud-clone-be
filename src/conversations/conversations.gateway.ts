@@ -72,6 +72,8 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   handleDisconnect(socket: AuthSocket) {
     // User disconnected - can track presence here
+    console.log('[WebSocket] User disconnected:', socket.userId);
+    socket.emit('left', { userId: socket.userId, message: 'Left conversation' });
   }
 
   /**
