@@ -34,7 +34,7 @@ export class RolesGuard implements CanActivate {
     const user = safeRequest.user;
 
     if (!user) {
-      return false;
+      throw new ForbiddenException('User not authenticated');
     }
 
     // 4. Apply role hierarchy
