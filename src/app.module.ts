@@ -16,6 +16,7 @@ import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
 import { CollectionsModule } from './collections/collections.module';
 import { CommentsModule } from './comments/comments.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     SearchModule,
     CollectionsModule,
     CommentsModule,
+    NotificationsModule,
     ConversationsModule,
   ],
   controllers: [AppController],
