@@ -1,7 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { setDefaultResultOrder } from 'dns';
-import { features } from 'process';
-import { start } from 'repl';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SubscribeDto } from './dto/subscribe.dto';
 

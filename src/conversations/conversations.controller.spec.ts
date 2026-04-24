@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 
 describe('ConversationsController', () => {
   let controller: ConversationsController;
@@ -34,7 +34,6 @@ describe('ConversationsController', () => {
     }).compile();
 
     controller = module.get<ConversationsController>(ConversationsController);
-    conversationsService = module.get<ConversationsService>(ConversationsService);
   });
 
   afterEach(() => {

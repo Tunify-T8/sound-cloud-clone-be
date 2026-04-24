@@ -3,12 +3,8 @@ import {
   Get,
   Post,
   Body,
-  Param,
   UseGuards,
   Request,
-  Delete,
-  ParseUUIDPipe,
-  Query,
   BadRequestException,
 } from '@nestjs/common';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
@@ -35,7 +31,7 @@ export class SubscriptionsController {
     cancelSubscription(@Request() req) {
         return this.subscriptionsService.cancelSubscription(req.user.userId);
     }
-    
+
     @Post('subscribe')
     @UseGuards(JwtAccessGuard)
     async subscribe(
