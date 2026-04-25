@@ -139,12 +139,13 @@ try {
     },
   });
 
-  // Fetch liked collections (not owned by user)
+  // Fetch liked collections (not owned by user, and must be public)
   const likedCollections = await this.prisma.collectionLike.findMany({
     where: {
       userId,
       collection: {
         isDeleted: false,
+        isPublic: true, // Only public liked collections
         userId: { not: userId }, // Exclude owned
         ...(type ? { type: type as CollectionType } : {}),
       },
