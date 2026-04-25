@@ -18,12 +18,14 @@
     "sourceMap": true,
     "outDir": "./dist",
     "types": ["node", "jest", "multer"],
+    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "types": ["node", "jest", "express", "multer"]
   }
 }

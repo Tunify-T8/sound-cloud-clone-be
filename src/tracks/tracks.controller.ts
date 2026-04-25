@@ -125,8 +125,11 @@ export class TracksController {
 
   @Get(':id')
   @UseGuards(JwtAccessGuard)
-  async getTrack(@Param('id', ParseUUIDPipe) trackId: string) {
-    const track = await this.tracksService.getTrack(trackId);
+  async getTrack(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Request() req: AuthRequest,
+  ) {
+    const track = await this.tracksService.getTrack(trackId, req.user?.userId ?? '');
     if (!track) {
       return { message: 'Track not found', statusCode: 404 };
     } else {

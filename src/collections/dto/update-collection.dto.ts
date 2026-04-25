@@ -4,6 +4,7 @@ import {
   IsIn,
   MaxLength,
   IsNotEmpty ,
+  IsUrl,
 } from 'class-validator';
 
 export class UpdateCollectionDto {
@@ -21,4 +22,8 @@ export class UpdateCollectionDto {
   @IsIn(['public', 'private'])
   @IsOptional()
   privacy?: 'public' | 'private';
+
+  @IsUrl()
+  @IsOptional()
+  coverUrl?: string;
 }

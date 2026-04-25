@@ -7,13 +7,15 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { AudioService } from '../audio/audio.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InjectQueue } from '@nestjs/bull';
 import { CreateTrackDto } from './dto/create-track.dto';
 import { UpdateTrackMultipartDto } from './dto/update-track-multipart.dto';
 import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
-import { SearchIndexService } from '../search-index/search-index.service';
+import { NotificationType, ReferenceType } from '@prisma/client';
+//import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
   status: 'playable' | 'preview' | 'blocked';
@@ -35,8 +37,9 @@ export class TracksService {
     private storage: StorageService,
     private audio: AudioService,
     private prisma: PrismaService,
-    private readonly searchIndexService: SearchIndexService,
+    //private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async resolvePlayability(
@@ -103,7 +106,7 @@ export class TracksService {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
           userId,
-          status: 'active',
+          status: 'ACTIVE',
           plan: { name: { in: ['PRO', 'GOPLUS'] } },
         },
       });
@@ -311,7 +314,7 @@ export class TracksService {
       throw new NotFoundException('Track not found after creation');
     }
 
-    await this.searchIndexService.indexTrack(track.id);
+    //await this.searchIndexService.indexTrack(track.id);
 
     // Return formatted response matching getTrack() format
     return {
@@ -363,7 +366,7 @@ export class TracksService {
         _count: {
           select: {
             likes: true,
-            comments: true,
+            comments: { where: { isDeleted: false } },
             reposts: true,
             playHistory: true,
           },
@@ -458,17 +461,23 @@ export class TracksService {
     return track;
   }
 
-  async getTrack(trackId: string) {
+  async getTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
         trackArtists: true,
         regionRestrictions: true,
         tags: true,
+        user: {
+          select: { 
+            username: true,
+            avatarUrl: true,
+          },
+        },
         _count: {
           select: {
             likes: true,
-            comments: true,
+            comments: { where: { isDeleted: false } },
             reposts: true,
             playHistory: true,
           },
@@ -483,6 +492,16 @@ export class TracksService {
     if (track.isDeleted) {
       throw new NotFoundException('Track was deleted');
     }
+
+
+    const followCount = await this.prisma.follow.count({
+      where: { followingId: track.userId },
+    })
+
+    const isFollowed : Boolean = await this.prisma.follow.findFirst({
+      where: { followingId: track.userId, followerId: userId}
+    }) ? true : false;
+
 
     const genre = track.genreId
       ? await this.prisma.genre.findUnique({
@@ -512,7 +531,7 @@ export class TracksService {
     });
 
     const trackComments = await this.prisma.comment.findMany({
-      where: { trackId: trackId },
+      where: { trackId: trackId, isDeleted: false },
     });
 
     const filteredTrack = {
@@ -520,6 +539,13 @@ export class TracksService {
       status: track.transcodingStatus,
       title: track.title,
       description: track.description || null,
+      user: {
+        userId: track.userId,
+        username: track.user.username,
+        avatarUrl: track.user.avatarUrl,
+        followersCount: followCount,
+        isFollowing: isFollowed,
+      },
       genre: genre
         ? {
             category: genre.label,
@@ -811,7 +837,7 @@ export class TracksService {
         })
       : null;
 
-    await this.searchIndexService.indexTrack(trackId);
+    //await this.searchIndexService.indexTrack(trackId);
 
     // 10. Return formatted response matching create() and getTrack() format
     return {
@@ -868,7 +894,7 @@ export class TracksService {
       },
     });
 
-    await this.searchIndexService.removeTrack(trackId);
+    //await this.searchIndexService.removeTrack(trackId);
 
     return { message: 'Track deleted successfully' };
   }
@@ -983,6 +1009,14 @@ export class TracksService {
         user: { connect: { id: userId } },
         track: { connect: { id: trackId } },
       },
+    });
+
+    await this.notificationsService.createNotification({
+      recipientId: track.userId,
+      actorId: userId,
+      type: NotificationType.track_liked,
+      referenceType: ReferenceType.track,
+      referenceId: trackId,
     });
 
     const updatedTrack = await this.prisma.track.findUnique({
@@ -1148,6 +1182,14 @@ export class TracksService {
       },
     });
 
+    await this.notificationsService.createNotification({
+      recipientId: track.userId,
+      actorId: userId,
+      type: NotificationType.track_reposted,
+      referenceType: ReferenceType.track,
+      referenceId: trackId,
+    });
+
     const updatedTrack = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
@@ -1280,7 +1322,12 @@ export class TracksService {
     };
   }
 
-  async addComment(trackId: string, userId: string, text: string, timestamp: number) {
+  async addComment(
+    trackId: string,
+    userId: string,
+    text: string,
+    timestamp: number,
+  ) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1300,6 +1347,15 @@ export class TracksService {
       },
     });
 
+    // ── Notify track owner ──
+    await this.notificationsService.createNotification({
+      recipientId: track.userId, // track owner
+      actorId: userId, // commenter
+      type: NotificationType.track_commented,
+      referenceType: ReferenceType.comment,
+      referenceId: comment.id,
+    });
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -1317,7 +1373,7 @@ export class TracksService {
         createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
-        where: { trackId },
+        where: { trackId, isDeleted: false },
       }),
     };
   }
@@ -1343,12 +1399,18 @@ export class TracksService {
 
     // Get total count
     const totalCount = await this.prisma.comment.count({
-      where: { trackId },
+      where: { trackId, 
+        parentCommentId: null, // only count top-level comments for pagination
+        isDeleted: false },
     });
 
     // Get comments for the current page
     const allcomments = await this.prisma.comment.findMany({
-      where: { trackId },
+      where: {
+        trackId,
+        parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
+        isDeleted: false, // exclude deleted comments
+      },
       skip,
       take: validLimit,
       include: {
@@ -1392,8 +1454,7 @@ export class TracksService {
     };
   }
 
-  async getEngagementMetrics(trackId: string, userId: string) 
-  {
+  async getEngagementMetrics(trackId: string, userId: string) {
     //checking if track exists
     const track = await this.prisma.track.findUnique({
       where: { id: trackId, isDeleted: false },
@@ -1407,24 +1468,25 @@ export class TracksService {
       await this.prisma.$transaction([
         this.prisma.trackLike.count({ where: { trackId } }),
         this.prisma.repost.count({ where: { trackId } }),
-        this.prisma.comment.count({ where: { trackId } }),
+        this.prisma.comment.count({ where: { trackId, isDeleted: false } }),
         this.prisma.playHistory.count({ where: { trackId } }),
       ]);
 
-      const isLiked: boolean = await this.prisma.trackLike.findFirst({
+    const isLiked: boolean =
+      (await this.prisma.trackLike.findFirst({
         where: {
           trackId,
           userId,
         },
-      }) !== null;
+      })) !== null;
 
-      const isReposted: boolean = await this.prisma.repost.findFirst({
+    const isReposted: boolean =
+      (await this.prisma.repost.findFirst({
         where: {
           trackId,
           userId,
         },
-      }) !== null;
-
+      })) !== null;
 
     return {
       trackId: track.id,
