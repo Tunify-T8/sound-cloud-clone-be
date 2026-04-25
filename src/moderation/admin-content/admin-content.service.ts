@@ -1,59 +1,107 @@
-import { Controller, Delete, Param, Patch, UseGuards } from '@nestjs/common';
-import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
-import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { AdminOnly } from 'src/auth/decorators/roles.decorator';
-import { AdminContentService } from './admin-content.service';
-import * as usersDecorator from 'src/users/users.decorator';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
 
-@UseGuards(JwtAccessGuard, RolesGuard)
-@AdminOnly()
-@Controller('admin/content')
-export class AdminContentController {
-  constructor(private readonly adminContentService: AdminContentService) {}
+@Injectable()
+export class AdminContentService {
+  constructor(private readonly prisma: PrismaService) {}
 
   // ── Tracks ───────────────────────────────────────────────────────
 
-  @Patch('tracks/:trackId/hide')
-  hideTrack(
-    @Param('trackId') trackId: string,
-    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
-  ) {
-    return this.adminContentService.hideTrack(trackId, user.userId);
+  async hideTrack(trackId: string, adminId: string) {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track || track.isDeleted)
+      throw new NotFoundException('Track not found');
+
+    await this.prisma.track.update({
+      where: { id: trackId },
+      data: { isHidden: true, hiddenAt: new Date(), hiddenBy: adminId },
+    });
+
+    return { message: 'Track hidden' };
   }
 
-  @Patch('tracks/:trackId/unhide')
-  unhideTrack(@Param('trackId') trackId: string) {
-    return this.adminContentService.unhideTrack(trackId);
+  async unhideTrack(trackId: string) {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track || track.isDeleted)
+      throw new NotFoundException('Track not found');
+
+    await this.prisma.track.update({
+      where: { id: trackId },
+      data: { isHidden: false, hiddenAt: null, hiddenBy: null },
+    });
+
+    return { message: 'Track unhidden' };
   }
 
-  @Delete('tracks/:trackId')
-  deleteTrack(
-    @Param('trackId') trackId: string,
-    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
-  ) {
-    return this.adminContentService.deleteTrack(trackId, user.userId);
+  async deleteTrack(trackId: string, adminId: string) {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+    });
+
+    if (!track || track.isDeleted)
+      throw new NotFoundException('Track not found');
+
+    await this.prisma.track.update({
+      where: { id: trackId },
+      data: { isDeleted: true, deletedAt: new Date(), deletedBy: adminId },
+    });
+
+    return { message: 'Track removed' };
   }
 
   // ── Comments ─────────────────────────────────────────────────────
 
-  @Patch('comments/:commentId/hide')
-  hideComment(
-    @Param('commentId') commentId: string,
-    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
-  ) {
-    return this.adminContentService.hideComment(commentId, user.userId);
+  async hideComment(commentId: string, adminId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment || comment.isDeleted)
+      throw new NotFoundException('Comment not found');
+
+    await this.prisma.comment.update({
+      where: { id: commentId },
+      data: { isHidden: true, hiddenAt: new Date(), hiddenBy: adminId },
+    });
+
+    return { message: 'Comment hidden' };
   }
 
-  @Patch('comments/:commentId/unhide')
-  unhideComment(@Param('commentId') commentId: string) {
-    return this.adminContentService.unhideComment(commentId);
+  async unhideComment(commentId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment || comment.isDeleted)
+      throw new NotFoundException('Comment not found');
+
+    await this.prisma.comment.update({
+      where: { id: commentId },
+      data: { isHidden: false, hiddenAt: null, hiddenBy: null },
+    });
+
+    return { message: 'Comment unhidden' };
   }
 
-  @Delete('comments/:commentId')
-  deleteComment(
-    @Param('commentId') commentId: string,
-    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
-  ) {
-    return this.adminContentService.deleteComment(commentId, user.userId);
+  async deleteComment(commentId: string, adminId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment || comment.isDeleted)
+      throw new NotFoundException('Comment not found');
+
+    await this.prisma.comment.update({
+      where: { id: commentId },
+      data: { isDeleted: true, deletedAt: new Date(), deletedBy: adminId },
+    });
+
+    return { message: 'Comment removed' };
   }
 }
