@@ -203,26 +203,17 @@ export class AuthService {
           },
         });
 
-        const freePlan = await tx.subscriptionPlan.upsert({
-          where: { name: 'FREE' },
-          update: {
-            isActive: true,
-            monthlyPrice: 0,
-            monthlyUploadMinutes: 100,
-          },
-          create: {
-            name: 'FREE',
-            description: 'Free tier',
-            monthlyPrice: 0,
-            monthlyUploadMinutes: 100,
-            isActive: true,
+        const freePlan = await tx.subscriptionPlan.findUnique({
+          where: { name: 'free' },
+          select: {
+            id: true,
           },
         });
 
         await tx.subscription.create({
           data: {
             user: { connect: { id: createdUser.id } },
-            plan: { connect: { id: freePlan.id } },
+            plan: { connect: { id: freePlan?.id } },
             status: 'ACTIVE',
             billingCycle: 'monthly',
           },

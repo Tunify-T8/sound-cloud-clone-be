@@ -11,24 +11,6 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Starting database seed...');
 
-  await prisma.comment.create({
-    data: {
-      trackId: '4bbca958-2349-4efb-bb8a-c823098e74b8',
-      userId: '2d566af9-38f1-42ee-8d83-53de7a97f240', // replace with any existing user id
-      content: 'This is a test comment for moderation testing',
-      timestamp: 0,
-    },
-  });
-
-  await prisma.comment.create({
-    data: {
-      trackId: '4bbca958-2349-4efb-bb8a-c823098e74b8',
-      userId: '94788713-4b6f-5eb1-0c4a-bf10cc85b256', // replace with any existing user id
-      content: 'This is another test comment for moderation testing',
-      timestamp: 0,
-    },
-  });
-
   // ── 1. Genres — always safe, uses upsert ──────────────────────
   const genres = [
     { label: 'Alternative Rock' },
@@ -152,6 +134,7 @@ async function main() {
       advancedAnalytics: false,
       releaseScheduling: true,
       prioritySupport: false,
+      playlistLimit: -1,
     },
     create: {
       name: 'artist',
@@ -168,6 +151,7 @@ async function main() {
       analytics: false,
       advancedAnalytics: false,
       releaseScheduling: true,
+      playlistLimit: -1,
     },
   });
 
@@ -188,6 +172,8 @@ async function main() {
       advancedAnalytics: true,
       releaseScheduling: true,
       prioritySupport: true,
+      playlistLimit: -1,
+      playbackAccess: true,
     },
     create: {
       name: 'artist-pro',
@@ -205,6 +191,8 @@ async function main() {
       advancedAnalytics: true,
       releaseScheduling: true,
       prioritySupport: true,
+      playlistLimit: -1,
+      playbackAccess: true,
     },
   });
 

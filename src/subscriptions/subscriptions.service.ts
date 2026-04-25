@@ -23,6 +23,8 @@ export class SubscriptionsService {
                     maxUploads: plan.monthlyUploadMinutes === -1 ? 'unlimited' : plan.monthlyUploadMinutes,
                     adFree: plan.adFree,
                     offlineListening: plan.allowOfflineListening,
+                    playbackAccess: plan.playbackAccess,
+                    playlistLimit: plan.playlistLimit === -1 ? 'unlimited' : plan.playlistLimit,
                 }
             })),
         };
@@ -44,6 +46,8 @@ export class SubscriptionsService {
                             monthlyUploadMinutes: true,
                             adFree: true,
                             allowOfflineListening: true,
+                            playbackAccess: true,
+                            playlistLimit: true,
                         }
                     }
                 },
@@ -60,6 +64,9 @@ export class SubscriptionsService {
                     maxUploads: 180,
                     adFree: false,
                     offlineListening: false,
+                    playbackAccess: false,
+                    playlistLimit: 3,
+            
                 }
             };
         }
@@ -75,6 +82,8 @@ export class SubscriptionsService {
                 maxUploads: plan.monthlyUploadMinutes === -1 ? 'unlimited' : plan.monthlyUploadMinutes,
                 adFree: plan.adFree,
                 offlineListening: plan.allowOfflineListening,
+                playbackAccess: plan.playbackAccess,
+                playlistLimit: plan.playlistLimit === -1 ? 'unlimited' : plan.playlistLimit,
             } : undefined
         };
     }
