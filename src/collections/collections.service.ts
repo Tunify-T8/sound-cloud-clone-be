@@ -443,6 +443,11 @@ async getCollectionTracks(
                 avatarUrl: true,
               },
             },
+            _count: {
+              select: {
+                playHistory: true,
+              },
+            },
           },
         },
       },
@@ -454,7 +459,10 @@ async getCollectionTracks(
     data: collectionTracks.map((ct) => ({
       position: ct.position,
       addedAt: ct.addedAt.toISOString(),
-      track: ct.track,
+      track: {
+        ...ct.track,
+        playCount: ct.track._count.playHistory,
+      },
     })),
     total,
     page,
