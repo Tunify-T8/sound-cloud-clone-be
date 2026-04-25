@@ -588,6 +588,7 @@ model SubscriptionPlan {
   monthlyUploadMinutes Int    @default(180) // Total allowed upload minutes per month
   maxTrackDurationMin  Int    @default(180)
   maxTrackSizeGB       Float?
+  playlistLimit          Int    @default(3)
 
   // Listeners & Reach
   monthlyListenersCap Int?
@@ -607,6 +608,7 @@ model SubscriptionPlan {
   adFree                 Boolean @default(false)
   analytics              Boolean @default(false)
   advancedAnalytics      Boolean @default(false)
+  playbackAccess         Boolean @default(false) // ability to play tracks on the platform (can be disabled for free plans)
 
   // Collaboration & Pro Features
   allowCollaborativeTrack Boolean @default(false)

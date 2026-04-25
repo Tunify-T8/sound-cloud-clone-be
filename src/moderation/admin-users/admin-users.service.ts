@@ -5,10 +5,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SuspendUserDto } from '../dto/suspended-user.dto';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 @Injectable()
 export class AdminUsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly searchIndexService: SearchIndexService,
+  ) {}
 
   async suspendUser(
     targetUserId: string,
@@ -37,6 +41,7 @@ export class AdminUsersService {
         suspensionReason: dto.reason,
       },
     });
+    await this.searchIndexService.indexUser(user.id);
 
     return { message: 'User suspended' };
   }
@@ -60,6 +65,7 @@ export class AdminUsersService {
         suspensionReason: null,
       },
     });
+    await this.searchIndexService.indexUser(user.id);
 
     return { message: 'User unsuspended' };
   }

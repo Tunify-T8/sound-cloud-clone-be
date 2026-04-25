@@ -12,6 +12,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { GoogleAuthService } from './google-auth.service';
 import { JwtOptionalStrategy } from './strategies/jwt-optional.strategy';
 import { JwtOptionalGuard } from './guards/jwt-optional.guard';
+import { SearchModule } from 'src/search/search.module';
 
 @Module({
   imports: [
@@ -20,13 +21,14 @@ import { JwtOptionalGuard } from './guards/jwt-optional.guard';
     ConfigModule,
     PassportModule,
     JwtModule.register({}),
+    SearchModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     GoogleAuthService,
     JwtAccessStrategy, // strategy must be a provider so Passport can find it
-    JwtOptionalStrategy, 
+    JwtOptionalStrategy,
     JwtAccessGuard,
     JwtOptionalGuard,
     RolesGuard,

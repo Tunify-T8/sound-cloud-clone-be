@@ -18,6 +18,7 @@ import {
   TimeAdded,
   DurationFilter,
   PeopleSort,
+  AutocompleteResultDto,
 } from './dto/search.dto';
 
 interface OpenSearchHit<T> {
@@ -135,9 +136,12 @@ export class SearchService {
         multi_match: {
           query: q,
           fields: [
-            'title^3',
+            'title^3', // prefix matching on title
+            'title.autocomplete^2',
             'artistUsername^2',
+            'artistUsername.autocomplete',
             'artistDisplayName^2',
+            'artistDisplayName.autocomplete',
             'description',
             'tags',
             'genre',
@@ -243,7 +247,12 @@ export class SearchService {
       {
         multi_match: {
           query: q,
-          fields: ['username^3', 'displayName^2'],
+          fields: [
+            'username^3',
+            'username.autocomplete^2',
+            'displayName^2',
+            'displayName.autocomplete',
+          ],
           fuzziness: 'AUTO',
         },
       },
@@ -253,7 +262,10 @@ export class SearchService {
     if (location) filter.push({ term: { 'location.keyword': location } });
     if (verifiedOnly) filter.push({ term: { isCertified: true } });
     if (minFollowers !== undefined) {
-      filter.push({ range: { followersCount: { gte: minFollowers } } });
+      filter.push(
+        { range: { followersCount: { gte: minFollowers } } },
+        { term: { isSuspended: false } },
+      );
     }
 
     const sortClause =
@@ -380,6 +392,70 @@ export class SearchService {
       return this.mapUserHit(hit as OpenSearchHit<UserSource>, followingSet);
     }
     return this.mapCollectionHit(hit as OpenSearchHit<CollectionSource>);
+  }
+
+  async autocomplete(q: string): Promise<AutocompleteResultDto> {
+    // search_as_you_type works best with multi_match type: bool_prefix
+    const makeQuery = (fields: string[]) => ({
+      multi_match: {
+        query: q,
+        fields,
+        fuzziness: 'AUTO',
+      },
+    });
+
+    const [tracksRaw, usersRaw, collectionsRaw] = await Promise.all([
+      this.openSearch.search(SEARCH_INDEXES.TRACKS, {
+        size: 5,
+        query: makeQuery([
+          'title',
+          'title.autocomplete',
+          'artistUsername',
+          'artistUsername.autocomplete',
+        ]),
+      }),
+      this.openSearch.search(SEARCH_INDEXES.USERS, {
+        size: 5,
+        query: makeQuery([
+          'username',
+          'username.autocomplete',
+          'displayName',
+          'displayName.autocomplete',
+        ]),
+      }),
+      this.openSearch.search(SEARCH_INDEXES.COLLECTIONS, {
+        size: 5,
+        query: makeQuery([
+          'title',
+          'title.autocomplete',
+          'artistUsername',
+          'artistUsername.autocomplete',
+        ]),
+      }),
+    ]);
+
+    const tracksRes = tracksRaw as OpenSearchResponse<TrackSource>;
+    const usersRes = usersRaw as OpenSearchResponse<UserSource>;
+    const collectionsRes =
+      collectionsRaw as OpenSearchResponse<CollectionSource>;
+
+    return {
+      tracks: tracksRes.hits.hits.map((h) => ({
+        id: h._id,
+        title: h._source.title,
+        artist: h._source.artistDisplayName ?? h._source.artistUsername,
+      })),
+      users: usersRes.hits.hits.map((h) => ({
+        id: h._id,
+        username: h._source.username,
+        displayName: h._source.displayName,
+      })),
+      collections: collectionsRes.hits.hits.map((h) => ({
+        id: h._id,
+        title: h._source.title,
+        artist: h._source.artistDisplayName ?? h._source.artistUsername,
+      })),
+    };
   }
 
   // ── Helpers ───────────────────────────────────────────────────

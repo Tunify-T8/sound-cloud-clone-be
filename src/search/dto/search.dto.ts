@@ -7,6 +7,8 @@ import {
   IsBoolean,
   Min,
   Max,
+  MinLength,
+  MaxLength,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
@@ -191,4 +193,17 @@ export class PaginatedUserSearchDto {
   page: number;
   limit: number;
   hasMore: boolean;
+}
+
+export class AutocompleteDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  q!: string;
+}
+
+export class AutocompleteResultDto {
+  tracks!: { id: string; title: string; artist: string }[];
+  users!: { id: string; username: string; displayName: string | null }[];
+  collections!: { id: string; title: string; artist: string }[];
 }

@@ -18,16 +18,16 @@ export class SearchIndexService {
   ) {}
 
   // runs automatically when the module initializes
- async onModuleInit(): Promise<void> {
-  try {
-    await this.initIndexes();
-  } catch (err) {
-    this.logger.warn(
-      'OpenSearch unavailable — skipping index initialization. Search features will not work.',
-    );
-    this.logger.debug(err);
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.initIndexes();
+    } catch (err) {
+      this.logger.warn(
+        'OpenSearch unavailable — skipping index initialization. Search features will not work.',
+      );
+      this.logger.debug(err);
+    }
   }
-}
 
   async initIndexes(): Promise<void> {
     const indexes = [
@@ -172,6 +172,8 @@ export class SearchIndexService {
         displayName: true,
         location: true,
         isCertified: true,
+        isSuspended: true,
+        suspendedUntil: true,
         role: true,
         createdAt: true,
         _count: { select: { followers: true } },
@@ -186,6 +188,8 @@ export class SearchIndexService {
       displayName: user.displayName ?? null,
       location: user.location ?? null,
       isCertified: user.isCertified,
+      isSuspended: user.isSuspended,
+      suspendedUntil: user.suspendedUntil ?? null,
       role: user.role,
       followersCount: user._count.followers,
       createdAt: user.createdAt.toISOString(),
@@ -205,6 +209,8 @@ export class SearchIndexService {
         bio: true,
         location: true,
         isCertified: true,
+        isSuspended: true,
+        suspendedUntil: true,
         role: true,
         createdAt: true,
         _count: { select: { followers: true } },
@@ -220,6 +226,8 @@ export class SearchIndexService {
         bio: u.bio ?? null,
         location: u.location ?? null,
         isCertified: u.isCertified,
+        isSuspended: u.isSuspended,
+        suspendedUntil: u.suspendedUntil ?? null,
         role: u.role,
         followersCount: u._count.followers,
         createdAt: u.createdAt.toISOString(),
@@ -306,5 +314,15 @@ export class SearchIndexService {
 
     if (operations.length > 0) await this.openSearch.bulkIndex(operations);
     this.logger.log(`Reindexed ${collections.length} collections`);
+  }
+
+  //----delete all
+
+  async deleteIndex(indexName: string): Promise<void> {
+    const exists = await this.openSearch.indexExists(indexName);
+    if (exists) {
+      await this.openSearch.deleteIndex(indexName);
+      this.logger.log(`Deleted index: ${indexName}`);
+    }
   }
 }

@@ -28,6 +28,7 @@ import { AdminContentService } from './moderation/admin-content/admin-content.se
 import { HealthModule } from './health/health.module';
 import { AdminAnalyticsController } from './moderation/admin-analytics/admin-analytics.controller';
 import { AdminAnalyticsService } from './moderation/admin-analytics/admin-analytics.service';
+import { AdminSearchController } from './admin-search/admin-search.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -58,7 +59,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     ConversationsModule,
     SubscriptionsModule,
   ],
-  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController],
+  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController, AdminSearchController],
   providers: [AppService, SearchIndexService, OpensearchService, ReportsService, AdminReportsService, AdminUsersService, AdminContentService, AdminAnalyticsService],
 })
 export class AppModule {}
