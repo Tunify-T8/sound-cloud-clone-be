@@ -17,7 +17,7 @@ export class NotificationsGateway
   @WebSocketServer()
   server!: Server;
 
-  private connectedUsers = new Map<string, Socket>();
+  private connectedUsers = new Map<string, Set<Socket>>();
 
   async handleConnection(socket: Socket) {
     const token = socket.handshake.query?.token as string;
@@ -29,8 +29,12 @@ export class NotificationsGateway
 
     try {
       const payload = WsJwtGuard.verifyToken(token);
-      this.connectedUsers.set(payload.sub, socket);
       socket.data.userId = payload.sub;
+
+      if (!this.connectedUsers.has(payload.sub)) {
+        this.connectedUsers.set(payload.sub, new Set());
+      }
+      this.connectedUsers.get(payload.sub)!.add(socket);
     } catch (err: any) {
       console.log('Token verification failed:', err.message);
       socket.disconnect();
@@ -40,14 +44,18 @@ export class NotificationsGateway
   handleDisconnect(socket: Socket) {
     const userId = socket.data.userId;
     if (userId) {
-      this.connectedUsers.delete(userId);
+      const sockets = this.connectedUsers.get(userId);
+      if (sockets) {
+        sockets.delete(socket);
+        if (sockets.size === 0) this.connectedUsers.delete(userId);
+      }
     }
   }
 
   sendNotificationToUser(userId: string, notification: any) {
-    const socket = this.connectedUsers.get(userId);
-    if (socket) {
-      socket.emit('notification', notification);
+    const sockets = this.connectedUsers.get(userId);
+    if (sockets) {
+      sockets.forEach((socket) => socket.emit('notification', notification));
     }
   }
 }

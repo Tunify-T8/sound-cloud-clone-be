@@ -18,6 +18,7 @@ import { CollectionsModule } from './collections/collections.module';
 import { CommentsModule } from './comments/comments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     CommentsModule,
     NotificationsModule,
     ConversationsModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SearchIndexService, OpensearchService],

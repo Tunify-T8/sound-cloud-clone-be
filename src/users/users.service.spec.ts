@@ -59,6 +59,9 @@ const mockPrisma = {
   userBlock: {
     findMany: jest.fn(),
   },
+  subscription: {
+    findFirst: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -1182,6 +1185,507 @@ describe('getPublicTracks', () => {
           },
         },
       });
+    });
+  });
+
+  // ── getFollowerList ───────────────────────────────────────
+  describe('getFollowerList', () => {
+    const mockFollower = {
+      id: 'user-456',
+      username: 'follower',
+      displayName: 'Follower User',
+      avatarUrl: null,
+      location: 'NYC',
+      isCertified: false,
+      _count: { followers: 50 },
+    };
+
+    it('should return followers with correct pagination', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([mockFollower]);
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      const result = await service.getFollowerList('user-123', 1, 10);
+
+      expect(result.followers).toHaveLength(1);
+      expect(result.followers?.[0].id).toBe('user-456');
+      expect(result.followers?.[0].followersCount).toBe(50);
+      expect(result.page).toBe(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should verify correct where clause for followers', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      await service.getFollowerList('user-123', 1, 10);
+
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            following: { some: { followingId: 'user-123' } },
+            isDeleted: false,
+            isActive: true,
+          },
+        }),
+      );
+    });
+
+    it('should calculate hasMore correctly', async () => {
+      mockPrisma.user.findMany.mockResolvedValue(Array(10).fill(mockFollower));
+      mockPrisma.user.count.mockResolvedValue(25);
+
+      const result = await service.getFollowerList('user-123', 1, 10);
+
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should apply skip and take for pagination', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(50);
+
+      await service.getFollowerList('user-123', 3, 15);
+
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 30, // (3-1) * 15
+          take: 15,
+        }),
+      );
+    });
+
+    it('should return empty followers list when user has none', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      const result = await service.getFollowerList('user-123', 1, 10);
+
+      expect(result.followers).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should exclude notification preferences from response', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([mockFollower]);
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      const result = await service.getFollowerList('user-123', 1, 10);
+
+      expect(result.followers?.[0]).not.toHaveProperty('notificationPreferences');
+      expect(result.followers?.[0].isNotificationEnabled).toBeNull();
+    });
+  });
+
+  // ── getFollowingList ──────────────────────────────────────
+  describe('getFollowingList', () => {
+    const mockFollowing = {
+      id: 'user-789',
+      username: 'followinguser',
+      displayName: 'Following User',
+      avatarUrl: 'https://example.com/avatar.jpg',
+      location: 'LA',
+      isCertified: true,
+      _count: { followers: 1000 },
+      notificationPreferences: [{ userFollowed: true }],
+    };
+
+    it('should return following list with notification preferences', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([mockFollowing]);
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      const result = await service.getFollowingList('user-123', 1, 10);
+
+      expect(result.following).toHaveLength(1);
+      expect(result.following?.[0].id).toBe('user-789');
+      expect(result.following?.[0].isNotificationEnabled).toBe(true);
+    });
+
+    it('should verify correct where clause for following', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      await service.getFollowingList('user-123', 1, 10);
+
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            followers: { some: { followerId: 'user-123' } },
+            isDeleted: false,
+            isActive: true,
+          },
+        }),
+      );
+    });
+
+    it('should include notification preferences selection for following', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      await service.getFollowingList('user-123', 1, 10);
+
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            notificationPreferences: { select: { userFollowed: true } },
+          }),
+        }),
+      );
+    });
+
+    it('should handle notification disabled case', async () => {
+      const followingNoNotif = { ...mockFollowing, notificationPreferences: [] };
+      mockPrisma.user.findMany.mockResolvedValue([followingNoNotif]);
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      const result = await service.getFollowingList('user-123', 1, 10);
+
+      expect(result.following?.[0].isNotificationEnabled).toBe(false);
+    });
+
+    it('should return empty following list when user is not following anyone', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      const result = await service.getFollowingList('user-123', 1, 10);
+
+      expect(result.following).toEqual([]);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should order by creation date descending', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      await service.getFollowingList('user-123', 1, 10);
+
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+    });
+  });
+
+  // ── getUploadStats ────────────────────────────────────────
+  describe('getUploadStats', () => {
+    it('should return upload stats for active subscription', async () => {
+      const mockSubscription = {
+        uploadedMinutes: 50,
+        plan: {
+          name: 'PRO',
+          monthlyUploadMinutes: 200,
+          allowReplace: true,
+          allowScheduledRelease: true,
+          allowAdvancedTabAccess: true,
+        },
+      };
+      mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+
+      const result = await service.getUploadStats('user-123');
+
+      expect(result.tier).toBe('PRO');
+      expect(result.uploadMinutesLimit).toBe(200);
+      expect(result.uploadMinutesUsed).toBe(50);
+      expect(result.uploadMinutesRemaining).toBe(150);
+      expect(result.canReplaceFiles).toBe(true);
+      expect(result.canScheduleRelease).toBe(true);
+      expect(result.canAccessAdvancedTab).toBe(true);
+    });
+
+    it('should return free tier defaults when no active subscription', async () => {
+      mockPrisma.subscription.findFirst.mockResolvedValue(null);
+
+      const result = await service.getUploadStats('user-123');
+
+      expect(result.tier).toBe('FREE');
+      expect(result.uploadMinutesLimit).toBe(100);
+      expect(result.uploadMinutesUsed).toBe(0);
+      expect(result.uploadMinutesRemaining).toBe(100);
+      expect(result.canReplaceFiles).toBe(false);
+      expect(result.canScheduleRelease).toBe(false);
+      expect(result.canAccessAdvancedTab).toBe(false);
+    });
+
+    it('should calculate remaining minutes correctly with used minutes', async () => {
+      const mockSubscription = {
+        uploadedMinutes: 180,
+        plan: {
+          name: 'GOPLUS',
+          monthlyUploadMinutes: 500,
+          allowReplace: true,
+          allowScheduledRelease: true,
+          allowAdvancedTabAccess: true,
+        },
+      };
+      mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+
+      const result = await service.getUploadStats('user-123');
+
+      expect(result.uploadMinutesRemaining).toBe(320); // 500 - 180
+    });
+
+    it('should not return negative remaining minutes', async () => {
+      const mockSubscription = {
+        uploadedMinutes: 250,
+        plan: {
+          name: 'PRO',
+          monthlyUploadMinutes: 200,
+          allowReplace: true,
+          allowScheduledRelease: false,
+          allowAdvancedTabAccess: false,
+        },
+      };
+      mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+
+      const result = await service.getUploadStats('user-123');
+
+      expect(result.uploadMinutesRemaining).toBe(0); // Math.max(..., 0)
+    });
+
+    it('should query subscription with correct filters', async () => {
+      mockPrisma.subscription.findFirst.mockResolvedValue(null);
+
+      await service.getUploadStats('user-123');
+
+      expect(mockPrisma.subscription.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          status: 'active',
+          endedAt: null,
+          plan: {
+            is: {
+              name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+              isActive: true,
+            },
+          },
+        },
+        include: { plan: true },
+        orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+    });
+  });
+
+  // ── getUploadMinutes ──────────────────────────────────────
+  describe('getUploadMinutes', () => {
+    it('should return upload minutes for active subscription', async () => {
+      const mockSubscription = {
+        uploadedMinutes: 75,
+        plan: {
+          name: 'PRO',
+          monthlyUploadMinutes: 200,
+        },
+      };
+      mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+
+      const result = await service.getUploadMinutes('user-123');
+
+      expect(result.tier).toBe('PRO');
+      expect(result.uploadMinutesLimit).toBe(200);
+      expect(result.uploadMinutesUsed).toBe(75);
+      expect(result.uploadMinutesRemaining).toBe(125);
+    });
+
+    it('should return NO_PLAN tier when no subscription', async () => {
+      mockPrisma.subscription.findFirst.mockResolvedValue(null);
+
+      const result = await service.getUploadMinutes('user-123');
+
+      expect(result.tier).toBe('NO_PLAN');
+      expect(result.uploadMinutesLimit).toBe(99);
+      expect(result.uploadMinutesUsed).toBe(0);
+      expect(result.uploadMinutesRemaining).toBe(99);
+    });
+
+    it('should not return negative remaining minutes', async () => {
+      const mockSubscription = {
+        uploadedMinutes: 300,
+        plan: {
+          name: 'PRO',
+          monthlyUploadMinutes: 200,
+        },
+      };
+      mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+
+      const result = await service.getUploadMinutes('user-123');
+
+      expect(result.uploadMinutesRemaining).toBe(0);
+    });
+
+    it('should use latest subscription by startedAt and createdAt', async () => {
+      mockPrisma.subscription.findFirst.mockResolvedValue(null);
+
+      await service.getUploadMinutes('user-123');
+
+      expect(mockPrisma.subscription.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
+          status: 'active',
+          endedAt: null,
+          plan: {
+            is: {
+              name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+              isActive: true,
+            },
+          },
+        },
+        include: { plan: true },
+        orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+    });
+  });
+
+  // ── getUserCollections ────────────────────────────────────
+  describe('getUserCollections', () => {
+    const mockCollection = {
+      id: 'coll-123',
+      title: 'My Playlist',
+      description: 'A great playlist',
+      coverUrl: 'https://example.com/cover.jpg',
+      isPublic: true,
+      type: CollectionType.PLAYLIST,
+      createdAt: new Date(),
+      _count: {
+        tracks: 10,
+        likes: 5,
+      },
+    };
+
+    it('should return user collections when user is owner', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        username: 'testuser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue([mockCollection]);
+      mockPrisma.collection.count.mockResolvedValue(1);
+
+      const result = await service.getUserCollections(
+        'testuser',
+        'user-123',
+        1,
+        10,
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe('coll-123');
+      expect(result.data[0].tracksCount).toBe(10);
+      expect(result.data[0].likesCount).toBe(5);
+    });
+
+    it('should only return public collections when user is not owner', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-456',
+        username: 'otheruser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue([mockCollection]);
+      mockPrisma.collection.count.mockResolvedValue(1);
+
+      await service.getUserCollections(
+        'otheruser',
+        'viewer-user',
+        1,
+        10,
+      );
+
+      expect(mockPrisma.collection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isPublic: true, // non-owner can only see public
+          }),
+        }),
+      );
+    });
+
+    it('should include all collections when user is owner', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        username: 'testuser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue([
+        { ...mockCollection, isPublic: false },
+      ]);
+      mockPrisma.collection.count.mockResolvedValue(1);
+
+      await service.getUserCollections('testuser', 'user-123', 1, 10);
+
+      // Should not have isPublic filter for owner
+      expect(mockPrisma.collection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({ isPublic: true }),
+        }),
+      );
+    });
+
+    it('should filter by type when provided', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        username: 'testuser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue([]);
+      mockPrisma.collection.count.mockResolvedValue(0);
+
+      await service.getUserCollections(
+        'testuser',
+        'user-123',
+        1,
+        10,
+        CollectionType.ALBUM,
+      );
+
+      expect(mockPrisma.collection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: CollectionType.ALBUM,
+          }),
+        }),
+      );
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getUserCollections('nonexistent', 'user-123', 1, 10),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should calculate pagination correctly', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        username: 'testuser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue(
+        Array(10).fill(mockCollection),
+      );
+      mockPrisma.collection.count.mockResolvedValue(25);
+
+      const result = await service.getUserCollections(
+        'testuser',
+        'user-123',
+        2,
+        10,
+      );
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+      expect(result.total).toBe(25);
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should return empty array when user has no collections', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-123',
+        username: 'testuser',
+      });
+      mockPrisma.collection.findMany.mockResolvedValue([]);
+      mockPrisma.collection.count.mockResolvedValue(0);
+
+      const result = await service.getUserCollections(
+        'testuser',
+        'user-123',
+        1,
+        10,
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.hasMore).toBe(false);
     });
   });
 });

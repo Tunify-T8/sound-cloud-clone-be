@@ -783,7 +783,7 @@ export class UsersService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        status: 'active',
+        status: 'ACTIVE',
         endedAt: null,
         plan: {
           is: {
@@ -819,7 +819,7 @@ export class UsersService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        status: 'active',
+        status: 'ACTIVE',
         endedAt: null,
         plan: {
           is: {
