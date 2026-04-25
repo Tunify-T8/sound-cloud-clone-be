@@ -461,13 +461,19 @@ export class TracksService {
     return track;
   }
 
-  async getTrack(trackId: string) {
+  async getTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
         trackArtists: true,
         regionRestrictions: true,
         tags: true,
+        user: {
+          select: { 
+            username: true,
+            avatarUrl: true,
+          },
+        },
         _count: {
           select: {
             likes: true,
@@ -486,6 +492,16 @@ export class TracksService {
     if (track.isDeleted) {
       throw new NotFoundException('Track was deleted');
     }
+
+
+    const followCount = await this.prisma.follow.count({
+      where: { followingId: track.userId },
+    })
+
+    const isFollowed : Boolean = await this.prisma.follow.findFirst({
+      where: { followingId: track.userId, followerId: userId}
+    }) ? true : false;
+
 
     const genre = track.genreId
       ? await this.prisma.genre.findUnique({
@@ -523,6 +539,13 @@ export class TracksService {
       status: track.transcodingStatus,
       title: track.title,
       description: track.description || null,
+      user: {
+        userId: track.userId,
+        username: track.user.username,
+        avatarUrl: track.user.avatarUrl,
+        followersCount: followCount,
+        isFollowing: isFollowed,
+      },
       genre: genre
         ? {
             category: genre.label,
