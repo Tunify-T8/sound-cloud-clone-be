@@ -101,7 +101,7 @@ async function main() {
 
   // ── 2. Subscription plans — always safe, uses upsert ─────────
   const freePlan = await prisma.subscriptionPlan.upsert({
-    where: { name: 'FREE' },
+    where: { name: 'free' },
     update: {
       description: 'Free tier',
       monthlyPrice: 0,
@@ -118,7 +118,7 @@ async function main() {
       prioritySupport: false,
     },
     create: {
-      name: 'FREE',
+      name: 'free',
       description: 'Free tier',
       monthlyPrice: 0,
       monthlyUploadMinutes: 180,
@@ -135,46 +135,50 @@ async function main() {
     },
   });
 
-  const proPlan = await prisma.subscriptionPlan.upsert({
-    where: { name: 'PRO' },
+  const artistPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'artist' },
     update: {
       description: 'Professional tier with advanced features',
-      monthlyPrice: 9.99,
-      monthlyUploadMinutes: 5000,
+      monthlyPrice: 29.99,
+      yearlyPrice: 359.88,
+      monthlyUploadMinutes: 180,
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
       allowDirectDownload: true,
       allowOfflineListening: true,
       adFree: true,
-      analytics: true,
+      analytics: false,
       advancedAnalytics: false,
       releaseScheduling: true,
       prioritySupport: false,
     },
     create: {
-      name: 'PRO',
+      name: 'artist',
       description: 'Professional tier with advanced features',
-      monthlyPrice: 9.99,
-      monthlyUploadMinutes: 5000,
+      monthlyPrice: 29.99,
+      yearlyPrice: 359.88,
+      monthlyUploadMinutes: 180,
       maxTrackDurationMin: 180,
       allowedDownloads: -1,
       enableMonetization: true,
       allowDirectDownload: true,
       allowOfflineListening: true,
       adFree: true,
-      analytics: true,
+      analytics: false,
+      advancedAnalytics: false,
       releaseScheduling: true,
     },
   });
 
-  const goPlusPlan = await prisma.subscriptionPlan.upsert({
-    where: { name: 'GOPLUS' },
+  const artistProPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'artist-pro' },
     update: {
       description: 'Premium tier with all features',
-      monthlyPrice: 19.99,
-      monthlyUploadMinutes: 10000000,
-      maxTrackDurationMin: 180,
+      monthlyPrice: 74.99,
+      yearlyPrice: 899.88,
+      monthlyUploadMinutes: -1,
+      maxTrackDurationMin: -1,
       allowedDownloads: -1,
       enableMonetization: true,
       allowDirectDownload: true,
@@ -186,11 +190,12 @@ async function main() {
       prioritySupport: true,
     },
     create: {
-      name: 'GOPLUS',
+      name: 'artist-pro',
       description: 'Premium tier with all features',
-      monthlyPrice: 19.99,
-      monthlyUploadMinutes: 10000000,
-      maxTrackDurationMin: 180,
+      monthlyPrice: 74.99,
+      yearlyPrice: 899.88,
+      monthlyUploadMinutes: -1,
+      maxTrackDurationMin: -1,
       allowedDownloads: -1,
       enableMonetization: true,
       allowDirectDownload: true,
@@ -204,8 +209,8 @@ async function main() {
   });
 
   console.log('Created/found FREE plan:', freePlan.id);
-  console.log('Created/found PRO plan:', proPlan.id);
-  console.log('Created/found GOPLUS plan:', goPlusPlan.id);
+  console.log('Created/found Artist plan:', artistPlan.id);
+  console.log('Created/found Artist-Pro plan:', artistProPlan.id);
 
   // ── 3. Test user and tracks — optional, skipped if user missing
   const userId = '8f455fae-bb36-4e70-9ae5-87c69718af65';
@@ -273,21 +278,21 @@ async function main() {
       console.log(`Seeded ${tracksCreated} new test tracks`);
     }
 
-    // create PRO subscription only if user doesn't already have one
-    const existingProSub = await prisma.subscription.findFirst({
-      where: { userId, planId: proPlan.id },
+    // create Artist subscription only if user doesn't already have one
+    const existingArtistSub = await prisma.subscription.findFirst({
+      where: { userId, planId: artistPlan.id },
     });
 
-    if (!existingProSub) {
+    if (!existingArtistSub) {
       await prisma.subscription.create({
         data: {
-          status: 'active',
+          status: 'ACTIVE',
           billingCycle: 'monthly',
           user: { connect: { id: userId } },
-          plan: { connect: { id: proPlan.id } },
+          plan: { connect: { id: artistPlan.id } },
         },
       });
-      console.log(`Created PRO subscription for user ${userId}`);
+      console.log(`Created Artist subscription for user ${userId}`);
     }
   }
 
@@ -323,20 +328,20 @@ async function main() {
   }
 
   if (secondUser) {
-    const existingGoPlusSub = await prisma.subscription.findFirst({
-      where: { userId: secondUserId, planId: goPlusPlan.id },
+    const existingArtistProSub = await prisma.subscription.findFirst({
+      where: { userId: secondUserId, planId: artistProPlan.id },
     });
 
-    if (!existingGoPlusSub) {
+    if (!existingArtistProSub) {
       await prisma.subscription.create({
         data: {
-          status: 'active',
+          status: 'ACTIVE',
           billingCycle: 'monthly',
           user: { connect: { id: secondUserId } },
-          plan: { connect: { id: goPlusPlan.id } },
+          plan: { connect: { id: artistProPlan.id } },
         },
       });
-      console.log(`Created GOPLUS subscription for second user`);
+      console.log(`Created Artist-Pro subscription for second user`);
     }
   }
 

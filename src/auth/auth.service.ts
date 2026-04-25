@@ -223,7 +223,7 @@ export class AuthService {
           data: {
             user: { connect: { id: createdUser.id } },
             plan: { connect: { id: freePlan.id } },
-            status: 'active',
+            status: 'ACTIVE',
             billingCycle: 'monthly',
           },
         });
