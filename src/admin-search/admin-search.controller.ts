@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   HttpCode,
   HttpStatus,
   Logger,
@@ -10,6 +11,7 @@ import { AdminOnly } from 'src/auth/decorators/roles.decorator';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { SearchIndexService } from 'src/search-index/search-index.service';
+import { SEARCH_INDEXES } from 'src/search/constants/search.constants';
 
 @UseGuards(JwtAccessGuard, RolesGuard)
 @AdminOnly()
@@ -63,5 +65,16 @@ export class AdminSearchController {
       this.logger.error('Collection reindex failed', stack);
     });
     return { message: 'Collection reindex started' };
+  }
+
+  @Delete('indexes')
+  @HttpCode(HttpStatus.OK)
+  async deleteAllIndexes() {
+    await Promise.all([
+      this.searchIndex.deleteIndex(SEARCH_INDEXES.TRACKS),
+      this.searchIndex.deleteIndex(SEARCH_INDEXES.USERS),
+      this.searchIndex.deleteIndex(SEARCH_INDEXES.COLLECTIONS),
+    ]);
+    return { message: 'Indexes deleted' };
   }
 }
