@@ -28,7 +28,7 @@ interface MessagePayload {
 }
 
 @WebSocketGateway({ 
-    port: 3001,
+    port: 3000,
     cors: { origin: '*' },
     namespace: 'conversations',
 })
@@ -97,9 +97,11 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
       await this.conversationsService.getMessages(socket.userId, conversationId, 1, 1);
 
       // Join room
+      // emit to all users in room that a new user has joined (except sender)
       const roomName = `conversation:${conversationId}`;
       socket.join(roomName);
       socket.emit('joined', { conversationId, message: 'Joined conversation' });
+      socket.broadcast.to(roomName).emit('user:joined', { userId: socket.userId, message: 'User joined conversation' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to join conversation';
       socket.emit('error', { message: errorMessage });
@@ -154,13 +156,14 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
       // Format message for broadcast
       const formattedMessage = await this.formatMessage(message);
 
-      // Broadcast to conversation room
+      // Broadcast to OTHER users in conversation room (excluding sender)
       const roomName = `conversation:${conversationId}`;
-      this.server.to(roomName).emit('message:received', {
+      socket.broadcast.to(roomName).emit('message:received', {
         conversationId,
         message: formattedMessage,
       });
 
+      // Confirm to sender only
       socket.emit('message:sent', { messageId: message.id });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
