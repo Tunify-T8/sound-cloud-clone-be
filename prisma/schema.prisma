@@ -551,6 +551,7 @@ model Report {
   targetId    String
   reasonId    String
   description String?
+  violationAreas ViolationArea[]
   status      ReportStatus       @default(PENDING)
   createdAt   DateTime           @default(now())
 
@@ -567,6 +568,7 @@ model Report {
   @@index([targetId])
   @@index([status])
   @@index([createdAt])
+  @@unique([reporterId, targetId, targetType])
 }
 
 model SubscriptionPlan {
@@ -780,6 +782,14 @@ enum ReportedEntityType {
   COMMENT
   USER
   COLLECTION
+}
+
+
+enum ViolationArea {
+  AUDIO
+  ARTWORK
+  TITLE
+  DESCRIPTION
 }
 
 enum ReportStatus {
