@@ -315,4 +315,14 @@ export class SearchIndexService {
     if (operations.length > 0) await this.openSearch.bulkIndex(operations);
     this.logger.log(`Reindexed ${collections.length} collections`);
   }
+
+  //----delete all
+
+  async deleteIndex(indexName: string): Promise<void> {
+    const exists = await this.openSearch.indexExists(indexName);
+    if (exists) {
+      await this.openSearch.deleteIndex(indexName);
+      this.logger.log(`Deleted index: ${indexName}`);
+    }
+  }
 }
