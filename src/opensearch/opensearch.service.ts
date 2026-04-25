@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Client } from '@opensearch-project/opensearch';
 
 interface IndexBody {
-  settings?: unknown;
-  mappings?: unknown;
+  settings?: Record<string, unknown>;
+  mappings?: Record<string, unknown>;
 }
 
 interface SearchBody {
@@ -22,11 +22,11 @@ export class OpensearchService {
   constructor(private readonly configService: ConfigService) {
     this.client = new Client({
       node: this.configService.get<string>('OPENSEARCH_NODE'),
-    //   auth: {
-    //     username: this.configService.get<string>('OPENSEARCH_USERNAME') ?? '',
-    //     password: this.configService.get<string>('OPENSEARCH_PASSWORD') ?? '',
-    //   },
-    //  ssl: { rejectUnauthorized: false },
+      //   auth: {
+      //     username: this.configService.get<string>('OPENSEARCH_USERNAME') ?? '',
+      //     password: this.configService.get<string>('OPENSEARCH_PASSWORD') ?? '',
+      //   },
+      //  ssl: { rejectUnauthorized: false },
     });
   }
 
@@ -38,9 +38,10 @@ export class OpensearchService {
   async createIndex(index: string, body: IndexBody): Promise<void> {
     await this.client.indices.create({
       index,
-      body: body as unknown as Parameters<
-        typeof this.client.indices.create
-      >[0]['body'],
+      body: {
+        settings: body.settings,
+        mappings: body.mappings,
+      },
     });
     this.logger.log(`Created index: ${index}`);
   }
