@@ -16,6 +16,18 @@ import { SearchIndexService } from './search-index/search-index.service';
 import { OpensearchService } from './opensearch/opensearch.service';
 import { CollectionsModule } from './collections/collections.module';
 import { CommentsModule } from './comments/comments.module';
+import { ModerationModule } from './moderation/moderation.module';
+import { AdminReportsController } from './moderation/admin-reports/admin-reports.controller';
+import { ReportsController } from './moderation/reports/reports.controller';
+import { ReportsService } from './moderation/reports/reports.service';
+import { AdminReportsService } from './moderation/admin-reports/admin-reports.service';
+import { AdminUsersService } from './moderation/admin-users/admin-users.service';
+import { AdminUsersController } from './moderation/admin-users/admin-users.controller';
+import { AdminContentController } from './moderation/admin-content/admin-content.controller';
+import { AdminContentService } from './moderation/admin-content/admin-content.service';
+import { HealthModule } from './health/health.module';
+import { AdminAnalyticsController } from './moderation/admin-analytics/admin-analytics.controller';
+import { AdminAnalyticsService } from './moderation/admin-analytics/admin-analytics.service';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
@@ -40,11 +52,13 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     SearchModule,
     CollectionsModule,
     CommentsModule,
+    ModerationModule,
+    HealthModule,
     NotificationsModule,
     ConversationsModule,
     SubscriptionsModule,
   ],
-  controllers: [AppController],
-  providers: [AppService, SearchIndexService, OpensearchService],
+  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController],
+  providers: [AppService, SearchIndexService, OpensearchService, ReportsService, AdminReportsService, AdminUsersService, AdminContentService, AdminAnalyticsService],
 })
 export class AppModule {}
