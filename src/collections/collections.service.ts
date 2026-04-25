@@ -44,13 +44,13 @@ export class CollectionsService {
 
     // 2. Paywall check — free users max 10 playlists
     const maxFreeCollections = parseInt(
-      process.env.MAX_FREE_COLLECTIONS ?? '10',
+      process.env.MAX_FREE_COLLECTIONS ?? '2',
     );
     const isPremium = await this.prisma.subscription.findFirst({
       where: {
         userId,
         status: 'active',
-        plan: { name: { in: ['PRO', 'GOPLUS'] } },
+        plan: { name: { in: ['PRO', 'pro', 'Pro', 'Pro_Plus'] } },
       },
     });
 
