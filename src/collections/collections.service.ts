@@ -122,64 +122,117 @@ try {
 ) {
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    userId,
-    isDeleted: false,
-    ...(type ? { type: type as CollectionType } : {}),
-  };
-
-  const [collections, total, ownerFollowerCount] = await Promise.all([
-    this.prisma.collection.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: {
-            tracks: true,
-            likes: true,
-          },
+  // Fetch owned collections
+  const ownedCollections = await this.prisma.collection.findMany({
+    where: {
+      userId,
+      isDeleted: false,
+      ...(type ? { type: type as CollectionType } : {}),
+    },
+    include: {
+      _count: {
+        select: {
+          tracks: true,
+          likes: true,
         },
       },
-    }),
-    this.prisma.collection.count({ where }),
-    this.prisma.follow.count({ where: { followingId: userId } }),
-  ]);
+    },
+  });
 
-  const repostCounts = await Promise.all(
-    collections.map((collection) =>
-      this.prisma.repost.count({
-        where: {
-          track: {
-            collectionTracks: {
-              some: { collectionId: collection.id },
+  // Fetch liked collections (not owned by user)
+  const likedCollections = await this.prisma.collectionLike.findMany({
+    where: {
+      userId,
+      collection: {
+        isDeleted: false,
+        userId: { not: userId }, // Exclude owned
+        ...(type ? { type: type as CollectionType } : {}),
+      },
+    },
+    include: {
+      collection: {
+        include: {
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
             },
           },
         },
-      }),
-    ),
+      },
+    },
+  });
+
+  // Combine and deduplicate (prefer owned)
+  const collectionMap = new Map();
+
+  // Add owned first
+  ownedCollections.forEach((c) => {
+    collectionMap.set(c.id, { ...c, isMine: true, isLiked: false });
+  });
+
+  // Add liked (only if not already owned)
+  likedCollections.forEach((like) => {
+    if (!collectionMap.has(like.collection.id)) {
+      collectionMap.set(like.collection.id, {
+        ...like.collection,
+        isMine: false,
+        isLiked: true,
+      });
+    }
+  });
+
+  // Convert to array and sort by createdAt desc
+  const allCollections = Array.from(collectionMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  // Paginate
+  const total = allCollections.length;
+  const paginatedCollections = allCollections.slice(skip, skip + limit);
+
+  // Add repostsCount and ownerFollowerCount for each
+  const collectionsWithCounts = await Promise.all(
+    paginatedCollections.map(async (c) => {
+      const repostsCount = await this.prisma.repost.count({
+        where: {
+          track: {
+            collectionTracks: {
+              some: { collectionId: c.id },
+            },
+          },
+        },
+      });
+
+      const ownerFollowerCount = await this.prisma.follow.count({
+        where: { followingId: c.userId },
+      });
+
+      return {
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        type: c.type,
+        privacy: c.isPublic ? 'public' : 'private',
+        coverUrl: c.coverUrl,
+        trackCount: c._count.tracks,
+        likeCount: c._count.likes,
+        repostsCount,
+        ownerFollowerCount,
+        isMine: c.isMine,
+        isLiked: c.isLiked,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      };
+    }),
   );
 
   return {
-    data: collections.map((c, index) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      type: c.type,
-      privacy: c.isPublic ? 'public' : 'private',
-      coverUrl: c.coverUrl,
-      trackCount: c._count.tracks,
-      likeCount: c._count.likes,
-      repostsCount: repostCounts[index],
-      ownerFollowerCount,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-    })),
+    data: collectionsWithCounts,
     total,
     page,
     limit,
-    hasMore: skip + collections.length < total,
+    hasMore: skip + limit < total,
   };
 }
 
@@ -217,15 +270,22 @@ async getCollectionById(collectionId: string, userId?: string) {
     throw new NotFoundException('Collection not found');
   }
 
-  const repostsCount = await this.prisma.repost.count({
-    where: {
-      track: {
-        collectionTracks: {
-          some: { collectionId: collection.id },
+  const [repostsCount, isLiked] = await Promise.all([
+    this.prisma.repost.count({
+      where: {
+        track: {
+          collectionTracks: {
+            some: { collectionId: collection.id },
+          },
         },
       },
-    },
-  });
+    }),
+    userId
+      ? this.prisma.collectionLike.findFirst({
+          where: { collectionId: collection.id, userId },
+        }).then((like) => !!like)
+      : Promise.resolve(false),
+  ]);
 
   return {
     id: collection.id,
@@ -238,6 +298,7 @@ async getCollectionById(collectionId: string, userId?: string) {
     likeCount: collection._count.likes,
     repostsCount,
     ownerFollowerCount: collection.user._count.followers,
+    isLiked,
     owner: {
       ...collection.user,
       followerCount: collection.user._count.followers,
@@ -276,15 +337,19 @@ async getCollectionByToken(token: string) {
 
   if (!collection) throw new NotFoundException('Collection not found');
 
-  const repostsCount = await this.prisma.repost.count({
-    where: {
-      track: {
-        collectionTracks: {
-          some: { collectionId: collection.id },
+  const [repostsCount, isLiked] = await Promise.all([
+    this.prisma.repost.count({
+      where: {
+        track: {
+          collectionTracks: {
+            some: { collectionId: collection.id },
+          },
         },
       },
-    },
-  });
+    }),
+    // For token access, userId is not available, so isLiked is false
+    Promise.resolve(false),
+  ]);
 
   return {
     id: collection.id,
@@ -297,6 +362,7 @@ async getCollectionByToken(token: string) {
     likeCount: collection._count.likes,
     repostsCount,
     ownerFollowerCount: collection.user._count.followers,
+    isLiked,
     owner: {
       ...collection.user,
       followerCount: collection.user._count.followers,
