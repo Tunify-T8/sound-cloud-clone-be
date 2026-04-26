@@ -114,6 +114,8 @@ async function main() {
       advancedAnalytics: false,
       releaseScheduling: false,
       prioritySupport: false,
+      playbackAccess: false,
+      playlistLimit: 3,
     },
   });
 
@@ -135,6 +137,7 @@ async function main() {
       releaseScheduling: true,
       prioritySupport: false,
       playlistLimit: -1,
+      playbackAccess: false,
     },
     create: {
       name: 'artist',
@@ -151,7 +154,9 @@ async function main() {
       analytics: false,
       advancedAnalytics: false,
       releaseScheduling: true,
+      prioritySupport: false,
       playlistLimit: -1,
+      playbackAccess: false,
     },
   });
 
