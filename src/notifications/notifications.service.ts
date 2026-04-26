@@ -1,4 +1,4 @@
-import { Injectable} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationType, ReferenceType, Channel } from '@prisma/client';
 import { NotificationsGateway } from './notifications.gateway';
@@ -258,5 +258,25 @@ export class NotificationsService {
 
     await Promise.all(updates);
     return { ok: true };
+  }
+
+  // ─── Device token management ──────────────────────────────────────────────────
+
+  async registerDeviceToken(
+    userId: string,
+    token: string,
+    platform: string,
+  ): Promise<void> {
+    await this.prisma.deviceToken.upsert({
+      where: { token },
+      update: { userId }, // reassigns token if it belonged to another account
+      create: { token, userId, platform },
+    });
+  }
+
+  async removeDeviceToken(userId: string, token: string): Promise<void> {
+    await this.prisma.deviceToken.deleteMany({
+      where: { userId, token },
+    });
   }
 }
