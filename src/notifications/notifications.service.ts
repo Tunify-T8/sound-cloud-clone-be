@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationType, ReferenceType, Channel } from '@prisma/client';
 import { NotificationsGateway } from './notifications.gateway';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: NotificationsGateway,
+    private readonly mailer: MailerService,
   ) {}
 
   // ─── Internal: called by other services (likes, follows, etc.) ───────────────
@@ -39,9 +41,102 @@ export class NotificationsService {
 
     // Push to recipient if they're connected via WebSocket
     const formatted = this.formatNotification(notification);
+
+    //Socke.IO and FCM
     this.gateway.sendNotificationToUser(data.recipientId, formatted);
 
+    // Email — only if recipient has email preference enabled for this type
+    await this.sendEmailIfEnabled(data.recipientId, notification);
+
     return notification;
+  }
+  
+
+  private async sendEmailIfEnabled(
+    recipientId: string,
+    notification: any,
+  ): Promise<void> {
+    // Get recipient email + username
+    const recipient = await this.prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { email: true, username: true },
+    });
+
+    if (!recipient?.email) return;
+
+    // Check email preference for this notification type
+    const preferenceKey = this.getPreferenceKey(notification.type);
+    if (!preferenceKey) return;
+
+    const preference = await this.prisma.notificationPreference.findUnique({
+      where: { userId_channel: { userId: recipientId, channel: 'email' } },
+    });
+
+    // If no preference row yet, default is true (send email)
+    const isEnabled = preference ? preference[preferenceKey] : true;
+    if (!isEnabled) return;
+
+    const actorUsername = notification.actor?.username;
+
+    switch (notification.type as NotificationType) {
+      case 'track_liked':
+        await this.mailer.sendTrackLikedEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      case 'track_commented':
+        await this.mailer.sendTrackCommentedEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      case 'track_reposted':
+        await this.mailer.sendTrackRepostedEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      case 'user_followed':
+        await this.mailer.sendUserFollowedEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      case 'new_message':
+        await this.mailer.sendNewMessageEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      case 'new_release':
+        await this.mailer.sendNewReleaseEmail(
+          recipient.email,
+          recipient.username,
+          actorUsername,
+        );
+        break;
+      // system and subscription have no actor — skip email
+      default:
+        break;
+    }
+  }
+
+  private getPreferenceKey(type: NotificationType): string | null {
+    const map: Partial<Record<NotificationType, string>> = {
+      track_liked: 'trackLiked',
+      track_commented: 'trackCommented',
+      track_reposted: 'trackReposted',
+      user_followed: 'userFollowed',
+      new_message: 'newMessage',
+      new_release: 'newRelease',
+    };
+    return map[type] ?? null;
   }
 
   // ─── Message builder ──────────────────────────────────────────────────────────
