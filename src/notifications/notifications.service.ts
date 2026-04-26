@@ -40,7 +40,7 @@ export class NotificationsService {
     });
 
     // Push to recipient if they're connected via WebSocket
-    const formatted = this.formatNotification(notification);
+    const formatted = await this.formatNotification(notification);
 
     //Socke.IO and FCM
     this.gateway.sendNotificationToUser(data.recipientId, formatted);
@@ -50,7 +50,6 @@ export class NotificationsService {
 
     return notification;
   }
-  
 
   private async sendEmailIfEnabled(
     recipientId: string,
@@ -167,7 +166,21 @@ export class NotificationsService {
 
   // ─── Format a notification row into the API response shape ───────────────────
 
-  private formatNotification(n: any) {
+  private async formatNotification(n: any) {
+    let isFollowed: boolean | null = null;
+
+    if (n.type === 'user_followed' && n.actor?.id && n.recipientId) {
+      const follow = await this.prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: n.recipientId, // does the recipient follow the actor back?
+            followingId: n.actor.id,
+          },
+        },
+      });
+      isFollowed = !!follow;
+    }
+
     return {
       id: n.id,
       type: n.type,
@@ -184,6 +197,7 @@ export class NotificationsService {
       isRead: n.isRead,
       readAt: n.readAt ?? null,
       createdAt: n.createdAt,
+      isFollowed,
     };
   }
 
@@ -218,7 +232,7 @@ export class NotificationsService {
     ]);
 
     return {
-      data: notifications.map((n) => this.formatNotification(n)),
+      data: await Promise.all(notifications.map((n) => this.formatNotification(n))),
       meta: { page, limit, total, unreadCount },
     };
   }
