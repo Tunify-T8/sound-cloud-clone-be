@@ -469,7 +469,7 @@ export class TracksService {
         regionRestrictions: true,
         tags: true,
         user: {
-          select: { 
+          select: {
             username: true,
             avatarUrl: true,
           },
@@ -493,15 +493,15 @@ export class TracksService {
       throw new NotFoundException('Track was deleted');
     }
 
-
     const followCount = await this.prisma.follow.count({
       where: { followingId: track.userId },
-    })
+    });
 
-    const isFollowed : Boolean = await this.prisma.follow.findFirst({
-      where: { followingId: track.userId, followerId: userId}
-    }) ? true : false;
-
+    const isFollowed: Boolean = (await this.prisma.follow.findFirst({
+      where: { followingId: track.userId, followerId: userId },
+    }))
+      ? true
+      : false;
 
     const genre = track.genreId
       ? await this.prisma.genre.findUnique({
@@ -1399,9 +1399,11 @@ export class TracksService {
 
     // Get total count
     const totalCount = await this.prisma.comment.count({
-      where: { trackId, 
+      where: {
+        trackId,
         parentCommentId: null, // only count top-level comments for pagination
-        isDeleted: false },
+        isDeleted: false,
+      },
     });
 
     // Get comments for the current page
@@ -1769,5 +1771,50 @@ export class TracksService {
     });
 
     return { message: 'Listening history cleared' };
+  }
+
+  async getDownloadUrl(trackId: string, userId: string) {
+    // 1. Fetch active subscription with plan details
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'ACTIVE',
+      },
+      include: { plan: true },
+    });
+
+    // 2. Check plan allows direct downloads (free plan has allowDirectDownload: false)
+    if (!subscription?.plan?.allowDirectDownload) {
+      throw new ForbiddenException(
+        'Your current plan does not support track downloads. Upgrade to Artist or Artist Pro.',
+      );
+    }
+
+    // 3. Fetch track
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) throw new NotFoundException('Track not found');
+
+    // 4. Check track owner has enabled downloads
+    if (!track.allowDownloads) {
+      throw new ForbiddenException(
+        'The artist has disabled downloads for this track',
+      );
+    }
+
+    // 5. Generate signed download URL (10 min expiry)
+    const downloadUrl = await this.storage.getSignedDownloadUrl(
+      track.audioUrl,
+      600,
+      track.title,
+    );
+
+    return {
+      trackId: track.id,
+      downloadUrl,
+      expiresInSeconds: 600,
+    };
   }
 }

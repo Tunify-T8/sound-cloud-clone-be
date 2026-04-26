@@ -728,6 +728,7 @@ enum FileFormat {
   aiff
   ogg
   aac
+  webm
 }
 
 enum ArtistRole {
