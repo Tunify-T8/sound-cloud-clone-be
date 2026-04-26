@@ -1797,13 +1797,6 @@ export class TracksService {
 
     if (!track) throw new NotFoundException('Track not found');
 
-    // 4. Check track owner has enabled downloads
-    if (!track.allowDownloads) {
-      throw new ForbiddenException(
-        'The artist has disabled downloads for this track',
-      );
-    }
-
     // 5. Generate signed download URL (10 min expiry)
     const downloadUrl = await this.storage.getSignedDownloadUrl(
       track.audioUrl,

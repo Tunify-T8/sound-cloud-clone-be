@@ -284,9 +284,9 @@ export class ConversationsService {
                 conversationId,
                 senderId: userId,
                 type: type as any,
-                content: type === 'TEXT' ? content : null,
-                trackId: type === 'TRACK_LIKE' ? trackId : null,
-                collectionId: type === 'PLAYLIST' || type === 'ALBUM' || type === 'TRACK_UPLOAD' ? collectionId : null,
+                content: content,
+                trackId: type === 'TRACK_LIKE'  || type === 'UPLOAD' ? trackId : null,
+                collectionId: type === 'PLAYLIST' || type === 'ALBUM' || type === 'UPLOAD' ? collectionId : null,
                 userId: type === 'USER' ? sharedUserId : null,
                 read: false,
             },
@@ -384,7 +384,7 @@ export class ConversationsService {
                 username: message.sharedUser.username,
                 avatarUrl: message.sharedUser.avatarUrl,
             };
-        } else if ((message.type === 'PLAYLIST' || message.type === 'ALBUM' || message.type === 'TRACK_UPLOAD') && message.collection) {
+        } else if ((message.type === 'PLAYLIST' || message.type === 'ALBUM' || message.type === 'UPLOAD') && message.collection) {
             attachment = message.collection.id;
             preview = {
                 title: message.collection.title,
