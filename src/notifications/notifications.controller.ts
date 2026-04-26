@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   Param,
   Query,
   Body,
@@ -15,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
-import { NotificationType} from '@prisma/client';
+import { NotificationType } from '@prisma/client';
 
 interface AuthRequest extends Request {
   user?: { userId: string };
@@ -108,6 +109,58 @@ export class NotificationsController {
     }
 
     return { message: 'Preferences updated successfully' };
+  }
+
+  // PATCH /notifications/device-token 
+  @Patch('device-token')
+  @HttpCode(HttpStatus.OK)
+  async registerDeviceToken(
+    @Request() req: AuthRequest,
+    @Body('token') token: string,
+    @Body('platform') platform: string,
+  ) {
+    if (!token) {
+      throw new BadRequestException({
+        error: {
+          code: 'MISSING_DEVICE_TOKEN',
+          message: 'token is required',
+          statusCode: 400,
+        },
+      });
+    }
+
+    await this.notificationsService.registerDeviceToken(
+      req.user?.userId ?? '',
+      token,
+      platform,
+    );
+
+    return { message: 'Device token registered successfully' };
+  }
+
+  // DELETE /notifications/device-token  
+  @Delete('device-token')
+  @HttpCode(HttpStatus.OK)
+  async removeDeviceToken(
+    @Request() req: AuthRequest,
+    @Body('token') token: string,
+  ) {
+    if (!token) {
+      throw new BadRequestException({
+        error: {
+          code: 'MISSING_DEVICE_TOKEN',
+          message: 'token is required',
+          statusCode: 400,
+        },
+      });
+    }
+
+    await this.notificationsService.removeDeviceToken(
+      req.user?.userId ?? '',
+      token,
+    );
+
+    return { message: 'Device token removed successfully' };
   }
 
   // PATCH /notifications/:notificationId  ← must be LAST
