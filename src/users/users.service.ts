@@ -934,6 +934,7 @@ async getUserCollections(
     // Get conversations with related messages and users
     const conversations = await this.prisma.conversation.findMany({
         where: {
+          status: 'ACTIVE',
           AND: [
             {
               OR: [
