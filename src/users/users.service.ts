@@ -981,24 +981,8 @@ async getUserCollections(
         take: validLimit,
       }); 
 
-      const total = await this.prisma.conversation.count({
-        where: {
-          AND: [
-            {
-              OR: [
-                { user1Id: userId },
-                { user2Id: userId },
-              ],
-            },
-            {
-              AND: [
-                { user1Id: { notIn: blockedByUsers } },
-                { user2Id: { notIn: blockedByUsers } },
-              ],
-            },
-          ],
-        },
-      });
+      // total is the 
+      const total = conversations.length
     
 
     // Format response

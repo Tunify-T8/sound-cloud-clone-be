@@ -189,13 +189,12 @@ export class SubscriptionsService {
         await this.prisma.subscription.update({
             where: { id: subscription.id },
             data: {
-                status: 'CANCELLED',
                 autoRenew: false,
             },
         });
 
         return {
-            message: 'Subscription cancelled successfully',
+            message: 'Subscription auto renwal cancelled successfully',
             expiresAt: subscription.endedAt,
         };
     }
