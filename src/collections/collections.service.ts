@@ -42,7 +42,7 @@ export class CollectionsService {
       }
     }
 
-    // 2. Paywall check — free users max 10 playlists
+    // 2. Paywall check — free users max 10 collections
     const maxFreeCollections = parseInt(
       process.env.MAX_FREE_COLLECTIONS ?? '2',
     );
@@ -749,10 +749,10 @@ async getShareUrl(collectionId: string, userId: string) {
 
   const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
   let shareUrl: string;
-  const appUrl = `tunify://playlist/${collectionId}`;
+  const appUrl = `tunify://collections/${collectionId}`;
 
   if (collection.isPublic) {
-    shareUrl = `${frontendUrl}/playlist/${collectionId}`;
+    shareUrl = `${frontendUrl}/collections/${collectionId}`;
   } else {
     // Ensure token exists for private collections
     let token = collection.secretToken;
@@ -763,7 +763,7 @@ async getShareUrl(collectionId: string, userId: string) {
         data: { secretToken: token },
       });
     }
-    shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${token}`;
+    shareUrl = `${frontendUrl}/collections/${collectionId}?token=${token}`;
   }
 
 
@@ -786,8 +786,8 @@ async resetShareToken(collectionId: string, userId: string) {
     data: { secretToken: newToken, isPublic: false },
   });
 
-  const shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${newToken}`;
-  const appUrl = `tunify://playlist/${collectionId}`;
+  const shareUrl = `${frontendUrl}/collections/${collectionId}?token=${newToken}`;
+  const appUrl = `tunify://collections/${collectionId}`;
 
   return { shareUrl, appUrl };
 }
