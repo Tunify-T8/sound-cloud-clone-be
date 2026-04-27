@@ -212,5 +212,25 @@ async getEmbed(@Param('id') id: string) {
   return this.collectionsService.getEmbed(id);
 }
 
+@Get(':id/share')
+@UseGuards(JwtAccessGuard)
+async getShareUrl(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.getShareUrl(id, userId);
+}
+
+@Post(':id/share/reset')
+@UseGuards(JwtAccessGuard)
+async resetShareToken(
+  @Param('id') id: string,
+  @Request() req: AuthRequest,
+) {
+  const userId = req.user?.userId ?? '';
+  return this.collectionsService.resetShareToken(id, userId);
+}
+
 
 }
