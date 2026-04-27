@@ -738,4 +738,58 @@ async getEmbed(collectionId: string) {
 
 
 
+
+async getShareUrl(collectionId: string, userId: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new ForbiddenException('Access denied');
+
+  const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
+  let shareUrl: string;
+  const appUrl = `tunify://playlist/${collectionId}`;
+
+  if (collection.isPublic) {
+    shareUrl = `${frontendUrl}/playlist/${collectionId}`;
+  } else {
+    // Ensure token exists for private collections
+    let token = collection.secretToken;
+    if (!token) {
+      token = randomBytes(16).toString('hex');
+      await this.prisma.collection.update({
+        where: { id: collectionId },
+        data: { secretToken: token },
+      });
+    }
+    shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${token}`;
+  }
+
+
+  return { shareUrl, appUrl };
+}
+
+async resetShareToken(collectionId: string, userId: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new ForbiddenException('Access denied');
+
+  const newToken = randomBytes(16).toString('hex');
+  const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
+
+  await this.prisma.collection.update({
+    where: { id: collectionId },
+    data: { secretToken: newToken, isPublic: false },
+  });
+
+  const shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${newToken}`;
+  const appUrl = `tunify://playlist/${collectionId}`;
+
+  return { shareUrl, appUrl };
+}
+
 }

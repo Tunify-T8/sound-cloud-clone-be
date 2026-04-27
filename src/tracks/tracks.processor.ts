@@ -17,33 +17,105 @@ export class TracksProcessor {
 
   @Process('process-track')
   async handleProcessTrack(
-    job: Job<{ trackId: string; fileBuffer: any; extension: string }>,
+    job: Job<{
+      trackId: string;
+      userId: string;
+      fileBuffer: any;
+      extension: string;
+    }>,
   ) {
-    console.log('Processor received job:', job.id, 'for track:', job.data.trackId);
-    const { trackId, extension } = job.data;
+    const { trackId, userId, extension } = job.data;
     const fileBuffer = Buffer.from(job.data.fileBuffer) as Buffer;
 
     try {
       let finalBuffer = fileBuffer;
       let finalExtension = extension;
 
-      // 1. upload original file to Supabase first
+      // 1. Extract duration FIRST — before any uploading
+      const durationSeconds = await this.audio.extractDuration(
+        fileBuffer,
+        extension,
+      );
+
+      // 2. Check monthly upload quota
+      const subscription = await this.prisma.subscription.findFirst({
+        where: { userId, status: 'ACTIVE' },
+        include: { plan: true },
+      });
+
+      // If no subscription or no plan → fallback to FREE plan from DB
+      let plan = subscription?.plan;
+
+      if (!plan) {
+        plan = await this.prisma.subscriptionPlan.findUnique({
+          where: { name: 'free' }, // make sure this exists in DB
+        });
+
+        if (!plan) {
+          throw new Error('free subscription plan not found in database');
+        }
+      }
+
+      const monthlyLimitMinutes = plan.monthlyUploadMinutes;
+      const monthlyLimitSeconds = monthlyLimitMinutes * 60;
+
+      // How many seconds has this user already uploaded this month?
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const uploadedThisMonth = await this.prisma.track.aggregate({
+        where: {
+          userId,
+          isDeleted: false,
+          transcodingStatus: 'finished',
+          createdAt: { gte: monthStart },
+        },
+        _sum: { durationSeconds: true },
+      });
+
+      const usedSeconds = uploadedThisMonth._sum.durationSeconds ?? 0;
+
+      console.log('used seconds' + usedSeconds);
+      console.log('duration' + durationSeconds);
+      console.log('monthly limit' + monthlyLimitSeconds);
+
+      if (usedSeconds + durationSeconds > monthlyLimitSeconds) {
+        this.logger.warn(
+          `Track ${trackId} rejected: would exceed monthly upload quota. Used: ${usedSeconds}s, new: ${durationSeconds}s, limit: ${monthlyLimitSeconds}s`,
+        );
+        await this.prisma.track.update({
+          where: { id: trackId },
+          data: { transcodingStatus: 'failed' },
+        });
+        return;
+      }
+
+      // 3. Upload original file
+      const mimetypeMap: Record<string, string> = {
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        ogg: 'audio/ogg',
+        flac: 'audio/flac',
+        aac: 'audio/aac',
+        aiff: 'audio/aiff',
+        webm: 'audio/webm',
+      };
+
       const originalFile = {
         buffer: fileBuffer,
         originalname: `${trackId}.${extension}`,
-        mimetype: extension === 'mp3' ? 'audio/mpeg' : `audio/${extension}`,
+        mimetype: mimetypeMap[extension] ?? 'audio/mpeg',
         size: fileBuffer.length,
       } as Express.Multer.File;
 
       const originalAudioUrl = await this.storage.uploadAudio(originalFile);
-
-      // save original URL immediately so track has an audioUrl
       await this.prisma.track.update({
         where: { id: trackId },
         data: { audioUrl: originalAudioUrl },
       });
 
-      // 2. transcode if not mp3
+      // 4. Transcode if not mp3
       if (extension !== 'mp3') {
         const transcoded = await this.audio.transcodeToMp3(fileBuffer);
         finalBuffer = transcoded as Buffer;
@@ -70,27 +142,17 @@ export class TracksProcessor {
         });
       }
 
-      // 3. extract duration
-      const durationSeconds = await this.audio.extractDuration(
-        finalBuffer,
-        finalExtension,
-      );
-
-      // 4. generate waveform
+      // 5. Generate waveform
       const peaks = await this.audio.generateWaveform(
         finalBuffer,
         finalExtension,
       );
       const waveformUrl = await this.storage.uploadWaveform(peaks, trackId);
 
-      // 5. final update
+      // 6. Final update — reuse already-extracted durationSeconds
       await this.prisma.track.update({
         where: { id: trackId },
-        data: {
-          durationSeconds,
-          waveformUrl,
-          transcodingStatus: 'finished',
-        },
+        data: { durationSeconds, waveformUrl, transcodingStatus: 'finished' },
       });
     } catch (error) {
       this.logger.error('Processing failed:', error);
