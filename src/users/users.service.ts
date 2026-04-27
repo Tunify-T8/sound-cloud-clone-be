@@ -787,7 +787,7 @@ export class UsersService {
         endedAt: null,
         plan: {
           is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            name: { in: ['free', 'artist', 'artist-pro'] },
             isActive: true,
           },
         },
@@ -802,51 +802,55 @@ export class UsersService {
     const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
     return {
-      tier: subscription?.plan?.name ?? 'FREE',
+      tier: subscription?.plan?.name ?? 'free',
       uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
         0,
       ),
+      adFree: subscription?.plan?.adFree ?? false,
+      offlineListening: subscription?.plan?.allowOfflineListening ?? false,
+      playbackAccess: subscription?.plan?.playbackAccess ?? false,
+      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
     };
   }
 
-  async getUploadMinutes(userId: string) {
-    const subscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        endedAt: null,
-        plan: {
-          is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
-            isActive: true,
-          },
-        },
-      },
-      include: {
-        plan: true,
-      },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
-    });
+  // async getUploadMinutes(userId: string) {
+  //   const subscription = await this.prisma.subscription.findFirst({
+  //     where: {
+  //       userId,
+  //       status: 'ACTIVE',
+  //       endedAt: null,
+  //       plan: {
+  //         is: {
+  //           name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+  //           isActive: true,
+  //         },
+  //       },
+  //     },
+  //     include: {
+  //       plan: true,
+  //     },
+  //     orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+  //   });
 
-    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
-    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+  //   const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
+  //   const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
-    return {
-      tier: subscription?.plan?.name ?? 'NO_PLAN',
-      uploadMinutesLimit,
-      uploadMinutesUsed,
-      uploadMinutesRemaining: Math.max(
-        uploadMinutesLimit - uploadMinutesUsed,
-        0,
-      ),
-    };
-  }
+  //   return {
+  //     tier: subscription?.plan?.name ?? 'NO_PLAN',
+  //     uploadMinutesLimit,
+  //     uploadMinutesUsed,
+  //     uploadMinutesRemaining: Math.max(
+  //       uploadMinutesLimit - uploadMinutesUsed,
+  //       0,
+  //     ),
+  //   };
+  // }
 
 
 
