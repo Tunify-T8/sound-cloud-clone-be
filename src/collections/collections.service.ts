@@ -749,7 +749,7 @@ async getShareUrl(collectionId: string, userId: string) {
 
   const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
   let shareUrl: string;
-  let appUrl: string | undefined;
+  const appUrl = `tunify://playlist/${collectionId}`;
 
   if (collection.isPublic) {
     shareUrl = `${frontendUrl}/playlist/${collectionId}`;
@@ -766,8 +766,6 @@ async getShareUrl(collectionId: string, userId: string) {
     shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${token}`;
   }
 
-  // Optional app deep link for Flutter Android
-  appUrl = `tunify://playlist/${collectionId}`;
 
   return { shareUrl, appUrl };
 }
