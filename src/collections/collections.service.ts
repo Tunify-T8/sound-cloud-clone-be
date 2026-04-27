@@ -42,25 +42,28 @@ export class CollectionsService {
       }
     }
 
-    // 2. Paywall check — free users max 10 playlists
-    const maxFreeCollections = parseInt(
-      process.env.MAX_FREE_COLLECTIONS ?? '2',
-    );
-    const isPremium = await this.prisma.subscription.findFirst({
+    // 2. Paywall check — check user's plan playlist limit
+    const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
         status: 'ACTIVE',
-        plan: { name: { in: ['PRO', 'pro', 'Pro', 'Pro_Plus'] } },
+      },
+      include: {
+        plan: {
+          select: { playlistLimit: true },
+        },
       },
     });
 
-    if (!isPremium) {
+    const playlistLimit = subscription?.plan?.playlistLimit ?? 3; // Default to free plan limit
+
+    if (playlistLimit !== -1) { // -1 means unlimited
       const count = await this.prisma.collection.count({
         where: { userId, isDeleted: false },
       });
-      if (count >= maxFreeCollections) {
+      if (count >= playlistLimit) {
         throw new BadRequestException(
-          `Free users can only create up to ${maxFreeCollections} collections`,
+          `You have reached the collection limit (${playlistLimit}) for your plan`,
         );
       }
     }
@@ -749,10 +752,10 @@ async getShareUrl(collectionId: string, userId: string) {
 
   const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
   let shareUrl: string;
-  const appUrl = `tunify://playlist/${collectionId}`;
+  const appUrl = `tunify://collections/${collectionId}`;
 
   if (collection.isPublic) {
-    shareUrl = `${frontendUrl}/playlist/${collectionId}`;
+    shareUrl = `${frontendUrl}/collections/${collectionId}`;
   } else {
     // Ensure token exists for private collections
     let token = collection.secretToken;
@@ -763,7 +766,7 @@ async getShareUrl(collectionId: string, userId: string) {
         data: { secretToken: token },
       });
     }
-    shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${token}`;
+    shareUrl = `${frontendUrl}/collections/${collectionId}?token=${token}`;
   }
 
 
@@ -786,8 +789,8 @@ async resetShareToken(collectionId: string, userId: string) {
     data: { secretToken: newToken, isPublic: false },
   });
 
-  const shareUrl = `${frontendUrl}/playlist/${collectionId}?token=${newToken}`;
-  const appUrl = `tunify://playlist/${collectionId}`;
+  const shareUrl = `${frontendUrl}/collections/${collectionId}?token=${newToken}`;
+  const appUrl = `tunify://collections/${collectionId}`;
 
   return { shareUrl, appUrl };
 }
