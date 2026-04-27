@@ -1402,7 +1402,6 @@ export class TracksService {
     const totalCount = await this.prisma.comment.count({
       where: {
         trackId,
-        parentCommentId: null, // only count top-level comments for pagination
         isDeleted: false,
       },
     });
