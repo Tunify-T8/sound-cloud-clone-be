@@ -1366,7 +1366,7 @@ describe('getPublicTracks', () => {
 
   // ── getUploadStats ────────────────────────────────────────
   describe('getUploadStats', () => {
-    it('should return upload stats for active subscription', async () => {
+    it('should return upload stats for ACTIVE subscription', async () => {
       const mockSubscription = {
         uploadedMinutes: 50,
         plan: {
@@ -1390,7 +1390,7 @@ describe('getPublicTracks', () => {
       expect(result.canAccessAdvancedTab).toBe(true);
     });
 
-    it('should return free tier defaults when no active subscription', async () => {
+    it('should return free tier defaults when no ACTIVE subscription', async () => {
       mockPrisma.subscription.findFirst.mockResolvedValue(null);
 
       const result = await service.getUploadStats('user-123');
@@ -1448,7 +1448,7 @@ describe('getPublicTracks', () => {
       expect(mockPrisma.subscription.findFirst).toHaveBeenCalledWith({
         where: {
           userId: 'user-123',
-          status: 'active',
+          status: 'ACTIVE',
           endedAt: null,
           plan: {
             is: {
@@ -1465,7 +1465,7 @@ describe('getPublicTracks', () => {
 
   // ── getUploadMinutes ──────────────────────────────────────
   describe('getUploadMinutes', () => {
-    it('should return upload minutes for active subscription', async () => {
+    it('should return upload minutes for ACTIVE subscription', async () => {
       const mockSubscription = {
         uploadedMinutes: 75,
         plan: {
@@ -1517,7 +1517,7 @@ describe('getPublicTracks', () => {
       expect(mockPrisma.subscription.findFirst).toHaveBeenCalledWith({
         where: {
           userId: 'user-123',
-          status: 'active',
+          status: 'ACTIVE',
           endedAt: null,
           plan: {
             is: {

@@ -347,30 +347,35 @@ describe('UsersController', () => {
       const mockLikedTracksResponse = {
         data: [
           {
-            id: 'track-1',
-            title: 'Liked Track',
-            description: 'A track I like',
-            audioUrl: 'https://example.com/audio.mp3',
-            coverUrl: 'https://example.com/cover.png',
-            duration: 180,
-            likesCount: 100,
-            commentsCount: 10,
-            repostsCount: 5,
-            createdAt: new Date(),
+            likedAt: new Date(),
+            track: {
+              id: 'track-1',
+              title: 'Liked Track',
+              description: 'A track I like',
+              audioUrl: 'https://example.com/audio.mp3',
+              coverUrl: 'https://example.com/cover.png',
+              duration: 180,
+              likesCount: 100,
+              commentsCount: 10,
+              repostsCount: 5,
+              createdAt: new Date(),
+            },
           },
         ],
         page: 1,
         limit: 10,
         hasMore: false,
       };
-
-      mockUsersService.getLikedTracks.mockResolvedValue(mockLikedTracksResponse);
+      mockUsersService.getLikedTracks.mockResolvedValue(
+        mockLikedTracksResponse,
+      );
 
       const result = await controller.getLikedTracks(mockJwtPayload, 1, 10);
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toHaveProperty('id');
-      expect(result.data[0]).toHaveProperty('likeCount');
+      expect(result.data[0]).toHaveProperty('likedAt');
+      expect(result.data[0]).toHaveProperty('track');
+      expect(result.data[0].track).toHaveProperty('id');
       expect(result.hasMore).toBe(false);
     });
 
@@ -762,7 +767,9 @@ describe('UsersController', () => {
 
       const result = await controller.getUploadMinutes('user-456');
 
-      expect(mockUsersService.getUploadMinutes).toHaveBeenCalledWith('user-456');
+      expect(mockUsersService.getUploadMinutes).toHaveBeenCalledWith(
+        'user-456',
+      );
       expect(result.uploadMinutesRemaining).toBe(125);
     });
 
@@ -778,6 +785,24 @@ describe('UsersController', () => {
       const result = await controller.getUploadMinutes('user-456');
 
       expect(result.tier).toBe('NO_PLAN');
+    });
+  });
+
+  // ── getLikedTracksByUser (public) ─────────────────────────────
+  describe('getLikedTracksByUser', () => {
+    it('should call service with id and pagination', async () => {
+      mockUsersService.getLikedTracks.mockResolvedValue({
+        data: [],
+        hasMore: false,
+      });
+
+      await controller.getLikedTracksByUser('user-456', 1, 10);
+
+      expect(mockUsersService.getLikedTracks).toHaveBeenCalledWith(
+        'user-456',
+        1,
+        10,
+      );
     });
   });
 
@@ -817,7 +842,13 @@ describe('UsersController', () => {
     });
 
     it('should pass undefined requesterId when not authenticated', async () => {
-      const mockResponse = { data: [], page: 1, limit: 10, total: 0, hasMore: false };
+      const mockResponse = {
+        data: [],
+        page: 1,
+        limit: 10,
+        total: 0,
+        hasMore: false,
+      };
       mockUsersService.getUserCollections.mockResolvedValue(mockResponse);
 
       const unauthenticatedRequest = { user: undefined };
@@ -864,7 +895,12 @@ describe('UsersController', () => {
         hasMore: false,
       });
 
-      const result = await controller.getUserCollections('testuser', 1, 10, undefined);
+      const result = await controller.getUserCollections(
+        'testuser',
+        1,
+        10,
+        undefined,
+      );
 
       expect(result.data).toEqual([]);
       expect(result.hasMore).toBe(false);

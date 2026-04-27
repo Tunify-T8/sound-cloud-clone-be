@@ -54,7 +54,7 @@ export class UsersController {
   ) {
     return this.usersService.getMyConversations(user.userId, page, limit);
   }
- 
+
   @Post('me/conversations')
   @UseGuards(JwtAccessGuard)
   createConversation(
@@ -151,6 +151,17 @@ export class UsersController {
     return this.usersService.getLikedTracks(user.userId, page, limit);
   }
 
+  // ─── GET /:id/liked-tracks ───────────────────────────────────────
+  // returns liked tracks of a specific user
+  @Get(':id/liked-tracks')
+  getLikedTracksByUser(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getLikedTracks(id, page, limit);
+  }
+
   // ─── GET /me/followers───────────────────────────────────────
   //returns my followers
   @UseGuards(JwtAccessGuard)
@@ -222,7 +233,6 @@ export class UsersController {
   ) {
     return this.usersService.getReposts(userId, page, limit);
   }
-
 
   // ─── GET /:id/following ───────────────────────────────────────
   //gets following list of a user
@@ -321,45 +331,59 @@ export class UsersController {
   @Get(':id/artist-tools/upload-minutes')
   @UseGuards(JwtAccessGuard)
   getUploadMinutes(@Param('id', ParseUUIDPipe) userId: string) {
-    return this.usersService.getUploadMinutes(userId);
+    return this.usersService.getUploadStats(userId);
   }
 
+  @Get(':username/collections')
+  @UseGuards(JwtOptionalGuard)
+  getUserCollections(
+    @Param('username') username: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Request() req?: AuthRequest,
+  ) {
+    const requesterId = req?.user?.userId;
+    return this.usersService.getUserCollections(
+      username,
+      requesterId,
+      +page,
+      +limit,
+    );
+  }
 
+  @Get(':username/albums')
+  @UseGuards(JwtOptionalGuard)
+  getUserAlbums(
+    @Param('username') username: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Request() req?: AuthRequest,
+  ) {
+    const requesterId = req?.user?.userId;
+    return this.usersService.getUserCollections(
+      username,
+      requesterId,
+      +page,
+      +limit,
+      CollectionType.ALBUM,
+    );
+  }
 
-@Get(':username/collections')
-@UseGuards(JwtOptionalGuard)
-getUserCollections(
-  @Param('username') username: string,
-  @Query('page') page: number = 1,
-  @Query('limit') limit: number = 10,
-  @Request() req?: AuthRequest,
-) {
-  const requesterId = req?.user?.userId;
-  return this.usersService.getUserCollections(username, requesterId, +page, +limit);
-}
-
-@Get(':username/albums')
-@UseGuards(JwtOptionalGuard)
-getUserAlbums(
-  @Param('username') username: string,
-  @Query('page') page: number = 1,
-  @Query('limit') limit: number = 10,
-  @Request() req?: AuthRequest,
-) {
-  const requesterId = req?.user?.userId;
-  return this.usersService.getUserCollections(username, requesterId, +page, +limit, CollectionType.ALBUM);
-}
-
-@Get(':username/playlists')
-@UseGuards(JwtOptionalGuard)
-getUserPlaylists(
-  @Param('username') username: string,
-  @Query('page') page: number = 1,
-  @Query('limit') limit: number = 10,
-  @Request() req?: AuthRequest,
-) {
-  const requesterId = req?.user?.userId;
-  return this.usersService.getUserCollections(username, requesterId, +page, +limit, CollectionType.PLAYLIST);
-}
-
+  @Get(':username/playlists')
+  @UseGuards(JwtOptionalGuard)
+  getUserPlaylists(
+    @Param('username') username: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Request() req?: AuthRequest,
+  ) {
+    const requesterId = req?.user?.userId;
+    return this.usersService.getUserCollections(
+      username,
+      requesterId,
+      +page,
+      +limit,
+      CollectionType.PLAYLIST,
+    );
+  }
 }
