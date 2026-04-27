@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
@@ -12,7 +16,11 @@ import { UpdateSocialLinksDto } from './dto/update-social-links.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { StorageService } from 'src/storage/storage.service';
 import { SearchIndexService } from 'src/search-index/search-index.service';
-import { PublicTrackItemDto, PublicUserTracksDto, TrackArtistDto } from './dto/user-public-tracks.dto';
+import {
+  PublicTrackItemDto,
+  PublicUserTracksDto,
+  TrackArtistDto,
+} from './dto/user-public-tracks.dto';
 
 @Injectable()
 export class UsersService {
@@ -365,6 +373,13 @@ export class UsersService {
           createdAt: true,
           track: {
             select: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  displayName: true,
+                },
+              },
               id: true,
               title: true,
               description: true,
@@ -400,6 +415,11 @@ export class UsersService {
           commentsCount: like.track._count.comments,
           repostsCount: like.track._count.reposts,
           createdAt: like.track.createdAt,
+        },
+        artist: {
+          id: like.track.user.id,
+          username: like.track.user.username,
+          displayName: like.track.user.displayName,
         },
       })),
       page,
@@ -438,6 +458,14 @@ export class UsersService {
               select: { userFollowed: true },
             },
           }),
+          // for followers — check if userId follows them back
+          ...(direction === 'followers' && {
+            followers: {
+              where: { followerId: userId },
+              select: { id: true },
+              take: 1,
+            },
+          }),
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -457,7 +485,11 @@ export class UsersService {
           direction === 'following'
             ? (prefs ?? []).some((p) => p.userFollowed === true)
             : null;
+        // followers relation here is scoped to "does userId follow this person"
+        const followersBack = (u as { followers?: { id: string }[] }).followers;
 
+        const isFollowing =
+          direction === 'followers' ? (followersBack ?? []).length > 0 : null;
         return {
           id: u.id,
           username: u.username,
@@ -467,6 +499,7 @@ export class UsersService {
           isCertified: u.isCertified,
           followersCount: u._count.followers,
           isNotificationEnabled,
+          isFollowing,
         };
       }),
       page,
@@ -636,7 +669,7 @@ export class UsersService {
       };
 
       const creditArtists: TrackArtistDto[] = t.trackArtists.map((ta) => ({
-        id: ta.id, 
+        id: ta.id,
         displayName: ta.name,
       }));
 
@@ -787,7 +820,7 @@ export class UsersService {
         endedAt: null,
         plan: {
           is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            name: { in: ['free', 'artist', 'artist-pro'] },
             isActive: true,
           },
         },
@@ -802,51 +835,55 @@ export class UsersService {
     const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
     return {
-      tier: subscription?.plan?.name ?? 'FREE',
+      tier: subscription?.plan?.name ?? 'free',
       uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
         0,
       ),
+      adFree: subscription?.plan?.adFree ?? false,
+      offlineListening: subscription?.plan?.allowOfflineListening ?? false,
+      playbackAccess: subscription?.plan?.playbackAccess ?? false,
+      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
     };
   }
 
-  async getUploadMinutes(userId: string) {
-    const subscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        endedAt: null,
-        plan: {
-          is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
-            isActive: true,
-          },
-        },
-      },
-      include: {
-        plan: true,
-      },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
-    });
+  // async getUploadMinutes(userId: string) {
+  //   const subscription = await this.prisma.subscription.findFirst({
+  //     where: {
+  //       userId,
+  //       status: 'ACTIVE',
+  //       endedAt: null,
+  //       plan: {
+  //         is: {
+  //           name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+  //           isActive: true,
+  //         },
+  //       },
+  //     },
+  //     include: {
+  //       plan: true,
+  //     },
+  //     orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+  //   });
 
-    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
-    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+  //   const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
+  //   const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
-    return {
-      tier: subscription?.plan?.name ?? 'NO_PLAN',
-      uploadMinutesLimit,
-      uploadMinutesUsed,
-      uploadMinutesRemaining: Math.max(
-        uploadMinutesLimit - uploadMinutesUsed,
-        0,
-      ),
-    };
-  }
+  //   return {
+  //     tier: subscription?.plan?.name ?? 'NO_PLAN',
+  //     uploadMinutesLimit,
+  //     uploadMinutesUsed,
+  //     uploadMinutesRemaining: Math.max(
+  //       uploadMinutesLimit - uploadMinutesUsed,
+  //       0,
+  //     ),
+  //   };
+  // }
 
 
 
@@ -919,86 +956,73 @@ async getUserCollections(
     };
   }
 
-  async getMyConversations(userId: string, page: number = 1, limit: number = 20) {
+  async getMyConversations(
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
     // Validate pagination parameters
     const validPage = Math.max(1, page);
     const validLimit = Math.max(1, Math.min(limit, 100));
     const skip = (validPage - 1) * validLimit;
 
     // Get list of users who have blocked this user
-    const blockedByUsers = (await this.prisma.userBlock.findMany({
-      where: { blockedId: userId },
-      select: { blockerId: true },
-    })).map(b => b.blockerId);
+    const blockedByUsers = (
+      await this.prisma.userBlock.findMany({
+        where: { blockedId: userId },
+        select: { blockerId: true },
+      })
+    ).map((b) => b.blockerId);
 
     // Get conversations with related messages and users
     const conversations = await this.prisma.conversation.findMany({
-        where: {
-          status: 'ACTIVE',
-          AND: [
-            {
-              OR: [
-                { user1Id: userId },
-                { user2Id: userId },
-              ],
-            },
-            {
-              AND: [
-                { user1Id: { notIn: blockedByUsers } },
-                { user2Id: { notIn: blockedByUsers } },
-              ],
-            },
-          ],
-        },
-        include: {
-          user1: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
+      where: {
+        status: 'ACTIVE',
+        AND: [
+          {
+            OR: [{ user1Id: userId }, { user2Id: userId }],
           },
-          user2: {
-            select: {
-              id: true,
-              displayName: true,
-              avatarUrl: true,
-            },
+          {
+            AND: [
+              { user1Id: { notIn: blockedByUsers } },
+              { user2Id: { notIn: blockedByUsers } },
+            ],
           },
-          messages: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            select: {
-              content: true,
-              createdAt: true,
-              read: true,
-              senderId: true,
-            },
+        ],
+      },
+      include: {
+        user1: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
           },
         },
-        orderBy: { updatedAt: 'desc' },
-        skip,
-        take: validLimit,
-      }); 
+        user2: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            content: true,
+            createdAt: true,
+            read: true,
+            senderId: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      skip,
+      take: validLimit,
+    });
 
-      const total = await this.prisma.conversation.count({
-        where: {
-          AND: [
-            {
-              OR: [
-                { user1Id: userId },
-                { user2Id: userId },
-              ],
-            },
-            {
-              AND: [
-                { user1Id: { notIn: blockedByUsers } },
-                { user2Id: { notIn: blockedByUsers } },
-              ],
-            },
-          ],
-        },
-      });
+      // total is the 
+      const total = conversations.length
     
 
     // Format response
@@ -1053,7 +1077,7 @@ async getUserCollections(
     if (existing) {
       return {
         conversationId: existing.id,
-      }
+      };
     }
 
     // Create new conversation
@@ -1066,7 +1090,7 @@ async getUserCollections(
 
     return {
       conversationId: conversation.id,
-    }
+    };
   }
 
   async getUnreadMessagesCount(userId: string) {
@@ -1075,10 +1099,7 @@ async getUserCollections(
         read: false,
         senderId: { not: userId },
         conversation: {
-          OR: [
-            { user1Id: userId },
-            { user2Id: userId },
-          ],
+          OR: [{ user1Id: userId }, { user2Id: userId }],
         },
       },
     });
