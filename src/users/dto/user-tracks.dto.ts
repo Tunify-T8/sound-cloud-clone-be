@@ -21,6 +21,11 @@ export class UserTracksDto {
 export class LikedTrackDto {
   likedAt: Date;
   track: TrackItemDto;
+  artist: {
+    id: string;
+    username: string;
+    displayName: string | null;
+  };
 }
 
 export class LikedTracksDto {
