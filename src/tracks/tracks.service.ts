@@ -431,6 +431,7 @@ export class TracksService {
     this.tracksQueue
       .add('process-track', {
         trackId,
+        userId,
         fileBuffer: file.buffer,
         extension,
       })
