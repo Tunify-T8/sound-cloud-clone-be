@@ -42,25 +42,28 @@ export class CollectionsService {
       }
     }
 
-    // 2. Paywall check — free users max 10 collections
-    const maxFreeCollections = parseInt(
-      process.env.MAX_FREE_COLLECTIONS ?? '2',
-    );
-    const isPremium = await this.prisma.subscription.findFirst({
+    // 2. Paywall check — check user's plan playlist limit
+    const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
         status: 'ACTIVE',
-        plan: { name: { in: ['PRO', 'pro', 'Pro', 'Pro_Plus'] } },
+      },
+      include: {
+        plan: {
+          select: { playlistLimit: true },
+        },
       },
     });
 
-    if (!isPremium) {
+    const playlistLimit = subscription?.plan?.playlistLimit ?? 3; // Default to free plan limit
+
+    if (playlistLimit !== -1) { // -1 means unlimited
       const count = await this.prisma.collection.count({
         where: { userId, isDeleted: false },
       });
-      if (count >= maxFreeCollections) {
+      if (count >= playlistLimit) {
         throw new BadRequestException(
-          `Free users can only create up to ${maxFreeCollections} collections`,
+          `You have reached the collection limit (${playlistLimit}) for your plan`,
         );
       }
     }
