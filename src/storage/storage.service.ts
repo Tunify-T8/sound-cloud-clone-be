@@ -24,6 +24,7 @@ export class StorageService {
       flac: 'audio/flac',
       aac: 'audio/aac',
       aiff: 'audio/aiff',
+      webm: 'audio/webm',
     };
 
     const extension =
@@ -121,6 +122,26 @@ export class StorageService {
 
     if (error || !data) {
       throw new Error(`Failed to generate signed URL: ${error?.message}`);
+    }
+
+    return data.signedUrl;
+  }
+
+  async getSignedDownloadUrl(
+    filePath: string,
+    expiresIn: number,
+    trackTitle: string,
+  ): Promise<string> {
+    const filename = filePath.split('/').pop() ?? filePath;
+
+    const { data, error } = await this.supabase.storage
+      .from('audio')
+      .createSignedUrl(filename, expiresIn, {
+        download: `${trackTitle}.mp3`,
+      });
+
+    if (error || !data) {
+      throw new Error(`Failed to generate download URL: ${error?.message}`);
     }
 
     return data.signedUrl;

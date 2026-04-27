@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsIn,
   MaxLength,
+  IsUrl,
 } from 'class-validator';
 
 export class CreateCollectionDto {
@@ -22,4 +23,8 @@ export class CreateCollectionDto {
 
   @IsIn(['public', 'private'])
   privacy: 'public' | 'private';
+
+  @IsUrl()
+  @IsOptional()
+  coverUrl?: string;
 }

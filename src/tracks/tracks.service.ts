@@ -106,7 +106,7 @@ export class TracksService {
       const subscription = await this.prisma.subscription.findFirst({
         where: {
           userId,
-          status: 'active',
+          status: 'ACTIVE',
           plan: { name: { in: ['PRO', 'GOPLUS'] } },
         },
       });
@@ -366,7 +366,7 @@ export class TracksService {
         _count: {
           select: {
             likes: true,
-            comments: true,
+            comments: { where: { isDeleted: false } },
             reposts: true,
             playHistory: true,
           },
@@ -431,6 +431,7 @@ export class TracksService {
     this.tracksQueue
       .add('process-track', {
         trackId,
+        userId,
         fileBuffer: file.buffer,
         extension,
       })
@@ -461,17 +462,23 @@ export class TracksService {
     return track;
   }
 
-  async getTrack(trackId: string) {
+  async getTrack(trackId: string, userId: string) {
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
       include: {
         trackArtists: true,
         regionRestrictions: true,
         tags: true,
+        user: {
+          select: {
+            username: true,
+            avatarUrl: true,
+          },
+        },
         _count: {
           select: {
             likes: true,
-            comments: true,
+            comments: { where: { isDeleted: false } },
             reposts: true,
             playHistory: true,
           },
@@ -486,6 +493,16 @@ export class TracksService {
     if (track.isDeleted) {
       throw new NotFoundException('Track was deleted');
     }
+
+    const followCount = await this.prisma.follow.count({
+      where: { followingId: track.userId },
+    });
+
+    const isFollowed: Boolean = (await this.prisma.follow.findFirst({
+      where: { followingId: track.userId, followerId: userId },
+    }))
+      ? true
+      : false;
 
     const genre = track.genreId
       ? await this.prisma.genre.findUnique({
@@ -515,7 +532,7 @@ export class TracksService {
     });
 
     const trackComments = await this.prisma.comment.findMany({
-      where: { trackId: trackId },
+      where: { trackId: trackId, isDeleted: false },
     });
 
     const filteredTrack = {
@@ -523,6 +540,13 @@ export class TracksService {
       status: track.transcodingStatus,
       title: track.title,
       description: track.description || null,
+      user: {
+        userId: track.userId,
+        username: track.user.username,
+        avatarUrl: track.user.avatarUrl,
+        followersCount: followCount,
+        isFollowing: isFollowed,
+      },
       genre: genre
         ? {
             category: genre.label,
@@ -1350,7 +1374,7 @@ export class TracksService {
         createdAt: comment.createdAt.toISOString(),
       },
       commentsCount: await this.prisma.comment.count({
-        where: { trackId },
+        where: { trackId, isDeleted: false },
       }),
     };
   }
@@ -1376,9 +1400,11 @@ export class TracksService {
 
     // Get total count
     const totalCount = await this.prisma.comment.count({
-      where: { trackId, 
+      where: {
+        trackId,
         parentCommentId: null, // only count top-level comments for pagination
-       },
+        isDeleted: false,
+      },
     });
 
     // Get comments for the current page
@@ -1386,6 +1412,7 @@ export class TracksService {
       where: {
         trackId,
         parentCommentId: null, // only fetch top-level comments, replies will be fetched separately if needed
+        isDeleted: false, // exclude deleted comments
       },
       skip,
       take: validLimit,
@@ -1444,7 +1471,7 @@ export class TracksService {
       await this.prisma.$transaction([
         this.prisma.trackLike.count({ where: { trackId } }),
         this.prisma.repost.count({ where: { trackId } }),
-        this.prisma.comment.count({ where: { trackId } }),
+        this.prisma.comment.count({ where: { trackId, isDeleted: false } }),
         this.prisma.playHistory.count({ where: { trackId } }),
       ]);
 
@@ -1745,5 +1772,43 @@ export class TracksService {
     });
 
     return { message: 'Listening history cleared' };
+  }
+
+  async getDownloadUrl(trackId: string, userId: string) {
+    // 1. Fetch active subscription with plan details
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'ACTIVE',
+      },
+      include: { plan: true },
+    });
+
+    // 2. Check plan allows direct downloads (free plan has allowDirectDownload: false)
+    if (!subscription?.plan?.allowDirectDownload) {
+      throw new ForbiddenException(
+        'Your current plan does not support track downloads. Upgrade to Artist or Artist Pro.',
+      );
+    }
+
+    // 3. Fetch track
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId, isDeleted: false },
+    });
+
+    if (!track) throw new NotFoundException('Track not found');
+
+    // 5. Generate signed download URL (10 min expiry)
+    const downloadUrl = await this.storage.getSignedDownloadUrl(
+      track.audioUrl,
+      600,
+      track.title,
+    );
+
+    return {
+      trackId: track.id,
+      downloadUrl,
+      expiresInSeconds: 600,
+    };
   }
 }

@@ -25,6 +25,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 //import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @Injectable()
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mailerService: MailerService,
+    private readonly searchIndexService: SearchIndexService,
   ) {}
 
   // ─── Helper: Generate 6-char uppercase token ─────────────────────
@@ -156,7 +158,9 @@ export class AuthService {
         verificationToken,
       );
 
-      this.logger.log(`Reactivated soft-deleted account: ${reactivated.username}`);
+      this.logger.log(
+        `Reactivated soft-deleted account: ${reactivated.username}`,
+      );
 
       return {
         message: 'Account reactivated. Please verify your email.',
@@ -203,27 +207,18 @@ export class AuthService {
           },
         });
 
-        const freePlan = await tx.subscriptionPlan.upsert({
-          where: { name: 'FREE' },
-          update: {
-            isActive: true,
-            monthlyPrice: 0,
-            monthlyUploadMinutes: 100,
-          },
-          create: {
-            name: 'FREE',
-            description: 'Free tier',
-            monthlyPrice: 0,
-            monthlyUploadMinutes: 100,
-            isActive: true,
+        const freePlan = await tx.subscriptionPlan.findUnique({
+          where: { name: 'free' },
+          select: {
+            id: true,
           },
         });
 
         await tx.subscription.create({
           data: {
             user: { connect: { id: createdUser.id } },
-            plan: { connect: { id: freePlan.id } },
-            status: 'active',
+            plan: { connect: { id: freePlan?.id } },
+            status: 'ACTIVE',
             billingCycle: 'monthly',
           },
         });
@@ -338,6 +333,8 @@ export class AuthService {
     });
     this.logger.log(`User ${user.id} verified email and logged in`);
 
+    await this.searchIndexService.indexUser(user.id); //index new user
+
     // 9. Return tokens + user info
     return {
       message: 'Email verified successfully',
@@ -369,7 +366,7 @@ export class AuthService {
         message: 'Welcome back! Please sign in.',
       };
     }
-  
+
     return {
       exists: false,
       message: 'Email available. Please continue with registration.',
@@ -759,8 +756,8 @@ export class AuthService {
 
     // 7. Return generic success
     return {
-     
-      message: 'If an account exists with this email, you will receive a password reset link shortly.'
+      message:
+        'If an account exists with this email, you will receive a password reset link shortly.',
     };
   }
 

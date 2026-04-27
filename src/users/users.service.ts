@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
@@ -191,6 +191,8 @@ export class UsersService {
       this.prisma.track.findMany({
         where: {
           userId: userId,
+          isDeleted: false,
+          isHidden: false,
         },
         skip,
         take: limit,
@@ -781,7 +783,7 @@ export class UsersService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        status: 'active',
+        status: 'ACTIVE',
         endedAt: null,
         plan: {
           is: {
@@ -817,7 +819,7 @@ export class UsersService {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        status: 'active',
+        status: 'ACTIVE',
         endedAt: null,
         plan: {
           is: {
@@ -856,66 +858,231 @@ async getUserCollections(
   limit: number = 10,
   type?: CollectionType,
 ) {
-  // 1. Find user by username
-  const user = await this.prisma.user.findUnique({
-    where: { username },
-  });
-  if (!user) throw new NotFoundException('User not found');
+    // 1. Find user by username
+    const user = await this.prisma.user.findUnique({
+      where: { username },
+    });
+    if (!user) throw new NotFoundException('User not found');
 
-  const isOwner = requesterId === user.id;
-  const skip = (page - 1) * limit;
+    const isOwner = requesterId === user.id;
+    const skip = (page - 1) * limit;
 
-  // 2. Build where clause
-  const where = {
-    userId: user.id,
-    isDeleted: false,
-    ...(type ? { type } : {}),
-    ...(!isOwner ? { isPublic: true } : {}),
-  };
+    // 2. Build where clause
+    const where = {
+      userId: user.id,
+      isDeleted: false,
+      ...(type ? { type } : {}),
+      ...(!isOwner ? { isPublic: true } : {}),
+    };
 
-  const [collections, total] = await Promise.all([
-    this.prisma.collection.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        coverUrl: true,
-        isPublic: true,
-        type: true,
-        createdAt: true,
-        _count: {
-          select: {
-            tracks: true,
-            likes: true,
+    const [collections, total] = await Promise.all([
+      this.prisma.collection.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          coverUrl: true,
+          isPublic: true,
+          type: true,
+          createdAt: true,
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
+            },
           },
         },
+      }),
+      this.prisma.collection.count({ where }),
+    ]);
+
+    return {
+      data: collections.map((c) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        coverUrl: c.coverUrl,
+        isPublic: c.isPublic,
+        type: c.type,
+        tracksCount: c._count.tracks,
+        likesCount: c._count.likes,
+        createdAt: c.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      hasMore: skip + collections.length < total,
+    };
+  }
+
+  async getMyConversations(userId: string, page: number = 1, limit: number = 20) {
+    // Validate pagination parameters
+    const validPage = Math.max(1, page);
+    const validLimit = Math.max(1, Math.min(limit, 100));
+    const skip = (validPage - 1) * validLimit;
+
+    // Get list of users who have blocked this user
+    const blockedByUsers = (await this.prisma.userBlock.findMany({
+      where: { blockedId: userId },
+      select: { blockerId: true },
+    })).map(b => b.blockerId);
+
+    // Get conversations with related messages and users
+    const conversations = await this.prisma.conversation.findMany({
+        where: {
+          status: 'ACTIVE',
+          AND: [
+            {
+              OR: [
+                { user1Id: userId },
+                { user2Id: userId },
+              ],
+            },
+            {
+              AND: [
+                { user1Id: { notIn: blockedByUsers } },
+                { user2Id: { notIn: blockedByUsers } },
+              ],
+            },
+          ],
+        },
+        include: {
+          user1: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+          user2: {
+            select: {
+              id: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              content: true,
+              createdAt: true,
+              read: true,
+              senderId: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: validLimit,
+      }); 
+
+      const total = await this.prisma.conversation.count({
+        where: {
+          AND: [
+            {
+              OR: [
+                { user1Id: userId },
+                { user2Id: userId },
+              ],
+            },
+            {
+              AND: [
+                { user1Id: { notIn: blockedByUsers } },
+                { user2Id: { notIn: blockedByUsers } },
+              ],
+            },
+          ],
+        },
+      });
+    
+
+    // Format response
+    const items = conversations.map((conv) => {
+      const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
+      const lastMessage = conv.messages[0];
+
+      // Count unread messages from the other user
+      const unreadCount = conv.messages.filter(
+        (msg) => !msg.read && msg.senderId !== userId,
+      ).length;
+
+      return {
+        conversationId: conv.id,
+        otherUser: {
+          id: otherUser.id,
+          displayName: otherUser.displayName || 'Unknown User',
+          avatarUrl: otherUser.avatarUrl,
+        },
+        lastMessagePreview: lastMessage?.content || null,
+        lastMessageAt: lastMessage?.createdAt || null,
+        unreadCount,
+      };
+    });
+
+    return {
+      items,
+      page: validPage,
+      limit: validLimit,
+      total,
+      totalPages: Math.ceil(total / validLimit),
+      hasNextPage: skip + conversations.length < total,
+      hasPreviousPage: skip > 0,
+    };
+  }
+
+  async createConversation(userId: string, otherUserId: string) {
+    if (userId === otherUserId) {
+      throw new BadRequestException('Cannot create conversation with yourself');
+    }
+
+    // Check if conversation already exists
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        OR: [
+          { user1Id: userId, user2Id: otherUserId },
+          { user1Id: otherUserId, user2Id: userId },
+        ],
       },
-    }),
-    this.prisma.collection.count({ where }),
-  ]);
+    });
 
-  return {
-    data: collections.map((c) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      coverUrl: c.coverUrl,
-      isPublic: c.isPublic,
-      type: c.type,
-      tracksCount: c._count.tracks,
-      likesCount: c._count.likes,
-      createdAt: c.createdAt,
-    })),
-    total,
-    page,
-    limit,
-    hasMore: skip + collections.length < total,
-  };
-}
+    if (existing) {
+      return {
+        conversationId: existing.id,
+      }
+    }
 
+    // Create new conversation
+    const conversation = await this.prisma.conversation.create({
+      data: {
+        user1Id: userId,
+        user2Id: otherUserId,
+      },
+    });
 
+    return {
+      conversationId: conversation.id,
+    }
+  }
+
+  async getUnreadMessagesCount(userId: string) {
+    const count = await this.prisma.message.count({
+      where: {
+        read: false,
+        senderId: { not: userId },
+        conversation: {
+          OR: [
+            { user1Id: userId },
+            { user2Id: userId },
+          ],
+        },
+      },
+    });
+
+    return { unreadCount: count };
+  }
 }

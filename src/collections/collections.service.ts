@@ -42,33 +42,38 @@ export class CollectionsService {
       }
     }
 
-    // 2. Paywall check — free users max 10 playlists
-    const maxFreeCollections = parseInt(
-      process.env.MAX_FREE_COLLECTIONS ?? '10',
-    );
-    const isPremium = await this.prisma.subscription.findFirst({
+    // 2. Paywall check — check user's plan playlist limit
+    const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId,
-        status: 'active',
-        plan: { name: { in: ['PRO', 'GOPLUS'] } },
+        status: 'ACTIVE',
+      },
+      include: {
+        plan: {
+          select: { playlistLimit: true },
+        },
       },
     });
 
-    if (!isPremium) {
+    const playlistLimit = subscription?.plan?.playlistLimit ?? 3; // Default to free plan limit
+
+    if (playlistLimit !== -1) { // -1 means unlimited
       const count = await this.prisma.collection.count({
         where: { userId, isDeleted: false },
       });
-      if (count >= maxFreeCollections) {
+      if (count >= playlistLimit) {
         throw new BadRequestException(
-          `Free users can only create up to ${maxFreeCollections} collections`,
+          `You have reached the collection limit (${playlistLimit}) for your plan`,
         );
       }
     }
 
-    // 3. Upload cover image if provided
+    // 3. Handle cover image - file upload takes precedence over direct URL
     let coverUrl: string | null = null;
     if (coverFile) {
       coverUrl = await this.storage.uploadImage(coverFile);
+    } else if (dto.coverUrl) {
+      coverUrl = dto.coverUrl;
     }
 
     // 4. Generate secret token for private collections
@@ -120,47 +125,118 @@ try {
 ) {
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    userId,
-    isDeleted: false,
-    ...(type ? { type: type as CollectionType } : {}),
-  };
+  // Fetch owned collections
+  const ownedCollections = await this.prisma.collection.findMany({
+    where: {
+      userId,
+      isDeleted: false,
+      ...(type ? { type: type as CollectionType } : {}),
+    },
+    include: {
+      _count: {
+        select: {
+          tracks: true,
+          likes: true,
+        },
+      },
+    },
+  });
 
-  const [collections, total] = await Promise.all([
-    this.prisma.collection.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: {
-          select: {
-            tracks: true,
-            likes: true,
+  // Fetch liked collections (not owned by user, and must be public)
+  const likedCollections = await this.prisma.collectionLike.findMany({
+    where: {
+      userId,
+      collection: {
+        isDeleted: false,
+        isPublic: true, // Only public liked collections
+        userId: { not: userId }, // Exclude owned
+        ...(type ? { type: type as CollectionType } : {}),
+      },
+    },
+    include: {
+      collection: {
+        include: {
+          _count: {
+            select: {
+              tracks: true,
+              likes: true,
+            },
           },
         },
       },
+    },
+  });
+
+  // Combine and deduplicate (prefer owned)
+  const collectionMap = new Map();
+
+  // Add owned first
+  ownedCollections.forEach((c) => {
+    collectionMap.set(c.id, { ...c, isMine: true, isLiked: false });
+  });
+
+  // Add liked (only if not already owned)
+  likedCollections.forEach((like) => {
+    if (!collectionMap.has(like.collection.id)) {
+      collectionMap.set(like.collection.id, {
+        ...like.collection,
+        isMine: false,
+        isLiked: true,
+      });
+    }
+  });
+
+  // Convert to array and sort by createdAt desc
+  const allCollections = Array.from(collectionMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  // Paginate
+  const total = allCollections.length;
+  const paginatedCollections = allCollections.slice(skip, skip + limit);
+
+  // Add repostsCount and ownerFollowerCount for each
+  const collectionsWithCounts = await Promise.all(
+    paginatedCollections.map(async (c) => {
+      const repostsCount = await this.prisma.repost.count({
+        where: {
+          track: {
+            collectionTracks: {
+              some: { collectionId: c.id },
+            },
+          },
+        },
+      });
+
+      const ownerFollowerCount = await this.prisma.follow.count({
+        where: { followingId: c.userId },
+      });
+
+      return {
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        type: c.type,
+        privacy: c.isPublic ? 'public' : 'private',
+        coverUrl: c.coverUrl,
+        trackCount: c._count.tracks,
+        likeCount: c._count.likes,
+        repostsCount,
+        ownerFollowerCount,
+        isMine: c.isMine,
+        isLiked: c.isLiked,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      };
     }),
-    this.prisma.collection.count({ where }),
-  ]);
+  );
 
   return {
-    data: collections.map((c) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      type: c.type,
-      privacy: c.isPublic ? 'public' : 'private',
-      coverUrl: c.coverUrl,
-      trackCount: c._count.tracks,
-      likeCount: c._count.likes,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-    })),
+    data: collectionsWithCounts,
     total,
     page,
     limit,
-    hasMore: skip + collections.length < total,
+    hasMore: skip + limit < total,
   };
 }
 
@@ -180,6 +256,11 @@ async getCollectionById(collectionId: string, userId?: string) {
           username: true,
           displayName: true,
           avatarUrl: true,
+          _count: {
+            select: {
+              followers: true,
+            },
+          },
         },
       },
     },
@@ -193,6 +274,23 @@ async getCollectionById(collectionId: string, userId?: string) {
     throw new NotFoundException('Collection not found');
   }
 
+  const [repostsCount, isLiked] = await Promise.all([
+    this.prisma.repost.count({
+      where: {
+        track: {
+          collectionTracks: {
+            some: { collectionId: collection.id },
+          },
+        },
+      },
+    }),
+    userId
+      ? this.prisma.collectionLike.findFirst({
+          where: { collectionId: collection.id, userId },
+        }).then((like) => !!like)
+      : Promise.resolve(false),
+  ]);
+
   return {
     id: collection.id,
     title: collection.title,
@@ -202,7 +300,13 @@ async getCollectionById(collectionId: string, userId?: string) {
     coverUrl: collection.coverUrl,
     trackCount: collection._count.tracks,
     likeCount: collection._count.likes,
-    owner: collection.user,
+    repostsCount,
+    ownerFollowerCount: collection.user._count.followers,
+    isLiked,
+    owner: {
+      ...collection.user,
+      followerCount: collection.user._count.followers,
+    },
     createdAt: collection.createdAt.toISOString(),
     updatedAt: collection.updatedAt.toISOString(),
   };
@@ -225,12 +329,31 @@ async getCollectionByToken(token: string) {
           username: true,
           displayName: true,
           avatarUrl: true,
+          _count: {
+            select: {
+              followers: true,
+            },
+          },
         },
       },
     },
   });
 
   if (!collection) throw new NotFoundException('Collection not found');
+
+  const [repostsCount, isLiked] = await Promise.all([
+    this.prisma.repost.count({
+      where: {
+        track: {
+          collectionTracks: {
+            some: { collectionId: collection.id },
+          },
+        },
+      },
+    }),
+    // For token access, userId is not available, so isLiked is false
+    Promise.resolve(false),
+  ]);
 
   return {
     id: collection.id,
@@ -241,7 +364,13 @@ async getCollectionByToken(token: string) {
     coverUrl: collection.coverUrl,
     trackCount: collection._count.tracks,
     likeCount: collection._count.likes,
-    owner: collection.user,
+    repostsCount,
+    ownerFollowerCount: collection.user._count.followers,
+    isLiked,
+    owner: {
+      ...collection.user,
+      followerCount: collection.user._count.followers,
+    },
     createdAt: collection.createdAt.toISOString(),
     updatedAt: collection.updatedAt.toISOString(),
   };
@@ -273,10 +402,12 @@ async updateCollection(
     }
   }
 
-  // Handle cover image upload
+  // Handle cover image - file upload takes precedence over direct URL
   let coverUrl = collection.coverUrl;
   if (coverFile) {
     coverUrl = await this.storage.uploadImage(coverFile);
+  } else if (dto.coverUrl !== undefined) {
+    coverUrl = dto.coverUrl;
   }
 
   const updated = await this.prisma.collection.update({
@@ -382,6 +513,11 @@ async getCollectionTracks(
                 avatarUrl: true,
               },
             },
+            _count: {
+              select: {
+                playHistory: true,
+              },
+            },
           },
         },
       },
@@ -393,7 +529,10 @@ async getCollectionTracks(
     data: collectionTracks.map((ct) => ({
       position: ct.position,
       addedAt: ct.addedAt.toISOString(),
-      track: ct.track,
+      track: {
+        ...ct.track,
+        playCount: ct.track._count.playHistory,
+      },
     })),
     total,
     page,
@@ -601,5 +740,59 @@ async getEmbed(collectionId: string) {
 }
 
 
+
+
+async getShareUrl(collectionId: string, userId: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new ForbiddenException('Access denied');
+
+  const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
+  let shareUrl: string;
+  const appUrl = `tunify://collections/${collectionId}`;
+
+  if (collection.isPublic) {
+    shareUrl = `${frontendUrl}/collections/${collectionId}`;
+  } else {
+    // Ensure token exists for private collections
+    let token = collection.secretToken;
+    if (!token) {
+      token = randomBytes(16).toString('hex');
+      await this.prisma.collection.update({
+        where: { id: collectionId },
+        data: { secretToken: token },
+      });
+    }
+    shareUrl = `${frontendUrl}/collections/${collectionId}?token=${token}`;
+  }
+
+
+  return { shareUrl, appUrl };
+}
+
+async resetShareToken(collectionId: string, userId: string) {
+  const collection = await this.prisma.collection.findFirst({
+    where: { id: collectionId, isDeleted: false },
+  });
+
+  if (!collection) throw new NotFoundException('Collection not found');
+  if (collection.userId !== userId) throw new ForbiddenException('Access denied');
+
+  const newToken = randomBytes(16).toString('hex');
+  const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
+
+  await this.prisma.collection.update({
+    where: { id: collectionId },
+    data: { secretToken: newToken, isPublic: false },
+  });
+
+  const shareUrl = `${frontendUrl}/collections/${collectionId}?token=${newToken}`;
+  const appUrl = `tunify://collections/${collectionId}`;
+
+  return { shareUrl, appUrl };
+}
 
 }

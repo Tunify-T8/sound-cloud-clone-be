@@ -74,7 +74,7 @@ export class TracksController {
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
           new FileTypeValidator({
-            fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff)/,
+            fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/,
           }),
         ],
       }),
@@ -117,6 +117,15 @@ export class TracksController {
     return this.tracksService.getMyTracks(req.user?.userId ?? '');
   }
 
+  @Get(':id/download')
+  @UseGuards(JwtAccessGuard)
+  async getDownloadUrl(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
+    return this.tracksService.getDownloadUrl(trackId, req.user?.userId ?? '');
+  }
+
   @Get(':id/status')
   @UseGuards(JwtAccessGuard)
   getStatus(@Param('id', ParseUUIDPipe) trackId: string) {
@@ -125,8 +134,14 @@ export class TracksController {
 
   @Get(':id')
   @UseGuards(JwtAccessGuard)
-  async getTrack(@Param('id', ParseUUIDPipe) trackId: string) {
-    const track = await this.tracksService.getTrack(trackId);
+  async getTrack(
+    @Param('id', ParseUUIDPipe) trackId: string,
+    @Request() req: AuthRequest,
+  ) {
+    const track = await this.tracksService.getTrack(
+      trackId,
+      req.user?.userId ?? '',
+    );
     if (!track) {
       return { message: 'Track not found', statusCode: 404 };
     } else {
@@ -220,7 +235,7 @@ export class TracksController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: /audio\/(mpeg|wav)/ }),
+          new FileTypeValidator({ fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/ }),
         ],
       }),
     )
@@ -233,28 +248,39 @@ export class TracksController {
     );
   }
 
- 
-  @Post(":id/like")
+  @Post(':id/like')
   @UseGuards(JwtAccessGuard)
-  async likeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+  async likeTrack(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
     return this.tracksService.likeTrack(trackId, req.user?.userId ?? '');
   }
 
-  @Delete(":id/like")
+  @Delete(':id/like')
   @UseGuards(JwtAccessGuard)
-  async unlikeTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+  async unlikeTrack(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
     return this.tracksService.unlikeTrack(trackId, req.user?.userId ?? '');
   }
 
-  @Post(":id/repost")
+  @Post(':id/repost')
   @UseGuards(JwtAccessGuard)
-  async repostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+  async repostTrack(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
     return this.tracksService.repostTrack(trackId, req.user?.userId ?? '');
   }
 
-  @Delete(":id/repost")
+  @Delete(':id/repost')
   @UseGuards(JwtAccessGuard)
-  async unrepostTrack(@Request() req: AuthRequest, @Param('id',ParseUUIDPipe) trackId: string) {
+  async unrepostTrack(
+    @Request() req: AuthRequest,
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
     return this.tracksService.unrepostTrack(trackId, req.user?.userId ?? '');
   }
 
@@ -262,15 +288,20 @@ export class TracksController {
   @UseGuards(JwtAccessGuard)
   async addComment(
     @Request() req: AuthRequest,
-    @Param('id',ParseUUIDPipe) trackId: string,
+    @Param('id', ParseUUIDPipe) trackId: string,
     @Body('text') text: string,
     @Body('timestamp') timestamp: number,
   ) {
     // Implement comment creation logic here
-    return this.tracksService.addComment(trackId, req.user?.userId ?? '', text, timestamp);
+    return this.tracksService.addComment(
+      trackId,
+      req.user?.userId ?? '',
+      text,
+      timestamp,
+    );
   }
 
- @Get(':id/likes')
+  @Get(':id/likes')
   @UseGuards(JwtAccessGuard)
   async getTrackLikes(
     @Param('id', ParseUUIDPipe) trackId: string,
@@ -314,14 +345,15 @@ export class TracksController {
     );
   }
 
-
   @Get(':id/engagement')
   @UseGuards(JwtAccessGuard)
   async getEngagement(
     @Request() req: AuthRequest,
-    @Param('id', ParseUUIDPipe) trackId: string) 
-  {
-    return this.tracksService.getEngagementMetrics(trackId, req.user?.userId ?? '');
+    @Param('id', ParseUUIDPipe) trackId: string,
+  ) {
+    return this.tracksService.getEngagementMetrics(
+      trackId,
+      req.user?.userId ?? '',
+    );
   }
-
 }

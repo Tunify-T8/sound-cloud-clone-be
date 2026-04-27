@@ -7,6 +7,7 @@ import {
   SearchTracksDto,
   SearchCollectionsDto,
   SearchPeopleDto,
+  AutocompleteDto,
 } from './dto/search.dto';
 
 @Controller('search')
@@ -37,5 +38,10 @@ export class SearchController {
     @Optional() @usersDecorator.CurrentUser() user?: usersDecorator.JwtPayload,
   ) {
     return this.searchService.searchPeople(query, user?.userId);
+  }
+
+  @Get('autocomplete')
+  autocomplete(@Query() dto: AutocompleteDto) {
+    return this.searchService.autocomplete(dto.q);
   }
 }
