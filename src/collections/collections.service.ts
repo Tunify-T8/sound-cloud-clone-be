@@ -44,13 +44,13 @@ export class CollectionsService {
 
     // 2. Paywall check — free users max 10 collections
     const maxFreeCollections = parseInt(
-      process.env.MAX_FREE_COLLECTIONS ?? '2',
+      process.env.MAX_FREE_COLLECTIONS ?? '3',
     );
     const isPremium = await this.prisma.subscription.findFirst({
       where: {
         userId,
         status: 'ACTIVE',
-        plan: { name: { in: ['PRO', 'pro', 'Pro', 'Pro_Plus'] } },
+        plan: { name: { in: ['artist', 'artist-pro'] } },
       },
     });
 
