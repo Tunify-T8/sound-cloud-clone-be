@@ -7,6 +7,7 @@ export class FollowUserDto {
   isCertified: boolean;
   isNotificationEnabled: boolean | null;
   followersCount: number;
+  isFollowing: boolean | null;
 }
 
 export class FollowListDto {
