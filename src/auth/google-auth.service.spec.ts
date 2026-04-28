@@ -298,6 +298,13 @@ describe('GoogleAuthService', () => {
           expect.objectContaining({ where: { name: 'FREE' } }),
         );
         expect(capturedTx.subscription.create).toHaveBeenCalledTimes(1);
+        expect(capturedTx.oAuthAccount.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.not.objectContaining({
+              accessToken: expect.anything(),
+            }),
+          }),
+        );
       });
 
       it('should throw InternalServerErrorException if user creation fails', async () => {
@@ -335,6 +342,13 @@ describe('GoogleAuthService', () => {
           data: expect.objectContaining({
             provider: 'GOOGLE',
             providerUserId: 'google-id-123',
+          }),
+        }),
+      );
+      expect(prisma.oAuthAccount.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({
+            accessToken: expect.anything(),
           }),
         }),
       );
