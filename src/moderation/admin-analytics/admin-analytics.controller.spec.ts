@@ -30,16 +30,26 @@ describe('AdminAnalyticsController', () => {
   afterEach(() => jest.clearAllMocks());
 
   // ── getSummary ────────────────────────────────────────────
-  describe('getSummary', () => {
-    it('should call service and return result', async () => {
-      const mockResult = { totalUsers: 10 };
+  describe('getSummary - Controller', () => {
+    it('should return summary including new fields', async () => {
+      const mockResult = {
+        totalUsers: 10,
+        artistCount: 4,
+        listenerCount: 6,
+        artistToListenerRatio: 0.67,
+        completedPlays: 68,
+        playThroughRate: 68,
+        totalStorageBytes: 5_000_000_000,
+        totalStorageGB: 5,
+      };
 
       mockAdminAnalyticsService.getSummary.mockResolvedValue(mockResult);
 
       const result = await controller.getSummary();
 
-      expect(mockAdminAnalyticsService.getSummary).toHaveBeenCalled();
-      expect(result).toEqual(mockResult);
+      expect(result.artistToListenerRatio).toBe(0.67);
+      expect(result.playThroughRate).toBe(68);
+      expect(result.totalStorageGB).toBe(5);
     });
   });
 
