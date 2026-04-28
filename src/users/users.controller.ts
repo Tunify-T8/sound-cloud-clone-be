@@ -162,6 +162,17 @@ export class UsersController {
     return this.usersService.getLikedTracks(id, page, limit);
   }
 
+  // ─── GET /me/popular-tracks ────────────────────────────
+  @Get('me/popular-tracks')
+  @UseGuards(JwtAccessGuard)
+  getPopularTracks(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.usersService.getPopularTracks(user.userId, page, limit);
+  }
+
   // ─── GET /me/followers───────────────────────────────────────
   //returns my followers
   @UseGuards(JwtAccessGuard)
