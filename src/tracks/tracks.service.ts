@@ -402,22 +402,86 @@ export class TracksService {
     userId: string,
     file: Express.Multer.File,
   ) {
-    // 1. find track
+    // 1. Find track
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
     });
 
-    // 2. check exists
     if (!track) throw new NotFoundException('Track not found');
-
-    // 3. check ownership
     if (track.userId !== userId) throw new ForbiddenException();
 
-    // 4. get extension
-    const extension = file.originalname.split('.').pop();
+    // 2. Extract duration once — will be passed to processor to avoid running ffprobe twice
+    const extension = file.originalname.split('.').pop() ?? '';
+    const durationSeconds = await this.audio.extractDuration(
+      file.buffer,
+      extension,
+    );
 
-    // 5. update track in DB
+    // 3. Resolve plan
+    const subscription = await this.prisma.subscription.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      include: { plan: true },
+    });
 
+    let plan = subscription?.plan;
+    if (!plan) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { name: 'free' },
+      });
+      if (!plan)
+        throw new Error('free subscription plan not found in database');
+    }
+
+    // 4. Enforce quota — skip if plan is unlimited (-1)
+    if (plan.monthlyUploadMinutes !== -1) {
+      const monthlyLimitSeconds = plan.monthlyUploadMinutes * 60;
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const uploadedThisMonth = await this.prisma.track.aggregate({
+        where: {
+          userId,
+          isDeleted: false,
+          transcodingStatus: 'finished',
+          createdAt: { gte: monthStart },
+        },
+        _sum: { durationSeconds: true },
+      });
+
+      const usedSeconds = uploadedThisMonth._sum.durationSeconds ?? 0;
+
+      // In uploadAudio, replace the quota exceeded throw with:
+
+      console.log('used seconds: ' + usedSeconds);
+      console.log('duration seconds: ' + durationSeconds);
+      console.log('monthly limit: ' + monthlyLimitSeconds);
+
+      if (usedSeconds + durationSeconds > monthlyLimitSeconds) {
+        const remainingSeconds = Math.max(monthlyLimitSeconds - usedSeconds, 0);
+
+        // Clean up the ghost track row created in POST /tracks
+        if (!track.audioUrl || track.audioUrl === '') {
+          await this.prisma.$transaction([
+            this.prisma.trackTag.deleteMany({ where: { trackId } }),
+            this.prisma.trackArtist.deleteMany({ where: { trackId } }),
+            this.prisma.trackRegionRestriction.deleteMany({
+              where: { trackId },
+            }),
+            this.prisma.track.delete({ where: { id: trackId } }),
+          ]);
+        }
+
+        throw new ForbiddenException({
+          error: 'upload_limit_reached',
+          uploadMinutesRemaining: Math.floor(remainingSeconds / 60),
+          message: 'You have reached the upload limit for your plan.',
+        });
+      }
+    }
+
+    // 5. Update track in DB
     await this.prisma.track.update({
       where: { id: trackId },
       data: {
@@ -427,13 +491,14 @@ export class TracksService {
       },
     });
 
-    // 8. add job to queue — don't await, return immediately
+    // 6. Enqueue — pass durationSeconds so processor skips ffprobe
     this.tracksQueue
       .add('process-track', {
         trackId,
         userId,
         fileBuffer: file.buffer,
         extension,
+        durationSeconds,
       })
       .then((job) => {
         console.log('Job added successfully, job id:', job.id);
@@ -910,7 +975,7 @@ export class TracksService {
       where: {
         userId: userId,
         plan: {
-          name: { in: ['PRO', 'GOPLUS'] },
+          name: { in: ['artist', 'artist-pro'] },
         },
       },
       include: {

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
@@ -884,27 +885,59 @@ export class UsersService {
           },
         },
       },
-      include: {
-        plan: true,
-      },
+      include: { plan: true },
       orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 100;
-    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+    let plan = subscription?.plan;
+    if (!plan) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { name: 'free' },
+      });
+    }
+
+    const monthlyLimitMinutes = plan?.monthlyUploadMinutes ?? 180;
+    const isUnlimited = monthlyLimitMinutes === -1;
+
+    // Calculate actual used minutes from finished tracks this month
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const uploadedThisMonth = await this.prisma.track.aggregate({
+      where: {
+        userId,
+        isDeleted: false,
+        transcodingStatus: 'finished',
+        createdAt: { gte: monthStart },
+      },
+      _sum: { durationSeconds: true },
+    });
+
+    const usedSeconds = uploadedThisMonth._sum.durationSeconds ?? 0;
+    const usedMinutes = Math.floor(usedSeconds / 60);
+    const remainingMinutes = isUnlimited
+      ? -1
+      : Math.max(monthlyLimitMinutes - usedMinutes, 0);
+
+    const limitReached = !isUnlimited && remainingMinutes === 0;
+
+    if (limitReached) {
+      throw new ForbiddenException({
+        error: 'upload_limit_reached',
+        uploadMinutesRemaining: 0,
+        message: 'You have reached the upload limit for your plan.',
+      });
+    }
 
     return {
-      tier: subscription?.plan?.name ?? 'free',
-      uploadMinutesLimit: uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
+      tier: subscription?.plan?.name ?? 'FREE',
+      uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
         0,
       ),
-      adFree: subscription?.plan?.adFree ?? false,
-      offlineListening: subscription?.plan?.allowOfflineListening ?? false,
-      playbackAccess: subscription?.plan?.playbackAccess ?? false,
-      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
@@ -944,16 +977,13 @@ export class UsersService {
   //   };
   // }
 
-
-
-
-async getUserCollections(
-  username: string,
-  requesterId: string | undefined,
-  page: number = 1,
-  limit: number = 10,
-  type?: CollectionType,
-) {
+  async getUserCollections(
+    username: string,
+    requesterId: string | undefined,
+    page: number = 1,
+    limit: number = 10,
+    type?: CollectionType,
+  ) {
     // 1. Find user by username
     const user = await this.prisma.user.findUnique({
       where: { username },
@@ -1080,8 +1110,24 @@ async getUserCollections(
       take: validLimit,
     });
 
-      // total is the 
-      const total = conversations.length
+      const total = await this.prisma.conversation.count({
+        where: {
+          AND: [
+            {
+              OR: [
+                { user1Id: userId },
+                { user2Id: userId },
+              ],
+            },
+            {
+              AND: [
+                { user1Id: { notIn: blockedByUsers } },
+                { user2Id: { notIn: blockedByUsers } },
+              ],
+            },
+          ],
+        },
+      });
     
 
     // Format response
@@ -1137,31 +1183,6 @@ async getUserCollections(
       return {
         message: 'Conversation already exists',
         conversationId: existing.id,
-      };
-    }
-
-    const otherUser = await this.prisma.user.findUnique({
-      where: { id: otherUserId },
-    });
-
-    if (!otherUser) {
-      throw new NotFoundException('Other user not found');
-    }
-
-    if(otherUser.allowMessages === false)
-    {
-      // Check if the other user follows the user trying to create the conversation
-      const follows = await this.prisma.follow.findFirst({
-        where: { 
-          followerId: otherUserId,  // Does otherUser follow...
-          followingId: userId,      // ...userId?
-        },
-      });
-
-      // If otherUser doesn't follow userId, throw an error
-      if(!follows)
-      {
-        throw new BadRequestException('Cannot create conversation. The user only allows messages from people they follow.');
       }
     }
 
