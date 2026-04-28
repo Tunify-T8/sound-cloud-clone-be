@@ -79,6 +79,8 @@ export class TracksService {
       return { status: 'blocked', blockedReason: 'processing_failed' };
     }
 
+
+
     // 4. Private track — check token
     if (!track.isPublic) {
       if (!privateToken || privateToken !== track.privateToken) {
