@@ -2,7 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
@@ -929,8 +929,7 @@ export class UsersService {
         message: 'You have reached the upload limit for your plan.',
       });
     }
-    
-    
+
     return {
       tier: plan?.name ?? 'free',
       uploadMinutesLimit: isUnlimited ? -1 : monthlyLimitMinutes,
@@ -966,7 +965,8 @@ export class UsersService {
 
     return {
       tier: subscription?.plan?.name ?? 'free',
-      uploadMinutesLimit: uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
+      uploadMinutesLimit:
+        uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
@@ -975,7 +975,10 @@ export class UsersService {
       adFree: subscription?.plan?.adFree ?? false,
       offlineListening: subscription?.plan?.allowOfflineListening ?? false,
       playbackAccess: subscription?.plan?.playbackAccess ?? false,
-      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
+      playlistLimit:
+        subscription?.plan?.playlistLimit === -1
+          ? 'unlimited'
+          : (subscription?.plan?.playlistLimit ?? 3),
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
@@ -1015,16 +1018,13 @@ export class UsersService {
   //   };
   // }
 
-
-
-
-async getUserCollections(
-  username: string,
-  requesterId: string | undefined,
-  page: number = 1,
-  limit: number = 10,
-  type?: CollectionType,
-) {
+  async getUserCollections(
+    username: string,
+    requesterId: string | undefined,
+    page: number = 1,
+    limit: number = 10,
+    type?: CollectionType,
+  ) {
     // 1. Find user by username
     const user = await this.prisma.user.findUnique({
       where: { username },
@@ -1153,9 +1153,8 @@ async getUserCollections(
       take: validLimit,
     });
 
-      // total is the 
-      const total = conversations.length
-    
+    // total is the
+    const total = conversations.length;
 
     // Format response
     const items = conversations.map((conv) => {
@@ -1222,20 +1221,20 @@ async getUserCollections(
       throw new NotFoundException('Other user not found');
     }
 
-    if(otherUser.allowMessages === false)
-    {
+    if (otherUser.allowMessages === false) {
       // Check if the other user follows the user trying to create the conversation
       const follows = await this.prisma.follow.findFirst({
-        where: { 
-          followerId: otherUserId,  // Does otherUser follow...
-          followingId: userId,      // ...userId?
+        where: {
+          followerId: otherUserId, // Does otherUser follow...
+          followingId: userId, // ...userId?
         },
       });
 
       // If otherUser doesn't follow userId, throw an error
-      if(!follows)
-      {
-        throw new BadRequestException('Cannot create conversation. The user only allows messages from people they follow.');
+      if (!follows) {
+        throw new BadRequestException(
+          'Cannot create conversation. The user only allows messages from people they follow.',
+        );
       }
     }
 
@@ -1265,5 +1264,19 @@ async getUserCollections(
     });
 
     return { unreadCount: count };
+  }
+
+  async getGenres() {
+    return this.prisma.genre.findMany({
+      where: {
+        tracks: {
+          some: {}, // means: at least one track exists
+        },
+      },
+      select: {
+        id: true,
+        label: true,
+      },
+    });
   }
 }

@@ -397,4 +397,8 @@ export class UsersController {
       CollectionType.PLAYLIST,
     );
   }
+  @Get('me/track-genres')
+  getGenre() {
+    return this.usersService.getGenres();
+  }
 }
