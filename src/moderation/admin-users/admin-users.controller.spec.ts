@@ -12,12 +12,16 @@ type ServiceMock = {
     [string, string, SuspendUserDto]
   >;
   unsuspendUser: jest.Mock<Promise<{ message: string }>, [string]>;
+  banUser: jest.Mock<Promise<{ message: string }>, [string, string]>;
+  unbanUser: jest.Mock<Promise<{ message: string }>, [string]>;
 };
 
 const mockAdminUsersService: ServiceMock = {
   getUserModerationOverview: jest.fn(),
   suspendUser: jest.fn(),
   unsuspendUser: jest.fn(),
+  banUser: jest.fn(),
+  unbanUser: jest.fn(),
 };
 
 describe('AdminUsersController', () => {
@@ -124,6 +128,55 @@ describe('AdminUsersController', () => {
       mockAdminUsersService.unsuspendUser.mockResolvedValue(mockResult);
 
       const result = await controller.unsuspendUser('user-1');
+
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  // ── banUser ───────────────────────────────────────────────
+  describe('banUser', () => {
+    it('should call service with correct params', async () => {
+      mockAdminUsersService.banUser.mockResolvedValue({
+        message: 'User banned',
+      });
+
+      await controller.banUser('user-1', adminUser);
+
+      expect(mockAdminUsersService.banUser).toHaveBeenCalledWith(
+        'user-1',
+        'admin-1',
+      );
+    });
+
+    it('should return service result', async () => {
+      const mockResult = { message: 'User banned' };
+
+      mockAdminUsersService.banUser.mockResolvedValue(mockResult);
+
+      const result = await controller.banUser('user-1', adminUser);
+
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  // ── unbanUser ─────────────────────────────────────────────
+  describe('unbanUser', () => {
+    it('should call service with userId', async () => {
+      mockAdminUsersService.unbanUser.mockResolvedValue({
+        message: 'User unbanned',
+      });
+
+      await controller.unbanUser('user-1');
+
+      expect(mockAdminUsersService.unbanUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should return service result', async () => {
+      const mockResult = { message: 'User unbanned' };
+
+      mockAdminUsersService.unbanUser.mockResolvedValue(mockResult);
+
+      const result = await controller.unbanUser('user-1');
 
       expect(result).toEqual(mockResult);
     });
