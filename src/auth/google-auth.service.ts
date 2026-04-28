@@ -18,6 +18,7 @@ import { StringValue } from 'ms';
 export class GoogleAuthService {
   private readonly logger = new Logger(GoogleAuthService.name);
   private readonly oauthClient: OAuth2Client;
+  private readonly oauthClientMobile: OAuth2Client;
   private static readonly GOOGLE_ISSUERS = new Set([
     'accounts.google.com',
     'https://accounts.google.com',
@@ -28,10 +29,18 @@ export class GoogleAuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
+    // Web client — for frontend web
     this.oauthClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
       this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
       this.configService.get<string>('GOOGLE_REDIRECT_URI'),
+    );
+
+    // Mobile client — for Flutter
+    this.oauthClientMobile = new OAuth2Client(
+      this.configService.get<string>('GOOGLE_MOBILE_CLIENT_ID'),
+      this.configService.get<string>('GOOGLE_MOBILE_CLIENT_SECRET'),
+      'postmessage',
     );
   }
 
@@ -131,7 +140,6 @@ export class GoogleAuthService {
     if (!(error instanceof Error)) {
       return false;
     }
-
     const maybeCode = (error as { code?: string }).code;
     return (
       maybeCode === 'ETIMEDOUT' ||
@@ -140,16 +148,26 @@ export class GoogleAuthService {
     );
   }
 
-  private async verifyGoogleIdTokenWithFallback(idToken: string): Promise<{
+  private async verifyGoogleIdTokenWithFallback(
+    idToken: string,
+    isMobile: boolean = false,
+  ): Promise<{
     sub: string;
     email: string;
     name?: string;
     picture?: string;
   }> {
+    // Use the correct client ID for audience verification
+    const expectedAudience = isMobile
+      ? this.configService.get<string>('GOOGLE_MOBILE_CLIENT_ID')
+      : this.configService.get<string>('GOOGLE_CLIENT_ID');
+
+    const client = isMobile ? this.oauthClientMobile : this.oauthClient;
+
     try {
-      const ticket = await this.oauthClient.verifyIdToken({
+      const ticket = await client.verifyIdToken({
         idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: expectedAudience,
       });
 
       const payload = ticket.getPayload();
@@ -210,8 +228,6 @@ export class GoogleAuthService {
         sub?: string;
       };
 
-      const expectedAudience =
-        this.configService.get<string>('GOOGLE_CLIENT_ID');
       const expiresAtMs = Number(payload.exp) * 1000;
       const emailVerified =
         payload.email_verified === undefined ||
@@ -242,19 +258,27 @@ export class GoogleAuthService {
     }
   }
 
-  private async getGoogleUser(code: string): Promise<{
+  private async getGoogleUser(
+    code: string,
+    isMobile: boolean = false,
+  ): Promise<{
     googleId: string;
     email: string;
     name: string;
     picture: string | null;
   }> {
+    const client = isMobile ? this.oauthClientMobile : this.oauthClient;
+
     try {
-      const { tokens } = await this.oauthClient.getToken(code);
+      const { tokens } = await client.getToken(code);
       if (!tokens.id_token) {
         throw new UnauthorizedException('Google did not return an ID token');
       }
 
-      const payload = await this.verifyGoogleIdTokenWithFallback(tokens.id_token);
+      const payload = await this.verifyGoogleIdTokenWithFallback(
+        tokens.id_token,
+        isMobile,
+      );
 
       return {
         googleId: payload.sub,
@@ -272,7 +296,7 @@ export class GoogleAuthService {
 
   // ─── Google Auth (Sign In / Register) ────────────────────────────
   async googleAuth(dto: GoogleAuthDto) {
-    const googleUser = await this.getGoogleUser(dto.code);
+    const googleUser = await this.getGoogleUser(dto.code, dto.isMobile ?? false);
 
     const existingOAuth = await this.prisma.oAuthAccount.findUnique({
       where: {

@@ -27,7 +27,8 @@ export class AdminUsersService {
     if (user.isDeleted) throw new NotFoundException('User not found');
     if (user.isSuspended)
       throw new BadRequestException('User is already suspended');
-
+    if (adminId == targetUserId)
+      throw new BadRequestException('Cannot Ban Yourself');
     const suspendedUntil = dto.durationHours
       ? new Date(Date.now() + dto.durationHours * 60 * 60 * 1000)
       : null;
@@ -53,6 +54,10 @@ export class AdminUsersService {
 
     if (!user) throw new NotFoundException('User not found');
     if (user.isDeleted) throw new NotFoundException('User not found');
+    if (user.isBanned)
+      throw new BadRequestException(
+        'User is permanently banned and cannot be unsuspended',
+      );
     if (!user.isSuspended)
       throw new BadRequestException('User is not suspended');
 
@@ -68,6 +73,55 @@ export class AdminUsersService {
     await this.searchIndexService.indexUser(user.id);
 
     return { message: 'User unsuspended' };
+  }
+
+  async banUser(targetUserId: string, adminId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isDeleted) throw new NotFoundException('User not found');
+    if (user.isBanned) throw new BadRequestException('User is already banned');
+    if (adminId == targetUserId)
+      throw new BadRequestException("Can't Ban Yourself");
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        isBanned: true,
+        bannedById: adminId,
+        //force-clear any active suspension — banned supersedes suspended
+        isSuspended: false,
+        suspendedById: null,
+        suspendedUntil: null,
+        suspensionReason: null,
+      },
+    });
+    await this.searchIndexService.indexUser(user.id);
+
+    return { message: 'User banned' };
+  }
+
+  async unbanUser(targetUserId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isDeleted) throw new NotFoundException('User not found');
+    if (!user.isBanned) throw new BadRequestException('User is not banned');
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        isBanned: false,
+        bannedById: null,
+      },
+    });
+    await this.searchIndexService.indexUser(user.id);
+
+    return { message: 'User unbanned' };
   }
 
   async getUserModerationOverview(targetUserId: string) {

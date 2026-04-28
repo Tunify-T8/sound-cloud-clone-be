@@ -180,7 +180,7 @@ export class ConversationsService {
             data: { status: 'ARCHIVED' },
         });
         return { message: `Conversation ${conversationId} archived for user ${userId}` };
-    }
+    }    
 
     async unarchiveConversation(userId: string, conversationId: string) {
         const conversation = await this.prisma.conversation.findUnique({

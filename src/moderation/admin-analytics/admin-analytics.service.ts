@@ -10,7 +10,6 @@ export class AdminAnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Summary ────────────────────────────────────────────────────
-
   async getSummary() {
     const now = new Date();
     const startOfToday = new Date(now);
@@ -30,11 +29,15 @@ export class AdminAnalyticsService {
       activeUsers,
       suspendedUsers,
       bannedUsers,
+      artistCount,
+      listenerCount,
       totalTracks,
       newTracksToday,
       newTracksThisWeek,
       totalPlays,
       playsToday,
+      completedPlays,
+      trackStorage,
       totalReports,
       pendingReports,
     ] = await Promise.all([
@@ -55,6 +58,8 @@ export class AdminAnalyticsService {
         where: { isDeleted: false, isSuspended: true },
       }),
       this.prisma.user.count({ where: { isDeleted: false, isBanned: true } }),
+      this.prisma.user.count({ where: { isDeleted: false, role: 'ARTIST' } }), // ← new
+      this.prisma.user.count({ where: { isDeleted: false, role: 'LISTENER' } }), // ← new
       this.prisma.track.count({ where: { isDeleted: false } }),
       this.prisma.track.count({
         where: { isDeleted: false, createdAt: { gte: startOfToday } },
@@ -66,9 +71,26 @@ export class AdminAnalyticsService {
       this.prisma.playHistory.count({
         where: { playedAt: { gte: startOfToday } },
       }),
+      this.prisma.playHistory.count({ where: { completed: true } }), // ← new
+      this.prisma.track.aggregate({
+        where: { isDeleted: false },
+        _sum: { fileSizeBytes: true },
+      }),
       this.prisma.report.count(),
       this.prisma.report.count({ where: { status: 'PENDING' } }),
     ]);
+
+    const totalStorageBytes = trackStorage._sum.fileSizeBytes ?? 0;
+    const totalStorageGB = Math.round((totalStorageBytes / 1e9) * 100) / 100;
+
+    const playThroughRate =
+      totalPlays > 0
+        ? Math.round((completedPlays / totalPlays) * 1000) / 10
+        : 0;
+    const artistToListenerRatio =
+      listenerCount > 0
+        ? Math.round((artistCount / listenerCount) * 100) / 100
+        : null;
 
     return {
       totalUsers,
@@ -77,11 +99,18 @@ export class AdminAnalyticsService {
       activeUsers,
       suspendedUsers,
       bannedUsers,
+      artistCount,
+      listenerCount,
+      artistToListenerRatio,
       totalTracks,
       newTracksToday,
       newTracksThisWeek,
       totalPlays,
       playsToday,
+      completedPlays,
+      playThroughRate,
+      totalStorageBytes,
+      totalStorageGB,
       totalReports,
       pendingReports,
       generatedAt: now.toISOString(),

@@ -2,12 +2,17 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
 import { UserDto } from './dto/user.dto';
-import { UserTracksDto, LikedTracksDto } from './dto/user-tracks.dto';
+import {
+  UserTracksDto,
+  LikedTracksDto,
+  PopularTracks,
+} from './dto/user-tracks.dto';
 import { UserRepostsDto } from './dto/user-reposts.dto';
 import { UserCollectionsDto } from './dto/user-collections.dto';
 import { CollectionType, SocialPlatform } from '@prisma/client';
@@ -428,6 +433,61 @@ export class UsersService {
     };
   }
 
+  async getPopularTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<PopularTracks> {
+    const skip = (page - 1) * limit;
+
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: { userId, isDeleted: false, isHidden: false, isPublic: true },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          audioUrl: true,
+          coverUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          _count: {
+            select: {
+              playHistory: true,
+              likes: true,
+              comments: true,
+              reposts: true,
+            },
+          },
+        },
+        orderBy: { playHistory: { _count: 'desc' } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.track.count({
+        where: { userId, isDeleted: false, isHidden: false, isPublic: true },
+      }),
+    ]);
+
+    return {
+      tracks: tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        description: track.description,
+        audioUrl: track.audioUrl,
+        coverUrl: track.coverUrl,
+        duration: track.durationSeconds,
+        playsCount: track._count.playHistory,
+        likesCount: track._count.likes,
+        commentsCount: track._count.comments,
+        repostsCount: track._count.reposts,
+        createdAt: track.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+    };
+  }
   async getFollowList(
     userId: string,
     direction: 'followers' | 'following',
@@ -821,6 +881,76 @@ export class UsersService {
         plan: {
           is: {
             name: { in: ['free', 'artist', 'artist-pro'] },
+            isActive: true,
+          },
+        },
+      },
+      include: { plan: true },
+      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    let plan = subscription?.plan;
+    if (!plan) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { name: 'free' },
+      });
+    }
+
+    const monthlyLimitMinutes = plan?.monthlyUploadMinutes ?? 180;
+    const isUnlimited = monthlyLimitMinutes === -1;
+
+    // Calculate actual used minutes from finished tracks this month
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const uploadedThisMonth = await this.prisma.track.aggregate({
+      where: {
+        userId,
+        isDeleted: false,
+        transcodingStatus: 'finished',
+        createdAt: { gte: monthStart },
+      },
+      _sum: { durationSeconds: true },
+    });
+
+    const usedSeconds = uploadedThisMonth._sum.durationSeconds ?? 0;
+    const usedMinutes = Math.floor(usedSeconds / 60);
+    const remainingMinutes = isUnlimited
+      ? -1
+      : Math.max(monthlyLimitMinutes - usedMinutes, 0);
+
+    const limitReached = !isUnlimited && remainingMinutes === 0;
+
+    if (limitReached) {
+      throw new ForbiddenException({
+        error: 'upload_limit_reached',
+        uploadMinutesRemaining: 0,
+        message: 'You have reached the upload limit for your plan.',
+      });
+    }
+    
+    
+    return {
+      tier: plan?.name ?? 'free',
+      uploadMinutesLimit: isUnlimited ? -1 : monthlyLimitMinutes,
+      uploadMinutesUsed: usedMinutes,
+      uploadMinutesRemaining: remainingMinutes,
+      canReplaceFiles: plan?.allowReplace ?? false,
+      canScheduleRelease: plan?.allowScheduledRelease ?? false,
+      canAccessAdvancedTab: plan?.allowAdvancedTabAccess ?? false,
+    };
+  }
+
+  async getUploadMinutes(userId: string) {
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        endedAt: null,
+        plan: {
+          is: {
+            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
             isActive: true,
           },
         },

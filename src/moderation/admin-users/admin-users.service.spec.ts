@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminUsersService } from './admin-users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 // ── Typed Prisma Mock ───────────────────────────────────────
 type MockFn<A extends unknown[], R> = jest.Mock<Promise<R>, A>;
@@ -26,6 +27,14 @@ const mockPrisma: PrismaMock = {
   },
 };
 
+type SearchIndexMock = {
+  indexUser: jest.Mock<Promise<void>, [string]>;
+};
+
+const mockSearchIndexService: SearchIndexMock = {
+  indexUser: jest.fn(),
+};
+
 describe('AdminUsersService', () => {
   let service: AdminUsersService;
 
@@ -34,6 +43,7 @@ describe('AdminUsersService', () => {
       providers: [
         AdminUsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: SearchIndexService, useValue: mockSearchIndexService },
       ],
     }).compile();
 
@@ -216,6 +226,134 @@ describe('AdminUsersService', () => {
 
       expect(result.id).toBe('u1');
       expect(result.reportsAgainstCount).toBe(0);
+    });
+  });
+
+  // ── banUser ───────────────────────────────────────────────
+  describe('banUser', () => {
+    it('should throw if user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.banUser('u1', 'admin-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw if user is deleted', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: true,
+        isBanned: false,
+      });
+
+      await expect(service.banUser('u1', 'admin-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw if already banned', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: false,
+        isBanned: true,
+      });
+
+      await expect(service.banUser('u1', 'admin-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw if admin tries to ban themselves', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'admin-1',
+        isDeleted: false,
+        isBanned: false,
+      });
+
+      await expect(service.banUser('admin-1', 'admin-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should ban user and clear suspension fields', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: false,
+        isBanned: false,
+      });
+
+      mockPrisma.user.update.mockResolvedValue({});
+
+      const result = await service.banUser('u1', 'admin-1');
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: {
+          isBanned: true,
+          bannedById: 'admin-1',
+          isSuspended: false,
+          suspendedById: null,
+          suspendedUntil: null,
+          suspensionReason: null,
+        },
+      });
+
+      expect(mockSearchIndexService.indexUser).toHaveBeenCalledWith('u1');
+      expect(result).toEqual({ message: 'User banned' });
+    });
+  });
+
+  // ── unbanUser ─────────────────────────────────────────────
+  describe('unbanUser', () => {
+    it('should throw if user not found', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.unbanUser('u1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw if user is deleted', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: true,
+        isBanned: true,
+      });
+
+      await expect(service.unbanUser('u1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw if user is not banned', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: false,
+        isBanned: false,
+      });
+
+      await expect(service.unbanUser('u1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should unban user', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        isDeleted: false,
+        isBanned: true,
+      });
+
+      mockPrisma.user.update.mockResolvedValue({});
+
+      const result = await service.unbanUser('u1');
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: {
+          isBanned: false,
+          bannedById: null,
+        },
+      });
+
+      expect(mockSearchIndexService.indexUser).toHaveBeenCalledWith('u1');
+      expect(result).toEqual({ message: 'User unbanned' });
     });
   });
 });

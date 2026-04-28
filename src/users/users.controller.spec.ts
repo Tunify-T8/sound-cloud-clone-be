@@ -27,6 +27,7 @@ const mockUsersService = {
   getUploadStats: jest.fn(),
   getUploadMinutes: jest.fn(),
   getUserCollections: jest.fn(),
+  getPopularTracks: jest.fn(),
 };
 
 // ── Mock user extracted by @CurrentUser() decorator ──────────
@@ -391,6 +392,31 @@ describe('UsersController', () => {
         'user-123',
         2,
         20,
+      );
+    });
+  });
+
+  // ── getPopularTracks ──────────────────────────────────────────
+  describe('getPopularTracks', () => {
+    it('should call service with userId and limit', async () => {
+      mockUsersService.getPopularTracks.mockResolvedValue([]);
+
+      await controller.getPopularTracks(mockJwtPayload, 5);
+
+      expect(mockUsersService.getPopularTracks).toHaveBeenCalledWith(
+        'user-123',
+        5,
+      );
+    });
+
+    it('should call service with default limit when not provided', async () => {
+      mockUsersService.getPopularTracks.mockResolvedValue([]);
+
+      await controller.getPopularTracks(mockJwtPayload, undefined);
+
+      expect(mockUsersService.getPopularTracks).toHaveBeenCalledWith(
+        'user-123',
+        undefined,
       );
     });
   });
