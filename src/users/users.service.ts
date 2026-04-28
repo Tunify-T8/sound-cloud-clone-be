@@ -7,7 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
 import { PublicUserDto } from './dto/public-user.dto';
 import { UserDto } from './dto/user.dto';
-import { UserTracksDto, LikedTracksDto } from './dto/user-tracks.dto';
+import {
+  UserTracksDto,
+  LikedTracksDto,
+  PopularTracks,
+} from './dto/user-tracks.dto';
 import { UserRepostsDto } from './dto/user-reposts.dto';
 import { UserCollectionsDto } from './dto/user-collections.dto';
 import { CollectionType, SocialPlatform } from '@prisma/client';
@@ -428,6 +432,61 @@ export class UsersService {
     };
   }
 
+  async getPopularTracks(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<PopularTracks> {
+    const skip = (page - 1) * limit;
+
+    const [tracks, total] = await Promise.all([
+      this.prisma.track.findMany({
+        where: { userId, isDeleted: false, isHidden: false, isPublic: true },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          audioUrl: true,
+          coverUrl: true,
+          durationSeconds: true,
+          createdAt: true,
+          _count: {
+            select: {
+              playHistory: true,
+              likes: true,
+              comments: true,
+              reposts: true,
+            },
+          },
+        },
+        orderBy: { playHistory: { _count: 'desc' } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.track.count({
+        where: { userId, isDeleted: false, isHidden: false, isPublic: true },
+      }),
+    ]);
+
+    return {
+      tracks: tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        description: track.description,
+        audioUrl: track.audioUrl,
+        coverUrl: track.coverUrl,
+        duration: track.durationSeconds,
+        playsCount: track._count.playHistory,
+        likesCount: track._count.likes,
+        commentsCount: track._count.comments,
+        repostsCount: track._count.reposts,
+        createdAt: track.createdAt,
+      })),
+      page,
+      limit,
+      hasMore: skip + tracks.length < total,
+    };
+  }
   async getFollowList(
     userId: string,
     direction: 'followers' | 'following',
