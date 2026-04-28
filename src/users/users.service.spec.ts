@@ -93,6 +93,11 @@ const mockTrack = {
   durationSeconds: 180,
   createdAt: new Date(),
   _count: { likes: 5, comments: 2, reposts: 1 },
+  user: {
+    id: 'user-123',
+    username: 'testuser',
+    displayName: 'Test User',
+  },
 };
 
 const mockSocialLink = {
@@ -158,18 +163,18 @@ const mockSearchIndexService = {
 describe('UsersService', () => {
   let service: UsersService;
 
-beforeEach(async () => {
-  const module: TestingModule = await Test.createTestingModule({
-    providers: [
-      UsersService,
-      { provide: PrismaService, useValue: mockPrisma },
-      { provide: StorageService, useValue: mockStorage },
-      { provide: SearchIndexService, useValue: mockSearchIndexService }, // ✅ ADD THIS
-    ],
-  }).compile();
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: StorageService, useValue: mockStorage },
+        { provide: SearchIndexService, useValue: mockSearchIndexService }, // ✅ ADD THIS
+      ],
+    }).compile();
 
-  service = module.get<UsersService>(UsersService);
-});
+    service = module.get<UsersService>(UsersService);
+  });
 
   afterEach(() => jest.clearAllMocks());
 
@@ -301,152 +306,199 @@ beforeEach(async () => {
       expect(result.hasMore).toBe(true);
     });
   });
-// ── getPublicTracks ────────────────────────────────────────
-describe('getPublicTracks', () => {
-  const baseTrack = {
-    id: 'track-1',
-    title: 'Test Track',
-    coverUrl: null,
-    durationSeconds: 180,
-    createdAt: new Date(),
-    transcodingStatus: 'COMPLETED',
-    isPublic: true,
-    releaseDate: null,
-    waveformUrl: null,
-    genre: { label: 'Hip Hop' },
-    user: {
-      id: 'user-123',
-      username: 'testuser',
-      displayName: 'Test User',
-      avatarUrl: null,
-      isCertified: false,
-    },
-    trackArtists: [],
-    _count: {
-      likes: 5,
-      reposts: 2,
-      comments: 3,
-      playHistory: 10,
-    },
-  };
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+  // ── getPopularTracks ──────────────────────────────────────────
+  describe('getPopularTracks', () => {
+    const mockPopularTrack = {
+      id: 'track-123',
+      title: 'Popular Track',
+      description: null,
+      audioUrl: 'https://cdn.example.com/audio.mp3',
+      coverUrl: null,
+      durationSeconds: 180,
+      createdAt: new Date(),
+      _count: { playHistory: 500, likes: 100, comments: 20, reposts: 10 },
+    };
 
-  it('should return public tracks when viewer is not owner', async () => {
-    mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
-    mockPrisma.track.count.mockResolvedValue(1);
+    it('should return tracks sorted by play count', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([mockPopularTrack]);
 
-    mockPrisma.trackLike.findMany.mockResolvedValue([]);
-    mockPrisma.repost.findMany.mockResolvedValue([]);
+      const result = await service.getPopularTracks('user-123');
 
-    const result = await service.getPublicTracks(
-      'target-user',
-      'viewer-user',
-      1,
-      10,
-    );
+      expect(result).toHaveLength(1);
+      expect(result[0].playsCount).toBe(500);
+      expect(result[0].likesCount).toBe(100);
+      expect(result[0]).not.toHaveProperty('_count');
+    });
 
-    expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          userId: 'target-user',
+    it('should call prisma with correct filters and orderBy', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([]);
+
+      await service.getPopularTracks('user-123', 5);
+
+      expect(mockPrisma.track.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-123',
           isDeleted: false,
-          isPublic: true, // ✅ important check
+          isHidden: false,
+          isPublic: true,
+        },
+        select: expect.any(Object),
+        orderBy: { playHistory: { _count: 'desc' } },
+        take: 5,
+      });
+    });
+
+    it('should return empty array when user has no tracks', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([]);
+
+      const result = await service.getPopularTracks('user-123');
+
+      expect(result).toEqual([]);
+    });
+  });
+  // ── getPublicTracks ────────────────────────────────────────
+  describe('getPublicTracks', () => {
+    const baseTrack = {
+      id: 'track-1',
+      title: 'Test Track',
+      coverUrl: null,
+      durationSeconds: 180,
+      createdAt: new Date(),
+      transcodingStatus: 'COMPLETED',
+      isPublic: true,
+      releaseDate: null,
+      waveformUrl: null,
+      genre: { label: 'Hip Hop' },
+      user: {
+        id: 'user-123',
+        username: 'testuser',
+        displayName: 'Test User',
+        avatarUrl: null,
+        isCertified: false,
+      },
+      trackArtists: [],
+      _count: {
+        likes: 5,
+        reposts: 2,
+        comments: 3,
+        playHistory: 10,
+      },
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return public tracks when viewer is not owner', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
+      mockPrisma.track.count.mockResolvedValue(1);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([]);
+
+      const result = await service.getPublicTracks(
+        'target-user',
+        'viewer-user',
+        1,
+        10,
+      );
+
+      expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'target-user',
+            isDeleted: false,
+            isPublic: true, // ✅ important check
+          }),
         }),
-      }),
-    );
+      );
 
-    expect(result.data).toHaveLength(1);
-    expect(result.data[0].privacy).toBe('public');
-  });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].privacy).toBe('public');
+    });
 
-  it('should include private tracks when viewer is owner', async () => {
-    const privateTrack = { ...baseTrack, isPublic: false };
+    it('should include private tracks when viewer is owner', async () => {
+      const privateTrack = { ...baseTrack, isPublic: false };
 
-    mockPrisma.track.findMany.mockResolvedValue([privateTrack]);
-    mockPrisma.track.count.mockResolvedValue(1);
+      mockPrisma.track.findMany.mockResolvedValue([privateTrack]);
+      mockPrisma.track.count.mockResolvedValue(1);
 
-    mockPrisma.trackLike.findMany.mockResolvedValue([]);
-    mockPrisma.repost.findMany.mockResolvedValue([]);
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([]);
 
-    const result = await service.getPublicTracks(
-      'user-123',
-      'user-123',
-      1,
-      10,
-    );
+      const result = await service.getPublicTracks(
+        'user-123',
+        'user-123',
+        1,
+        10,
+      );
 
-    expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          isDeleted: false, // no isPublic filter
+      expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isDeleted: false, // no isPublic filter
+          }),
         }),
-      }),
-    );
+      );
 
-    expect(result.data[0].privacy).toBe('private');
+      expect(result.data[0].privacy).toBe('private');
+    });
+
+    it('should correctly set interaction flags', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
+      mockPrisma.track.count.mockResolvedValue(1);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([{ trackId: 'track-1' }]);
+
+      mockPrisma.repost.findMany.mockResolvedValue([{ trackId: 'track-1' }]);
+
+      const result = await service.getPublicTracks(
+        'target-user',
+        'viewer-user',
+        1,
+        10,
+      );
+
+      expect(result.data[0].interaction.isLiked).toBe(true);
+      expect(result.data[0].interaction.isReposted).toBe(true);
+    });
+
+    it('should return empty list when no tracks', async () => {
+      mockPrisma.track.findMany.mockResolvedValue([]);
+      mockPrisma.track.count.mockResolvedValue(0);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([]);
+
+      const result = await service.getPublicTracks(
+        'target-user',
+        'viewer-user',
+        1,
+        10,
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.hasMore).toBe(false);
+    });
+
+    it('should correctly calculate hasMore', async () => {
+      mockPrisma.track.findMany.mockResolvedValue(Array(10).fill(baseTrack));
+      mockPrisma.track.count.mockResolvedValue(25);
+
+      mockPrisma.trackLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.findMany.mockResolvedValue([]);
+
+      const result = await service.getPublicTracks(
+        'target-user',
+        'viewer-user',
+        1,
+        10,
+      );
+
+      expect(result.meta.hasMore).toBe(true);
+    });
   });
-
-  it('should correctly set interaction flags', async () => {
-    mockPrisma.track.findMany.mockResolvedValue([baseTrack]);
-    mockPrisma.track.count.mockResolvedValue(1);
-
-    mockPrisma.trackLike.findMany.mockResolvedValue([
-      { trackId: 'track-1' },
-    ]);
-
-    mockPrisma.repost.findMany.mockResolvedValue([
-      { trackId: 'track-1' },
-    ]);
-
-    const result = await service.getPublicTracks(
-      'target-user',
-      'viewer-user',
-      1,
-      10,
-    );
-
-    expect(result.data[0].interaction.isLiked).toBe(true);
-    expect(result.data[0].interaction.isReposted).toBe(true);
-  });
-
-  it('should return empty list when no tracks', async () => {
-    mockPrisma.track.findMany.mockResolvedValue([]);
-    mockPrisma.track.count.mockResolvedValue(0);
-
-    mockPrisma.trackLike.findMany.mockResolvedValue([]);
-    mockPrisma.repost.findMany.mockResolvedValue([]);
-
-    const result = await service.getPublicTracks(
-      'target-user',
-      'viewer-user',
-      1,
-      10,
-    );
-
-    expect(result.data).toEqual([]);
-    expect(result.meta.hasMore).toBe(false);
-  });
-
-  it('should correctly calculate hasMore', async () => {
-    mockPrisma.track.findMany.mockResolvedValue(Array(10).fill(baseTrack));
-    mockPrisma.track.count.mockResolvedValue(25);
-
-    mockPrisma.trackLike.findMany.mockResolvedValue([]);
-    mockPrisma.repost.findMany.mockResolvedValue([]);
-
-    const result = await service.getPublicTracks(
-      'target-user',
-      'viewer-user',
-      1,
-      10,
-    );
-
-    expect(result.meta.hasMore).toBe(true);
-  });
-});
   // ── getReposts ────────────────────────────────────────────
   describe('getReposts', () => {
     const mockRepost = {
@@ -1066,7 +1118,9 @@ describe('getPublicTracks', () => {
         user2: { id: 'user-123', username: 'testuser' },
       };
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
-      mockPrisma.conversation.findMany.mockResolvedValue([reversedConversation]);
+      mockPrisma.conversation.findMany.mockResolvedValue([
+        reversedConversation,
+      ]);
       mockPrisma.conversation.count.mockResolvedValue(1);
 
       const result = await service.getMyConversations('user-123', 1, 20);
@@ -1076,7 +1130,9 @@ describe('getPublicTracks', () => {
 
     it('should return correct pagination values for page 2', async () => {
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
-      mockPrisma.conversation.findMany.mockResolvedValue(Array(15).fill(mockConversation));
+      mockPrisma.conversation.findMany.mockResolvedValue(
+        Array(15).fill(mockConversation),
+      );
       mockPrisma.conversation.count.mockResolvedValue(50);
 
       const result = await service.getMyConversations('user-123', 2, 15);
@@ -1108,7 +1164,10 @@ describe('getPublicTracks', () => {
       mockPrisma.conversation.findFirst.mockResolvedValue(null);
       mockPrisma.conversation.create.mockResolvedValue(mockConversation);
 
-      const result = await service.createConversation('user-123', 'other-user-456');
+      const result = await service.createConversation(
+        'user-123',
+        'other-user-456',
+      );
 
       expect(result.conversationId).toBe('conv-123');
       expect(mockPrisma.conversation.create).toHaveBeenCalledWith({
@@ -1122,7 +1181,10 @@ describe('getPublicTracks', () => {
     it('should return existing conversation if one already exists', async () => {
       mockPrisma.conversation.findFirst.mockResolvedValue(mockConversation);
 
-      const result = await service.createConversation('user-123', 'other-user-456');
+      const result = await service.createConversation(
+        'user-123',
+        'other-user-456',
+      );
 
       expect(result.conversationId).toBe('conv-123');
       expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
@@ -1144,9 +1206,9 @@ describe('getPublicTracks', () => {
     });
 
     it('should throw BadRequestException when trying to message self', async () => {
-      await expect(service.createConversation('user-123', 'user-123')).rejects.toThrow(
-        'Cannot create conversation with yourself',
-      );
+      await expect(
+        service.createConversation('user-123', 'user-123'),
+      ).rejects.toThrow('Cannot create conversation with yourself');
     });
   });
 
@@ -1178,10 +1240,7 @@ describe('getPublicTracks', () => {
           read: false,
           senderId: { not: 'user-123' },
           conversation: {
-            OR: [
-              { user1Id: 'user-123' },
-              { user2Id: 'user-123' },
-            ],
+            OR: [{ user1Id: 'user-123' }, { user2Id: 'user-123' }],
           },
         },
       });
@@ -1269,7 +1328,9 @@ describe('getPublicTracks', () => {
 
       const result = await service.getFollowerList('user-123', 1, 10);
 
-      expect(result.followers?.[0]).not.toHaveProperty('notificationPreferences');
+      expect(result.followers?.[0]).not.toHaveProperty(
+        'notificationPreferences',
+      );
       expect(result.followers?.[0].isNotificationEnabled).toBeNull();
     });
   });
@@ -1331,7 +1392,10 @@ describe('getPublicTracks', () => {
     });
 
     it('should handle notification disabled case', async () => {
-      const followingNoNotif = { ...mockFollowing, notificationPreferences: [] };
+      const followingNoNotif = {
+        ...mockFollowing,
+        notificationPreferences: [],
+      };
       mockPrisma.user.findMany.mockResolvedValue([followingNoNotif]);
       mockPrisma.user.count.mockResolvedValue(1);
 
@@ -1577,12 +1641,7 @@ describe('getPublicTracks', () => {
       mockPrisma.collection.findMany.mockResolvedValue([mockCollection]);
       mockPrisma.collection.count.mockResolvedValue(1);
 
-      await service.getUserCollections(
-        'otheruser',
-        'viewer-user',
-        1,
-        10,
-      );
+      await service.getUserCollections('otheruser', 'viewer-user', 1, 10);
 
       expect(mockPrisma.collection.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
