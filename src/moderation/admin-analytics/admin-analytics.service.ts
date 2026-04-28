@@ -10,7 +10,6 @@ export class AdminAnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Summary ────────────────────────────────────────────────────
-
   async getSummary() {
     const now = new Date();
     const startOfToday = new Date(now);
@@ -30,15 +29,15 @@ export class AdminAnalyticsService {
       activeUsers,
       suspendedUsers,
       bannedUsers,
-      artistCount, // ← new
-      listenerCount, // ← new
+      artistCount,
+      listenerCount,
       totalTracks,
       newTracksToday,
       newTracksThisWeek,
       totalPlays,
       playsToday,
-      completedPlays, // ← new
-      trackStorage, // ← new
+      completedPlays,
+      trackStorage,
       totalReports,
       pendingReports,
     ] = await Promise.all([
@@ -74,7 +73,6 @@ export class AdminAnalyticsService {
       }),
       this.prisma.playHistory.count({ where: { completed: true } }), // ← new
       this.prisma.track.aggregate({
-        // ← new
         where: { isDeleted: false },
         _sum: { fileSizeBytes: true },
       }),
@@ -110,7 +108,7 @@ export class AdminAnalyticsService {
       totalPlays,
       playsToday,
       completedPlays,
-      playThroughRate, // e.g. 68.4 (%)
+      playThroughRate,
       totalStorageBytes,
       totalStorageGB,
       totalReports,
