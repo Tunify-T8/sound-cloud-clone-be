@@ -836,7 +836,7 @@ export class UsersService {
 
     return {
       tier: subscription?.plan?.name ?? 'free',
-      uploadMinutesLimit,
+      uploadMinutesLimit: uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,

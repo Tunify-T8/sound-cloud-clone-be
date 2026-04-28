@@ -13,10 +13,11 @@ database:
 
 rest_api:
   base_url: "http://localhost:3000"
+  note: "Messages are sent via WebSocket (message:send event), not REST. REST endpoints handle conversation management, retrieval, and metadata operations only."
   
   conversations:
     - endpoint: "GET /users/me/conversations"
-      description: "Get all conversations for the current user"
+      description: "Get all active conversations for the current user (excludes deleted and conversations with users who blocked the requester)"
       auth: true
       query_params:
         - name: "page"
@@ -29,48 +30,51 @@ rest_api:
       response:
         type: "object"
         properties:
+          items:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                conversationId: "uuid"
+                otherUser:
+                  type: "object"
+                  properties:
+                    id: "uuid"
+                    displayName: "string"
+                    avatarUrl: "string|null"
+                lastMessagePreview: "string|null"
+                lastMessageAt: "datetime|null"
+                unreadCount: "number"
           page: "number"
           limit: "number"
           total: "number"
           totalPages: "number"
           hasNextPage: "boolean"
           hasPreviousPage: "boolean"
-          data:
-            type: "array"
-            items:
-              type: "object"
-              properties:
-                id: "uuid"
-                user1Id: "uuid"
-                user2Id: "uuid"
-                status: "enum[ACTIVE, ARCHIVED, BLOCKED]"
-                unreadCount: "number"
-                lastMessage: "object"
-                updatedAt: "datetime"
       features:
         - filters_blocked_users: true
         - pagination: true
+        - unread_count: true
+        - returns_other_user_info: true
 
     - endpoint: "POST /users/me/conversations"
-      description: "Create or retrieve existing conversation with another user"
+      description: "Create or retrieve existing conversation with another user. Returns error if other user has allowMessages=false and current user is not followed by them."
       auth: true
       body:
         userId: "uuid"
       response:
         type: "object"
         properties:
-          id: "uuid"
-          user1Id: "uuid"
-          user2Id: "uuid"
-          status: "enum[ACTIVE, ARCHIVED, BLOCKED]"
-          createdAt: "datetime"
-          updatedAt: "datetime"
+          conversationId: "uuid"
+          message: "string (optional - 'Conversation already exists' or 'Conversation created successfully')"
       validations:
         - no_self_messaging: true
         - returns_existing: true
+        - respects_allow_messages_setting: true
+        - validates_follow_relationship_when_restricted: true
 
     - endpoint: "DELETE /conversations/{conversationId}"
-      description: "Delete (soft-delete) a conversation"
+      description: "Soft-delete a conversation for the current user"
       auth: true
       params:
         - name: "conversationId"
@@ -83,7 +87,7 @@ rest_api:
         - only_conversation_owner_can_delete: true
 
     - endpoint: "GET /conversations/{conversationId}/messages"
-      description: "Get messages in a conversation with pagination"
+      description: "Get messages in a conversation with pagination. Enforces blocking checks - user cannot retrieve messages if blocked by the other user."
       auth: true
       params:
         - name: "conversationId"
@@ -99,33 +103,39 @@ rest_api:
       response:
         type: "object"
         properties:
+          conversationId: "uuid"
+          messages:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                id: "uuid"
+                sender:
+                  type: "object"
+                  properties:
+                    id: "uuid"
+                    username: "string"
+                    avatarUrl: "string|null"
+                type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
+                text: "string|null"
+                createdAt: "datetime"
+                attachment:
+                  type: "object"
+                  properties:
+                    id: "uuid|null"
+                    type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
+                    preview: "object|null"
           page: "number"
           limit: "number"
           total: "number"
           totalPages: "number"
           hasNextPage: "boolean"
           hasPreviousPage: "boolean"
-          data:
-            type: "array"
-            items:
-              type: "object"
-              properties:
-                id: "uuid"
-                conversationId: "uuid"
-                senderId: "uuid"
-                sender: "object"
-                type: "enum[TEXT, TRACK_LIKE, TRACK_UPLOAD, PLAYLIST, ALBUM, USER]"
-                content: "string|null"
-                trackId: "uuid|null"
-                collectionId: "uuid|null"
-                userId: "uuid|null"
-                read: "boolean"
-                createdAt: "datetime"
-                attachment: "object"
       features:
         - blocking_enforcement: true
         - batch_loaded_artists: true
         - pagination: true
+        - rich_message_previews: true
 
     - endpoint: "POST /conversations/{conversationId}/read"
       description: "Mark entire conversation as read"
@@ -150,7 +160,7 @@ rest_api:
           message: "string"
 
     - endpoint: "POST /conversations/{conversationId}/archive"
-      description: "Archive a conversation (hide from inbox but keep messages)"
+      description: "Archive a conversation (hide from inbox but keep messages and metadata)"
       auth: true
       params:
         - name: "conversationId"
@@ -158,13 +168,21 @@ rest_api:
       response:
         type: "object"
         properties:
-          id: "uuid"
-          conversationId: "uuid"
-          status: "ARCHIVED"
-          updatedAt: "datetime"
+          message: "string"
+
+    - endpoint: "DELETE /conversations/{conversationId}/archive"
+      description: "Unarchive a conversation (restore to active inbox)"
+      auth: true
+      params:
+        - name: "conversationId"
+          type: "uuid"
+      response:
+        type: "object"
+        properties:
+          message: "string"
 
     - endpoint: "POST /conversations/{conversationId}/block"
-      description: "Block a user from a conversation"
+      description: "Block a user from a conversation. Updates conversation status to BLOCKED, removes bidirectional follows, and optionally removes comments and marks as spam."
       auth: true
       params:
         - name: "conversationId"
@@ -189,7 +207,7 @@ rest_api:
         - optional_comment_removal: true
 
     - endpoint: "POST /conversations/unblock/{blockedUserId}"
-      description: "Unblock a user"
+      description: "Unblock a previously blocked user"
       auth: true
       params:
         - name: "blockedUserId"
@@ -200,8 +218,8 @@ rest_api:
           message: "string"
 
   unread_messages:
-    - endpoint: "GET /me/messages/unread-count"
-      description: "Get total count of unread messages across all conversations"
+    - endpoint: "GET /users/me/messages/unread-count"
+      description: "Get total count of unread messages across all conversations for current user"
       auth: true
       response:
         type: "object"
@@ -212,13 +230,12 @@ rest_api:
 
 websocket:
   namespace: "/conversations"
-  port: 3001
+  port: 3000
   protocol: "Socket.IO"
   authentication:
     type: "JWT"
-    method: "query_param"
-    param_name: "token"
-    example: "ws://localhost:3001/conversations?token=YOUR_JWT_TOKEN"
+    method: "query_param (or handshake.auth.token)"
+    example: "io('http://localhost:3000', { auth: { token: YOUR_JWT_TOKEN } })"
 
   events:
     connection:
@@ -239,6 +256,11 @@ websocket:
             payload:
               conversationId: "uuid"
               message: "Joined conversation"
+          - event: "user:joined"
+            broadcast_scope: "other_users_in_room"
+            payload:
+              userId: "uuid"
+              message: "User joined conversation"
 
       - event: "conversation:leave"
         direction: "send"
@@ -253,7 +275,8 @@ websocket:
     messaging:
       - event: "message:send"
         direction: "send"
-        description: "Send a message in real-time"
+        description: "Send a message in real-time to a conversation"
+        validation: "Type-specific required fields enforced"
         message_types:
           - type: "TEXT"
             required_fields: ["conversationId", "content", "type"]
@@ -320,7 +343,7 @@ websocket:
               messageId: "uuid"
 
           - event: "message:received"
-            broadcast_scope: "conversation_room"
+            broadcast_scope: "other_users_in_room"
             payload:
               conversationId: "uuid"
               message:
@@ -341,7 +364,7 @@ websocket:
 
       - event: "message:markRead"
         direction: "send"
-        description: "Mark a specific message as read"
+        description: "Mark a specific message as read (cannot mark your own messages as read)"
         payload:
           conversationId: "uuid"
           messageId: "uuid"
@@ -384,7 +407,7 @@ websocket:
     error_handling:
       - event: "error"
         direction: "receive"
-        description: "Error response from server"
+        description: "Error response from server (validation errors, permission errors, etc.)"
         payload:
           message: "string"
 
@@ -430,9 +453,16 @@ features:
     room_naming: "conversation:{conversationId}"
 
   read_status:
+    conversation_level_tracking: true
     per_message_tracking: true
     constraints:
       - cannot_mark_own_messages_as_read: true
+      - can_only_mark_via_websocket: true
+    rest_endpoints:
+      - POST /conversations/{conversationId}/read - marks entire conversation as read
+      - POST /conversations/{conversationId}/unread - marks entire conversation as unread
+    websocket_events:
+      - message:markRead - marks individual message as read in real-time
 
   typing_indicators:
     enabled: true
@@ -476,28 +506,42 @@ testing:
   status: "all passing"
 
   websocket_testing:
-    tool: "Postman WebSocket"
+    tool: "Postman WebSocket or Socket.IO Client"
     steps:
-      1: "Connect with JWT token (port 3001)"
+      1: "Connect to http://localhost:3000/conversations with auth token"
       2: "Add event listeners (authenticated, message:received, error, etc.)"
-      3: "Send conversation:join to connect to room"
-      4: "Send message:send to test messaging"
-      5: "Open second connection with different token"
-      6: "Verify messages appear in both connections"
+      3: "Send conversation:join event with conversationId"
+      4: "Send message:send event to test messaging with type-specific payload"
+      5: "Open second connection with different token to test message broadcasting"
+      6: "Verify messages appear in both connections in real-time"
+      7: "Test message:markRead for read receipts"
+      8: "Test blocking by blocking one user and attempting to send message"
 
 implementation:
   files:
     gateway: "src/conversations/conversations.gateway.ts"
     service: "src/conversations/conversations.service.ts"
     controller: "src/conversations/conversations.controller.ts"
+    users_service: "src/users/users.service.ts (handles conversation creation/retrieval)"
+    users_controller: "src/users/users.controller.ts (handles user conversation endpoints)"
     module: "src/conversations/conversations.module.ts"
     models: "prisma/schema.prisma"
 
+  key_implementation_details:
+    - conversation_status: "ACTIVE, ARCHIVED, BLOCKED"
+    - soft_delete_implementation: "isDeleted boolean + deletedAt timestamp"
+    - blocking_enforcement: "Checked in createMessage, getMessages, and handleSendMessage"
+    - archive_flow: "POST /conversations/:id/archive marks status=ARCHIVED, DELETE /conversations/:id/archive marks status=ACTIVE"
+    - message_types: "Polymorphic - stored in single Message table with type discriminator and flexible fields (trackId, collectionId, userId)"
+    - websocket_namespace: "/conversations on port 3000"
+
   architecture:
-    pattern: "Gateway -> Service -> Repository"
+    pattern: "Gateway -> Service -> Repository (Prisma)"
     separation_of_concerns: true
     layers:
-      - gateway: "WebSocket event handling (thin layer)"
+      - gateway: "WebSocket event handling and message broadcasting"
+      - service: "Business logic, validation, database queries"
+      - controller: "HTTP REST endpoint handlers"
       - service: "Business logic, validation, database operations (thick layer)"
       - controller: "HTTP REST endpoints"
 

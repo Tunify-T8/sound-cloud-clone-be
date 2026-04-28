@@ -76,6 +76,15 @@ export class ConversationsController {
         return this.conversationsService.archiveConversation(req.user.userId, conversationId);
     }
 
+    @Delete(':id/archive')
+    @UseGuards(JwtAccessGuard)
+    unarchiveConversation(
+        @Request() req,
+        @Param('id', new ParseUUIDPipe()) conversationId: string,
+    ) {
+        return this.conversationsService.unarchiveConversation(req.user.userId, conversationId);
+    }
+
     @Post(':id/block')
     @UseGuards(JwtAccessGuard)
     blockUser(
