@@ -879,7 +879,7 @@ export class UsersService {
         endedAt: null,
         plan: {
           is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+            name: { in: ['free', 'artist', 'artist-pro'] },
             isActive: true,
           },
         },
@@ -894,59 +894,66 @@ export class UsersService {
     const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
     return {
-      tier: subscription?.plan?.name ?? 'FREE',
+      tier: subscription?.plan?.name ?? 'free',
       uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
         0,
       ),
+      adFree: subscription?.plan?.adFree ?? false,
+      offlineListening: subscription?.plan?.allowOfflineListening ?? false,
+      playbackAccess: subscription?.plan?.playbackAccess ?? false,
+      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
     };
   }
 
-  async getUploadMinutes(userId: string) {
-    const subscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        endedAt: null,
-        plan: {
-          is: {
-            name: { in: ['FREE', 'PRO', 'GOPLUS'] },
-            isActive: true,
-          },
-        },
-      },
-      include: {
-        plan: true,
-      },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
-    });
+  // async getUploadMinutes(userId: string) {
+  //   const subscription = await this.prisma.subscription.findFirst({
+  //     where: {
+  //       userId,
+  //       status: 'ACTIVE',
+  //       endedAt: null,
+  //       plan: {
+  //         is: {
+  //           name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+  //           isActive: true,
+  //         },
+  //       },
+  //     },
+  //     include: {
+  //       plan: true,
+  //     },
+  //     orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+  //   });
 
-    const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
-    const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
+  //   const uploadMinutesLimit = subscription?.plan?.monthlyUploadMinutes ?? 99;
+  //   const uploadMinutesUsed = subscription?.uploadedMinutes ?? 0;
 
-    return {
-      tier: subscription?.plan?.name ?? 'NO_PLAN',
-      uploadMinutesLimit,
-      uploadMinutesUsed,
-      uploadMinutesRemaining: Math.max(
-        uploadMinutesLimit - uploadMinutesUsed,
-        0,
-      ),
-    };
-  }
+  //   return {
+  //     tier: subscription?.plan?.name ?? 'NO_PLAN',
+  //     uploadMinutesLimit,
+  //     uploadMinutesUsed,
+  //     uploadMinutesRemaining: Math.max(
+  //       uploadMinutesLimit - uploadMinutesUsed,
+  //       0,
+  //     ),
+  //   };
+  // }
 
-  async getUserCollections(
-    username: string,
-    requesterId: string | undefined,
-    page: number = 1,
-    limit: number = 10,
-    type?: CollectionType,
-  ) {
+
+
+
+async getUserCollections(
+  username: string,
+  requesterId: string | undefined,
+  page: number = 1,
+  limit: number = 10,
+  type?: CollectionType,
+) {
     // 1. Find user by username
     const user = await this.prisma.user.findUnique({
       where: { username },
@@ -1073,21 +1080,9 @@ export class UsersService {
       take: validLimit,
     });
 
-    const total = await this.prisma.conversation.count({
-      where: {
-        AND: [
-          {
-            OR: [{ user1Id: userId }, { user2Id: userId }],
-          },
-          {
-            AND: [
-              { user1Id: { notIn: blockedByUsers } },
-              { user2Id: { notIn: blockedByUsers } },
-            ],
-          },
-        ],
-      },
-    });
+      // total is the 
+      const total = conversations.length
+    
 
     // Format response
     const items = conversations.map((conv) => {

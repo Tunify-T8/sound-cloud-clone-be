@@ -333,7 +333,7 @@ export class UsersController {
   @Get(':id/artist-tools/upload-minutes')
   @UseGuards(JwtAccessGuard)
   getUploadMinutes(@Param('id', ParseUUIDPipe) userId: string) {
-    return this.usersService.getUploadMinutes(userId);
+    return this.usersService.getUploadStats(userId);
   }
 
   @Get(':username/collections')
