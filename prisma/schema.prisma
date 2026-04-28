@@ -144,7 +144,7 @@ model OAuthAccount {
   userId         String
   provider       OAuthProvider
   providerUserId String
-  accessToken    String        @unique
+  accessToken    String?        
   refreshToken   String?
   expiresAt      DateTime?
   createdAt      DateTime      @default(now())
