@@ -182,6 +182,26 @@ export class ConversationsService {
         return { message: `Conversation ${conversationId} archived for user ${userId}` };
     }
 
+    async unarchiveConversation(userId: string, conversationId: string) {
+        const conversation = await this.prisma.conversation.findUnique({
+            where: { id: conversationId, isDeleted: false },
+        });
+        if (!conversation) {
+            throw new NotFoundException('Conversation not found');
+        }
+
+        // Check if the user is part of the conversation
+        if (conversation.user1Id !== userId && conversation.user2Id !== userId) {
+            throw new ForbiddenException('User is not part of the conversation');
+        }
+
+        await this.prisma.conversation.update({
+            where: { id: conversationId },
+            data: { status: 'ACTIVE' },
+        });
+        return { message: `Conversation ${conversationId} unarchived for user ${userId}` };
+    }
+
     async blockUser(userId: string, conversationId: string, removeComments: boolean, reportSpam: boolean) {
         const conversation = await this.prisma.conversation.findUnique({
             where: { id: conversationId, isDeleted: false },
@@ -407,4 +427,6 @@ export class ConversationsService {
             },
         };
     }
+
+
 }

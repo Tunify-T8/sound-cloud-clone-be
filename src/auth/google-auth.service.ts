@@ -233,14 +233,14 @@ export class GoogleAuthService {
         });
 
         const freePlan = await tx.subscriptionPlan.upsert({
-          where: { name: 'FREE' },
+          where: { name: 'free' },
           update: {
             isActive: true,
             monthlyPrice: 0,
             monthlyUploadMinutes: 180,
           },
           create: {
-            name: 'FREE',
+            name: 'free',
             description: 'Free tier',
             monthlyPrice: 0,
             monthlyUploadMinutes: 180,

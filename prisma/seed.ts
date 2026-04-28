@@ -272,20 +272,20 @@ async function main() {
     }
 
     // create Artist subscription only if user doesn't already have one
-    const existingArtistSub = await prisma.subscription.findFirst({
-      where: { userId, planId: artistPlan.id },
+    const existingArtistProSub = await prisma.subscription.findFirst({
+      where: { userId, planId: artistProPlan.id },
     });
 
-    if (!existingArtistSub) {
+    if (!existingArtistProSub) {
       await prisma.subscription.create({
         data: {
           status: 'ACTIVE',
           billingCycle: 'monthly',
           user: { connect: { id: userId } },
-          plan: { connect: { id: artistPlan.id } },
+          plan: { connect: { id: artistProPlan.id } },
         },
       });
-      console.log(`Created Artist subscription for user ${userId}`);
+      console.log(`Created Artist-Pro subscription for user ${userId}`);
     }
   }
 
