@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAccessGuard } from 'src/auth/guards/jwt-access.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { AdminOnly } from 'src/auth/decorators/roles.decorator';
@@ -29,5 +29,18 @@ export class AdminUsersController {
   @Post('/:userId/unsuspend')
   unsuspendUser(@Param('userId') userId: string) {
     return this.adminUsersService.unsuspendUser(userId);
+  }
+
+  @Post(':id/ban')
+  banUser(
+    @Param('id') targetId: string,
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.adminUsersService.banUser(targetId, user.userId);
+  }
+
+  @Delete(':id/ban')
+  unbanUser(@Param('id') targetId: string) {
+    return this.adminUsersService.unbanUser(targetId);
   }
 }
