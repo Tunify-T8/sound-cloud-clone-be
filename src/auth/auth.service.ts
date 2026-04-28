@@ -332,9 +332,11 @@ export class AuthService {
       },
     });
     this.logger.log(`User ${user.id} verified email and logged in`);
-
-    await this.searchIndexService.indexUser(user.id); //index new user
-
+    try {
+      await this.searchIndexService.indexUser(user.id); // index new user
+    } catch (error) {
+      this.logger.warn('Search index unavailable — skipping user indexing', error);
+    }
     // 9. Return tokens + user info
     return {
       message: 'Email verified successfully',

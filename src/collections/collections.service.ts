@@ -752,7 +752,7 @@ async getShareUrl(collectionId: string, userId: string) {
 
   const frontendUrl = process.env.FRONTEND_URL || 'https://tunify.duckdns.org';
   let shareUrl: string;
-  const appUrl = `tunify://collections/${collectionId}`;
+  let appUrl = `tunify://collections/${collectionId}`;
 
   if (collection.isPublic) {
     shareUrl = `${frontendUrl}/collections/${collectionId}`;
@@ -766,7 +766,8 @@ async getShareUrl(collectionId: string, userId: string) {
         data: { secretToken: token },
       });
     }
-    shareUrl = `${frontendUrl}/collections/${collectionId}?token=${token}`;
+    shareUrl = `${frontendUrl}/collections/token/${token}`;
+    appUrl = `tunify://collections/token/${token}`;
   }
 
 
@@ -789,8 +790,8 @@ async resetShareToken(collectionId: string, userId: string) {
     data: { secretToken: newToken, isPublic: false },
   });
 
-  const shareUrl = `${frontendUrl}/collections/${collectionId}?token=${newToken}`;
-  const appUrl = `tunify://collections/${collectionId}`;
+  const shareUrl = `${frontendUrl}/collections/token/${newToken}`;
+  const appUrl = `tunify://collections/token/${newToken}`;
 
   return { shareUrl, appUrl };
 }
