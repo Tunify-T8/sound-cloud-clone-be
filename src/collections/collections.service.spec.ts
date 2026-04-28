@@ -181,6 +181,34 @@ describe('CollectionsService', () => {
     });
   });
 
+  // ─── SHARE URLS ───────────────────────────────────────────────
+  describe('getShareUrl', () => {
+    it('should generate token path for private collections', async () => {
+      const collection = { id: 'c1', userId: 'u1', isDeleted: false, isPublic: false, secretToken: 'tok123', title: 'Private', description: null, type: CollectionType.PLAYLIST, coverUrl: null };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+
+      const result = await service.getShareUrl('c1', 'u1');
+
+      expect(result.shareUrl).toBe('https://tunify.duckdns.org/collections/token/tok123');
+      expect(result.appUrl).toBe('tunify://collections/token/tok123');
+    });
+
+    it('should generate new token path when private collection has no token', async () => {
+      const collection = { id: 'c1', userId: 'u1', isDeleted: false, isPublic: false, secretToken: null, title: 'Private', description: null, type: CollectionType.PLAYLIST, coverUrl: null };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.collection.update.mockResolvedValue({ ...collection, secretToken: 'newtok' });
+
+      const result = await service.getShareUrl('c1', 'u1');
+
+      expect(result.shareUrl).toContain('https://tunify.duckdns.org/collections/token/');
+      expect(result.appUrl).toContain('tunify://collections/token/');
+      expect(mockPrisma.collection.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ secretToken: expect.any(String) }),
+      });
+    });
+  });
+
   // ─── UPDATE COLLECTION ─────────────────────────────────────────
   describe('updateCollection', () => {
     it('should update collection for owner', async () => {
