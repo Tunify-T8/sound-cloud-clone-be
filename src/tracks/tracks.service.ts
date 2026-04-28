@@ -15,6 +15,7 @@ import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 import { NotificationType, ReferenceType } from '@prisma/client';
+import { FeedService } from '../feed/feed.service';
 //import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
@@ -37,6 +38,7 @@ export class TracksService {
     private storage: StorageService,
     private audio: AudioService,
     private prisma: PrismaService,
+    private feedService: FeedService,
     //private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
     private readonly notificationsService: NotificationsService,
@@ -1648,10 +1650,11 @@ export class TracksService {
 
   async buildPlaybackContext(
     contextType: string,
-    contextId: string,
+    contextId: string, // for 'feed': pass userId; for 'profile': artistId; etc.
     startTrackId?: string,
     shuffle?: boolean,
     repeat?: string,
+    userId?: string, // ← add this param (needed for feed auth context)
   ) {
     let queueTracks: QueueTrack[] = [];
 
@@ -1663,9 +1666,7 @@ export class TracksService {
           include: {
             track: {
               include: {
-                user: {
-                  select: { displayName: true, username: true },
-                },
+                user: { select: { displayName: true, username: true } },
               },
             },
           },
@@ -1680,7 +1681,10 @@ export class TracksService {
       }
 
       case 'profile': {
-        const tracks = await this.prisma.track.findMany({
+        const PROFILE_MIN_TRACKS = 10;
+
+        // Fetch the artist's own public tracks
+        const ownTracks = await this.prisma.track.findMany({
           where: {
             userId: contextId,
             isPublic: true,
@@ -1689,17 +1693,62 @@ export class TracksService {
           },
           orderBy: { createdAt: 'desc' },
           include: {
-            user: {
-              select: { displayName: true, username: true },
-            },
+            user: { select: { displayName: true, username: true } },
           },
         });
-        queueTracks = tracks.map((t) => ({
+
+        queueTracks = ownTracks.map((t) => ({
           trackId: t.id,
           title: t.title,
           artist: t.user.displayName ?? t.user.username,
           durationSeconds: t.durationSeconds,
         }));
+
+        // ── Pad with same-genre tracks if artist has few tracks ──
+        if (queueTracks.length < PROFILE_MIN_TRACKS) {
+          // Find the artist's most common genre
+          const artistGenre = await this.prisma.track.groupBy({
+            by: ['genreId'],
+            where: {
+              userId: contextId,
+              genreId: { not: null },
+              isDeleted: false,
+            },
+            _count: { genreId: true },
+            orderBy: { _count: { genreId: 'desc' } },
+            take: 1,
+          });
+
+          const genreId = artistGenre[0]?.genreId;
+          const existingIds = new Set(queueTracks.map((t) => t.trackId));
+          const needed = PROFILE_MIN_TRACKS - queueTracks.length;
+
+          const padTracks = await this.prisma.track.findMany({
+            where: {
+              isPublic: true,
+              isDeleted: false,
+              isHidden: false,
+              userId: { not: contextId }, // exclude the artist's own tracks (already included)
+              ...(genreId ? { genreId } : {}), // same genre if known
+              id: { notIn: [...existingIds] },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: needed,
+            include: {
+              user: { select: { displayName: true, username: true } },
+            },
+          });
+
+          queueTracks = [
+            ...queueTracks,
+            ...padTracks.map((t) => ({
+              trackId: t.id,
+              title: t.title,
+              artist: t.user.displayName ?? t.user.username,
+              durationSeconds: t.durationSeconds,
+            })),
+          ];
+        }
         break;
       }
 
@@ -1710,14 +1759,11 @@ export class TracksService {
           include: {
             track: {
               include: {
-                user: {
-                  select: { displayName: true, username: true },
-                },
+                user: { select: { displayName: true, username: true } },
               },
             },
           },
         });
-        // deduplicate since same track can appear multiple times in history
         const seen = new Set<string>();
         queueTracks = tracks
           .filter((t) => !seen.has(t.trackId) && seen.add(t.trackId))
@@ -1727,6 +1773,41 @@ export class TracksService {
             artist: t.track.user.displayName ?? t.track.user.username,
             durationSeconds: t.track.durationSeconds,
           }));
+        break;
+      }
+
+      case 'feed': {
+        const feedResult = await this.feedService.getFeed(
+          contextId,
+          1,
+          50,
+          true,
+        );
+
+        // Fallback: if user has no follows, use recent public tracks instead
+        if (feedResult.items.length === 0) {
+          const recentTracks = await this.prisma.track.findMany({
+            where: { isPublic: true, isDeleted: false, isHidden: false },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+              user: { select: { displayName: true, username: true } },
+            },
+          });
+          queueTracks = recentTracks.map((t) => ({
+            trackId: t.id,
+            title: t.title,
+            artist: t.user.displayName ?? t.user.username,
+            durationSeconds: t.durationSeconds,
+          }));
+        } else {
+          queueTracks = feedResult.items.map((item) => ({
+            trackId: item.trackId,
+            title: item.title,
+            artist: item.artist,
+            durationSeconds: item.durationInSeconds,
+          }));
+        }
         break;
       }
 
@@ -1744,12 +1825,10 @@ export class TracksService {
       };
     }
 
-    // Apply shuffle if requested
     if (shuffle) {
       queueTracks = queueTracks.sort(() => Math.random() - 0.5);
     }
 
-    // Find starting index
     const currentIndex = startTrackId
       ? Math.max(
           queueTracks.findIndex((t) => t.trackId === startTrackId),
