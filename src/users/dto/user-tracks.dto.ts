@@ -34,3 +34,14 @@ export class LikedTracksDto {
   limit: number;
   hasMore: boolean;
 }
+
+export class PopularTrackItemDto extends TrackItemDto {
+  playsCount: number;
+}
+
+export class PopularTracks {
+  tracks: PopularTrackItemDto[];
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
