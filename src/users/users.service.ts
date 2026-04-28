@@ -1125,6 +1125,7 @@ async getUserCollections(
           select: {
             id: true,
             displayName: true,
+            username: true,
             avatarUrl: true,
           },
         },
@@ -1132,6 +1133,7 @@ async getUserCollections(
           select: {
             id: true,
             displayName: true,
+            username: true,
             avatarUrl: true,
           },
         },
@@ -1169,7 +1171,8 @@ async getUserCollections(
         conversationId: conv.id,
         otherUser: {
           id: otherUser.id,
-          displayName: otherUser.displayName || 'Unknown User',
+          displayName: otherUser.displayName || 'Unknown display name',
+          username: otherUser.username || 'unknown username',
           avatarUrl: otherUser.avatarUrl,
         },
         lastMessagePreview: lastMessage?.content || null,
