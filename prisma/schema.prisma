@@ -35,6 +35,7 @@ model User {
   dateOfBirth      DateTime
   isDeleted        Boolean     @default(false)
   suspensionReason String?
+  allowMessages    Boolean     @default(true)
 
   // ── Relations ─────────────────────────────────────────────────
   emailVerificationTokens EmailVerificationToken[]
@@ -143,7 +144,7 @@ model OAuthAccount {
   userId         String
   provider       OAuthProvider
   providerUserId String
-  accessToken    String        @unique
+  accessToken    String?        
   refreshToken   String?
   expiresAt      DateTime?
   createdAt      DateTime      @default(now())
@@ -791,6 +792,7 @@ enum ConversationStatus {
   ACTIVE
   ARCHIVED
   BLOCKED
+  PENDING
 }
 
 enum ReportedEntityType {

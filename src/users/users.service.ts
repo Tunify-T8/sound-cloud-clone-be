@@ -1076,8 +1076,34 @@ async getUserCollections(
 
     if (existing) {
       return {
+        message: 'Conversation already exists',
         conversationId: existing.id,
       };
+    }
+
+    const otherUser = await this.prisma.user.findUnique({
+      where: { id: otherUserId },
+    });
+
+    if (!otherUser) {
+      throw new NotFoundException('Other user not found');
+    }
+
+    if(otherUser.allowMessages === false)
+    {
+      // Check if the other user follows the user trying to create the conversation
+      const follows = await this.prisma.follow.findFirst({
+        where: { 
+          followerId: otherUserId,  // Does otherUser follow...
+          followingId: userId,      // ...userId?
+        },
+      });
+
+      // If otherUser doesn't follow userId, throw an error
+      if(!follows)
+      {
+        throw new BadRequestException('Cannot create conversation. The user only allows messages from people they follow.');
+      }
     }
 
     // Create new conversation
@@ -1089,6 +1115,7 @@ async getUserCollections(
     });
 
     return {
+      message: 'Conversation created successfully',
       conversationId: conversation.id,
     };
   }

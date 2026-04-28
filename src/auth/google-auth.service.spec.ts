@@ -32,10 +32,17 @@ type PrismaMock = {
   $transaction: jest.Mock;
 };
 
+type GoogleOauthClientMock = {
+  getToken: jest.Mock;
+  verifyIdToken: jest.Mock;
+};
+
 describe('GoogleAuthService', () => {
   let service: GoogleAuthService;
   let prisma: PrismaMock;
   let jwtService: jest.Mocked<JwtService>;
+  let oauthClient: GoogleOauthClientMock;
+  let getGoogleUserSpy: jest.SpiedFunction<any>;
 
   // ─── Base mock user ───────────────────────────────────────────────
   const mockUser = {
@@ -125,9 +132,10 @@ describe('GoogleAuthService', () => {
     service = module.get<GoogleAuthService>(GoogleAuthService);
     prisma = module.get(PrismaService);
     jwtService = module.get(JwtService);
+    oauthClient = (service as any).oauthClient as GoogleOauthClientMock;
 
     // Bypass actual Google token exchange in all tests
-    jest
+    getGoogleUserSpy = jest
       .spyOn(service as any, 'getGoogleUser')
       .mockResolvedValue(mockGooglePayload);
   });
@@ -307,6 +315,94 @@ describe('GoogleAuthService', () => {
           InternalServerErrorException,
         );
       });
+    });
+  });
+
+  describe('getGoogleUser', () => {
+    beforeEach(() => {
+      getGoogleUserSpy.mockRestore();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      getGoogleUserSpy = jest
+        .spyOn(service as any, 'getGoogleUser')
+        .mockResolvedValue(mockGooglePayload);
+    });
+
+    it('should fall back to tokeninfo when cert retrieval times out', async () => {
+      oauthClient.getToken.mockResolvedValue({
+        tokens: { id_token: 'google-id-token' },
+      });
+      oauthClient.verifyIdToken.mockRejectedValue(
+        Object.assign(
+          new Error(
+            'Failed to retrieve verification certificates: request to https://www.googleapis.com/oauth2/v1/certs failed',
+          ),
+          { code: 'ETIMEDOUT' },
+        ),
+      );
+
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          aud: 'mock_secret',
+          email: 'john@gmail.com',
+          email_verified: 'true',
+          exp: `${Math.floor(Date.now() / 1000) + 300}`,
+          iss: 'https://accounts.google.com',
+          name: 'John Doe',
+          picture: 'https://lh3.googleusercontent.com/photo.jpg',
+          sub: 'google-id-123',
+        }),
+      } as any);
+
+      const result = await (service as any).getGoogleUser('google-auth-code-123');
+
+      expect(result).toEqual({
+        googleId: 'google-id-123',
+        email: 'john@gmail.com',
+        name: 'John Doe',
+        picture: 'https://lh3.googleusercontent.com/photo.jpg',
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0][0].toString()).toContain(
+        'https://oauth2.googleapis.com/tokeninfo?id_token=google-id-token',
+      );
+      expect(fetchSpy.mock.calls[0][1]).toEqual(
+        expect.objectContaining({
+          signal: expect.anything(),
+        }),
+      );
+    });
+
+    it('should reject tokeninfo fallback when audience is invalid', async () => {
+      oauthClient.getToken.mockResolvedValue({
+        tokens: { id_token: 'google-id-token' },
+      });
+      oauthClient.verifyIdToken.mockRejectedValue(
+        Object.assign(new Error('Failed to retrieve verification certificates'), {
+          code: 'ETIMEDOUT',
+        }),
+      );
+
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          aud: 'wrong-client-id',
+          email: 'john@gmail.com',
+          email_verified: 'true',
+          exp: `${Math.floor(Date.now() / 1000) + 300}`,
+          iss: 'https://accounts.google.com',
+          sub: 'google-id-123',
+        }),
+      } as any);
+
+      await expect(
+        (service as any).getGoogleUser('google-auth-code-123'),
+      ).rejects.toThrow(
+        new UnauthorizedException('Invalid or expired Google authorization code'),
+      );
     });
   });
 

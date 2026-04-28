@@ -18,6 +18,10 @@ import { StringValue } from 'ms';
 export class GoogleAuthService {
   private readonly logger = new Logger(GoogleAuthService.name);
   private readonly oauthClient: OAuth2Client;
+  private static readonly GOOGLE_ISSUERS = new Set([
+    'accounts.google.com',
+    'https://accounts.google.com',
+  ]);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -123,6 +127,121 @@ export class GoogleAuthService {
     return `${base}_${Date.now().toString(16).slice(-6)}`;
   }
 
+  private isGoogleCertFetchError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const maybeCode = (error as { code?: string }).code;
+    return (
+      maybeCode === 'ETIMEDOUT' ||
+      error.message.includes('Failed to retrieve verification certificates') ||
+      error.message.includes('www.googleapis.com/oauth2/v1/certs')
+    );
+  }
+
+  private async verifyGoogleIdTokenWithFallback(idToken: string): Promise<{
+    sub: string;
+    email: string;
+    name?: string;
+    picture?: string;
+  }> {
+    try {
+      const ticket = await this.oauthClient.verifyIdToken({
+        idToken,
+        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload?.sub || !payload.email) {
+        throw new UnauthorizedException('Failed to get user info from Google');
+      }
+
+      return {
+        sub: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+      };
+    } catch (error) {
+      if (!this.isGoogleCertFetchError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        'Google cert retrieval timed out. Falling back to tokeninfo verification.',
+      );
+
+      const url = new URL('https://oauth2.googleapis.com/tokeninfo');
+      url.searchParams.set('id_token', idToken);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (fetchError) {
+        this.logger.error(
+          'Google tokeninfo fallback request failed',
+          fetchError,
+        );
+        throw new UnauthorizedException(
+          'Invalid or expired Google authorization code',
+        );
+      }
+
+      if (!response.ok) {
+        this.logger.error(
+          `Google tokeninfo fallback returned HTTP ${response.status}`,
+        );
+        throw new UnauthorizedException(
+          'Invalid or expired Google authorization code',
+        );
+      }
+
+      const payload = (await response.json()) as {
+        aud?: string;
+        email?: string;
+        email_verified?: boolean | string;
+        exp?: string | number;
+        iss?: string;
+        name?: string;
+        picture?: string;
+        sub?: string;
+      };
+
+      const expectedAudience =
+        this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const expiresAtMs = Number(payload.exp) * 1000;
+      const emailVerified =
+        payload.email_verified === undefined ||
+        payload.email_verified === true ||
+        payload.email_verified === 'true';
+
+      if (
+        payload.aud !== expectedAudience ||
+        !payload.iss ||
+        !GoogleAuthService.GOOGLE_ISSUERS.has(payload.iss) ||
+        !Number.isFinite(expiresAtMs) ||
+        expiresAtMs <= Date.now() ||
+        !payload.sub ||
+        !payload.email ||
+        !emailVerified
+      ) {
+        throw new UnauthorizedException(
+          'Invalid or expired Google authorization code',
+        );
+      }
+
+      return {
+        sub: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+      };
+    }
+  }
+
   private async getGoogleUser(code: string): Promise<{
     googleId: string;
     email: string;
@@ -131,25 +250,20 @@ export class GoogleAuthService {
   }> {
     try {
       const { tokens } = await this.oauthClient.getToken(code);
-
-      const ticket = await this.oauthClient.verifyIdToken({
-        idToken: tokens.id_token!,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
-      });
-
-      const payload = ticket.getPayload();
-      if (!payload) {
-        throw new UnauthorizedException('Failed to get user info from Google');
+      if (!tokens.id_token) {
+        throw new UnauthorizedException('Google did not return an ID token');
       }
+
+      const payload = await this.verifyGoogleIdTokenWithFallback(tokens.id_token);
 
       return {
         googleId: payload.sub,
-        email: payload.email!,
-        name: payload.name ?? payload.email!,
+        email: payload.email,
+        name: payload.name ?? payload.email,
         picture: payload.picture ?? null,
       };
     } catch (error) {
-      this.logger.error('Google token exchange failed', error);
+      this.logger.error('Google authentication failed', error);
       throw new UnauthorizedException(
         'Invalid or expired Google authorization code',
       );

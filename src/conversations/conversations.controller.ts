@@ -16,6 +16,19 @@ import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
 export class ConversationsController {
     constructor(private readonly conversationsService: ConversationsService) {}
 
+
+    @Post('allowAll')
+    @UseGuards(JwtAccessGuard)
+    allowAllConversations(@Request() req) {
+        return this.conversationsService.allowAllConversations(req.user.userId);
+    }
+
+    @Delete('allowAll')
+    @UseGuards(JwtAccessGuard)
+    disallowAllConversations(@Request() req) {
+        return this.conversationsService.disallowAllConversations(req.user.userId);
+    }
+
     @Delete(':id')
     @UseGuards(JwtAccessGuard)
     deleteConversation(
@@ -91,4 +104,6 @@ export class ConversationsController {
     ) {
         return this.conversationsService.unblockUser(req.user.userId, blockedUserId);
     }
+
+    
 }

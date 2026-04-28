@@ -428,5 +428,40 @@ export class ConversationsService {
         };
     }
 
+    async allowAllConversations(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+        });
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { allowMessages: true },
+        });
+
+        return { message: 'All conversations allowed successfully' };
+    }
+
+    
+    async disallowAllConversations(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+        });
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { allowMessages: false },
+        });
+
+        return { message: 'All conversations disallowed successfully' };
+    }
+
 
 }
