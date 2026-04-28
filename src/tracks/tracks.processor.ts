@@ -135,6 +135,8 @@ export class TracksProcessor {
         });
       }
 
+
+      
       // 4. Generate waveform
       const peaks = await this.audio.generateWaveform(
         finalBuffer,
