@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Min } from 'class-validator';
-import { DiscoverItemDto } from 'src/feed/dto/discover.dto';
 
 export enum ReasonType {
   FOLLOW = 'FOLLOW',
@@ -24,11 +23,23 @@ export class GetRecommendationsQueryDto {
   limit?: number = 20;
 }
 
-export class RecommendationItemDto extends DiscoverItemDto {
-  audioUrl: string;
-  likesCount: number;
-  playsCount: number;
-  tags: string[];
+export class RecommendationItemDto {
+  trackId: string;
+  artistId: string;
+  artistAvatarUrl: string | null;
+  artistIsCertified: boolean;
+  title: string;
+  artist: string;
+  genre: string | null;
+  durationInSeconds: number;
+  coverUrl: string | null;
+  waveformUrl: string | null;
+  numberOfComments: number;
+  numberOfLikes: number;
+  numberOfReposts: number;
+  numberOfListens: number;
+  isLiked: boolean;
+  isReposted: boolean;
   reason: string;
   reasonType: ReasonType;
 }

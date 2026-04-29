@@ -4,27 +4,9 @@ import {
   ReasonType,
   RecommendationItemDto,
   RecommendationsResponseDto,
-} from './dto/recommendations.dto';
-
-// ─── Raw query return types ───────────────────────────────────────────────────
-
-interface RawTrendingTrack {
-  id: string;
-  title: string;
-  audioUrl: string;
-  coverUrl: string | null;
-  waveformUrl: string | null;
-  durationSeconds: number;
-  artist_id: string;
-  artist_username: string;
-  artist_display_name: string | null;
-  artist_avatar_url: string | null;
-  like_count: bigint;
-  play_count: bigint;
-}
+} from './dto/reccomendations.dto';
 
 // ─── Prisma select shape for a full track ────────────────────────────────────
-
 const trackSelect = {
   id: true,
   title: true,
@@ -32,7 +14,6 @@ const trackSelect = {
   coverUrl: true,
   waveformUrl: true,
   durationSeconds: true,
-  tags: { select: { tag: true } },
   genre: { select: { label: true } },
   user: {
     select: {
@@ -40,10 +21,11 @@ const trackSelect = {
       username: true,
       display_name: true,
       avatar_url: true,
+      isCertified: true,
     },
   },
   _count: {
-    select: { likes: true, playHistory: true },
+    select: { likes: true, playHistory: true, comments: true, reposts: true },
   },
 } as const;
 
@@ -54,15 +36,20 @@ type TrackWithRelations = {
   coverUrl: string | null;
   waveformUrl: string | null;
   durationSeconds: number;
-  tags: { tag: string }[];
   genre: { label: string } | null;
   user: {
     id: string;
     username: string;
     display_name: string | null;
     avatar_url: string | null;
+    isCertified: boolean;
   };
-  _count: { likes: number; playHistory: number };
+  _count: {
+    likes: number;
+    playHistory: number;
+    comments: number;
+    reposts: number;
+  };
 };
 
 @Injectable()
@@ -77,86 +64,109 @@ export class RecommendationsService {
     limit: number,
   ): Promise<RecommendationsResponseDto> {
     const skip = (page - 1) * limit;
-    // We fetch extra candidates so we can shuffle within tiers and still fill pages
     const poolSize = limit * 5;
 
-    // ── Build exclusion sets ──────────────────────────────────────────────────
-    const [excludeIds, blockedUserIds] = await Promise.all([
-      this.getExcludeTrackIds(userId),
-      this.getBlockedUserIds(userId),
-    ]);
+    // ── Build exclusion sets ────────────────────────────────────────────────
+    const [excludeIds, blockedUserIds, likedTrackIds, repostedTrackIds] =
+      await Promise.all([
+        this.getExcludeTrackIds(userId),
+        this.getBlockedUserIds(userId),
+        this.getLikedTrackIds(userId),
+        this.getRepostedTrackIds(userId),
+      ]);
 
-    // ── Run tiers in order ────────────────────────────────────────────────────
+    const likedIdSet = new Set(likedTrackIds);
+    const repostedIdSet = new Set(repostedTrackIds);
+
+    // Global dedup set
+    const seenIds = new Set<string>(excludeIds);
+
     const candidates: RecommendationItemDto[] = [];
 
-    // Tier 1 — Social (tracks liked/reposted by followed users)
+    // helper to add items safely
+    const addItems = (items: RecommendationItemDto[]) => {
+      for (const item of items) {
+        if (!seenIds.has(item.trackId)) {
+          seenIds.add(item.trackId);
+          candidates.push(item);
+        }
+      }
+    };
+
+    // ── Tier 1: Social ──────────────────────────────────────────────────────
     if (candidates.length < poolSize) {
       const followedIds = await this.getFollowedUserIds(userId);
+
       if (followedIds.length > 0) {
+        const remaining = poolSize - candidates.length;
+
         const tier1 = await this.tierSocial(
-          followedIds,
           excludeIds,
+          remaining,
+          followedIds,
           blockedUserIds,
-          poolSize,
+          likedIdSet,
+          repostedIdSet,
         );
-        candidates.push(...tier1);
+
+        addItems(tier1);
       }
     }
 
-    // Tier 2 — Taste (users who share your likes → their other likes)
-    if (candidates.length < poolSize) {
-      const likedTrackIds = await this.getLikedTrackIds(userId);
-      if (likedTrackIds.length >= 2) {
-        const seen = new Set(candidates.map((c) => c.id));
-        const tier2 = await this.tierTaste(
-          userId,
-          likedTrackIds,
-          [...excludeIds, ...seen],
-          blockedUserIds,
-          poolSize,
-        );
-        candidates.push(...tier2);
-      }
+    // ── Tier 2: Taste ───────────────────────────────────────────────────────
+    if (candidates.length < poolSize && likedTrackIds.length >= 2) {
+      const remaining = poolSize - candidates.length;
+
+      const tier2 = await this.tierTaste(
+        excludeIds,
+        remaining,
+        userId,
+        likedTrackIds,
+        blockedUserIds,
+        likedIdSet,
+        repostedIdSet,
+      );
+
+      addItems(tier2);
     }
 
-    // Tier 3 — Tag (tracks sharing top tags from your play history)
+    // ── Tier 3: Tag ─────────────────────────────────────────────────────────
     if (candidates.length < poolSize) {
       const listenedIds = await this.getListenedTrackIds(userId);
+
       if (listenedIds.length > 0) {
-        const seen = new Set(candidates.map((c) => c.id));
+        const remaining = poolSize - candidates.length;
+
         const tier3 = await this.tierTag(
+          excludeIds,
+          remaining,
           listenedIds,
-          [...excludeIds, ...seen],
           blockedUserIds,
-          poolSize,
+          likedIdSet,
+          repostedIdSet,
         );
-        candidates.push(...tier3);
+
+        addItems(tier3);
       }
     }
 
-    // Tier 4 — Genre (top genre from play history)
+    // ── Tier 4: Genre ───────────────────────────────────────────────────────
     if (candidates.length < poolSize) {
-      const seen = new Set(candidates.map((c) => c.id));
+      const remaining = poolSize - candidates.length;
+
       const tier4 = await this.tierGenre(
-        userId,
-        [...excludeIds, ...seen],
-        blockedUserIds,
-        poolSize,
-      );
-      candidates.push(...tier4);
-    }
-
-    // Tier 5 — Trending fallback (only if all other tiers empty)
-    if (candidates.length === 0) {
-      const tier5 = await this.tierTrending(
         excludeIds,
+        remaining,
+        userId,
         blockedUserIds,
-        poolSize,
+        likedIdSet,
+        repostedIdSet,
       );
-      candidates.push(...tier5);
+
+      addItems(tier4);
     }
 
-    // ── No data at all ────────────────────────────────────────────────────────
+    // ── No data ─────────────────────────────────────────────────────────────
     if (candidates.length === 0) {
       return {
         data: [],
@@ -170,16 +180,25 @@ export class RecommendationsService {
       };
     }
 
-    // ── Deduplicate by trackId (a track can appear in multiple tiers) ─────────
-    const seen = new Map<string, RecommendationItemDto>();
-    for (const item of candidates) {
-      if (!seen.has(item.id)) seen.set(item.id, item);
-    }
-    const unique = Array.from(seen.values());
+    // ── Pagination (FINAL STEP ONLY) ─────────────────────────────────────────
+    const total = candidates.length;
+    const page_data = candidates.slice(skip, skip + limit);
 
-    // ── Paginate ──────────────────────────────────────────────────────────────
-    const total = unique.length;
-    const page_data = unique.slice(skip, skip + limit);
+    if (page_data.length === 0 && page > 1) {
+      return {
+        data: [],
+        page,
+        limit,
+        hasMore: false,
+        meta: {
+          code: 'NO_DATA',
+          message:
+            total === 0
+              ? 'No recommendations available.'
+              : 'No more recommendations.',
+        },
+      };
+    }
 
     return {
       data: page_data,
@@ -223,6 +242,14 @@ export class RecommendationsService {
       if (b.blockedId !== userId) ids.add(b.blockedId);
     }
     return Array.from(ids);
+  }
+
+  private async getRepostedTrackIds(userId: string): Promise<string[]> {
+    const reposts = await this.prisma.repost.findMany({
+      where: { userId },
+      select: { trackId: true },
+    });
+    return reposts.map((r) => r.trackId);
   }
 
   private async getFollowedUserIds(userId: string): Promise<string[]> {
@@ -276,29 +303,30 @@ export class RecommendationsService {
     track: TrackWithRelations,
     reason: string,
     reasonType: ReasonType,
+    likedIdSet: Set<string>,
+    repostedIdSet: Set<string>,
   ): RecommendationItemDto {
     return {
-      id: track.id,
+      trackId: track.id,
+      artistId: track.user.id,
+      artistAvatarUrl: track.user.avatar_url,
+      artistIsCertified: track.user.isCertified,
       title: track.title,
-      audioUrl: track.audioUrl,
+      artist: track.user.display_name ?? track.user.username,
+      genre: track.genre?.label ?? null,
+      durationInSeconds: track.durationSeconds,
       coverUrl: track.coverUrl,
       waveformUrl: track.waveformUrl,
-      durationSeconds: track.durationSeconds,
-      likesCount: track._count.likes,
-      playsCount: track._count.playHistory,
-      tags: track.tags.map((t) => t.tag),
-      genre: track.genre?.label ?? null,
-      artist: {
-        id: track.user.id,
-        username: track.user.username,
-        display_name: track.user.display_name,
-        avatar_url: track.user.avatar_url,
-      },
+      numberOfComments: track._count.comments,
+      numberOfLikes: track._count.likes,
+      numberOfReposts: track._count.reposts,
+      numberOfListens: track._count.playHistory,
+      isLiked: likedIdSet.has(track.id),
+      isReposted: repostedIdSet.has(track.id),
       reason,
       reasonType,
     };
   }
-
   // ─── Fisher-Yates shuffle ─────────────────────────────────────────────────
 
   private shuffle<T>(arr: T[]): T[] {
@@ -314,11 +342,14 @@ export class RecommendationsService {
   // Tracks liked or reposted by users you follow, with their username as reason
 
   private async tierSocial(
-    followedIds: string[],
     excludeIds: string[],
+    remaining: number,
+    followedIds: string[],
     blockedUserIds: string[],
-    poolSize: number,
+    likedIdSet: Set<string>,
+    repostedIdSet: Set<string>,
   ): Promise<RecommendationItemDto[]> {
+    if (remaining <= 0) return [];
     // Get recent likes by followed users, grouped to pick a reason username
     const recentLikes = await this.prisma.trackLike.findMany({
       where: {
@@ -330,7 +361,7 @@ export class RecommendationsService {
         track: { select: trackSelect },
       },
       orderBy: { createdAt: 'desc' },
-      take: poolSize * 2,
+      take: remaining * 2,
     });
 
     const recentReposts = await this.prisma.repost.findMany({
@@ -343,7 +374,7 @@ export class RecommendationsService {
         track: { select: trackSelect },
       },
       orderBy: { createdAt: 'desc' },
-      take: poolSize * 2,
+      take: remaining * 2,
     });
 
     // Merge, pick one reason username per trackId (first encountered)
@@ -364,12 +395,14 @@ export class RecommendationsService {
     const entries = this.shuffle(Array.from(trackReasonMap.values()));
 
     return entries
-      .slice(0, poolSize)
+      .slice(0, remaining)
       .map(({ track, username }) =>
         this.mapTrack(
           track,
           `Because you follow ${username}`,
           ReasonType.FOLLOW,
+          likedIdSet,
+          repostedIdSet,
         ),
       );
   }
@@ -378,12 +411,15 @@ export class RecommendationsService {
   // Users who liked ≥2 tracks you liked → surface their other likes
 
   private async tierTaste(
+    excludeIds: string[],
+    remaining: number,
     userId: string,
     likedTrackIds: string[],
-    excludeIds: string[],
     blockedUserIds: string[],
-    poolSize: number,
+    likedIdSet: Set<string>,
+    repostedIdSet: Set<string>,
   ): Promise<RecommendationItemDto[]> {
+    if (remaining <= 0) return [];
     // Find users with overlapping taste (≥2 shared liked tracks)
     const overlapping = await this.prisma.trackLike.groupBy({
       by: ['userId'],
@@ -420,7 +456,7 @@ export class RecommendationsService {
       },
       select: { track: { select: trackSelect } },
       orderBy: { createdAt: 'desc' },
-      take: poolSize * 2,
+      take: remaining * 2,
     });
 
     const unique = new Map<string, TrackWithRelations>();
@@ -430,32 +466,36 @@ export class RecommendationsService {
     }
 
     return this.shuffle(Array.from(unique.values()))
-      .slice(0, poolSize)
+      .slice(0, remaining)
       .map((track) =>
         this.mapTrack(
           track,
-          `Because you listened to ${reasonTrackTitle}`,
+          `Because you liked ${reasonTrackTitle}`,
           ReasonType.TASTE,
+          likedIdSet,
+          repostedIdSet,
         ),
       );
   }
 
   // ─── Tier 3: Tag ──────────────────────────────────────────────────────────
   // Tracks sharing top tags from your most-played tracks
-
   private async tierTag(
-    listenedTrackIds: string[],
     excludeIds: string[],
+    remaining: number,
+    listenedTrackIds: string[],
     blockedUserIds: string[],
-    poolSize: number,
+    likedIdSet: Set<string>,
+    repostedIdSet: Set<string>,
   ): Promise<RecommendationItemDto[]> {
+    if (remaining <= 0) return [];
     // Get top 5 tags from listened tracks
     const tagRows = await this.prisma.trackTag.groupBy({
       by: ['tag'],
       where: { trackId: { in: listenedTrackIds } },
       _count: { tag: true },
       orderBy: { _count: { tag: 'desc' } },
-      take: 5,
+      take: remaining * 2,
     });
 
     if (tagRows.length === 0) return [];
@@ -463,62 +503,74 @@ export class RecommendationsService {
     const topTags = tagRows.map((r) => r.tag);
     const results: RecommendationItemDto[] = [];
 
-    // For each tag, find tracks — this gives us per-tag reason strings
+    let remainingLeft = remaining;
+
     for (const tag of topTags) {
+      if (remainingLeft <= 0) break;
+
+      const perTagLimit = Math.ceil(remainingLeft / topTags.length);
+
       const tracks = await this.prisma.track.findMany({
         where: {
           ...this.safeTrackWhere(
-            [...excludeIds, ...results.map((r) => r.id)],
+            [...excludeIds, ...results.map((r) => r.trackId)],
             blockedUserIds,
           ),
           tags: { some: { tag } },
         },
         select: trackSelect,
         orderBy: { createdAt: 'desc' },
-        take: Math.ceil(poolSize / topTags.length),
+        take: perTagLimit,
       });
 
       const shuffled = this.shuffle(tracks);
+
       for (const track of shuffled) {
+        if (remainingLeft <= 0) break;
+
         results.push(
           this.mapTrack(
             track as TrackWithRelations,
             `Because you like #${tag}`,
             ReasonType.TAG,
+            likedIdSet,
+            repostedIdSet,
           ),
         );
+
+        remainingLeft--;
       }
     }
 
-    return results;
+    return results.slice(0, remaining);
   }
 
   // ─── Tier 4: Genre ────────────────────────────────────────────────────────
   // Tracks in your top genre from play history
 
   private async tierGenre(
-    userId: string,
     excludeIds: string[],
+    remaining: number,
+    userId: string,
     blockedUserIds: string[],
-    poolSize: number,
+    likedIdSet: Set<string>,
+    repostedIdSet: Set<string>,
   ): Promise<RecommendationItemDto[]> {
     // Top genre from play history via raw query (same pattern as existing discover)
-    const topGenres = await this.prisma.$queryRawUnsafe<
+    if (remaining <= 0) return [];
+    const topGenres = await this.prisma.$queryRaw<
       { genreId: string; label: string }[]
-    >(
-      `
+    >`
         SELECT t."genreId", g."label"
         FROM "PlayHistory" ph
         JOIN "Track" t ON ph."trackId" = t.id
         JOIN "Genre" g ON t."genreId" = g.id
-        WHERE ph."userId" = $1
+        WHERE ph."userId" = ${userId}
           AND t."genreId" IS NOT NULL
         GROUP BY t."genreId", g."label"
         ORDER BY COUNT(*) DESC
         LIMIT 1
-      `,
-      userId,
-    );
+      `;
 
     if (topGenres.length === 0) return [];
 
@@ -531,113 +583,17 @@ export class RecommendationsService {
       },
       select: trackSelect,
       orderBy: { createdAt: 'desc' },
-      take: poolSize,
+      take: remaining * 2,
     });
 
     return this.shuffle(tracks as TrackWithRelations[]).map((track) =>
-      this.mapTrack(track, `Because you listen to ${label}`, ReasonType.GENRE),
+      this.mapTrack(
+        track,
+        `Because you listen to ${label}`,
+        ReasonType.GENRE,
+        likedIdSet,
+        repostedIdSet,
+      ),
     );
-  }
-
-  // ─── Tier 5: Trending fallback ────────────────────────────────────────────
-  // Most liked + played in the last 7 days — only fires when all other tiers empty
-
-  private async tierTrending(
-    excludeIds: string[],
-    blockedUserIds: string[],
-    poolSize: number,
-  ): Promise<RecommendationItemDto[]> {
-    const periodStart = new Date();
-    periodStart.setDate(periodStart.getDate() - 7);
-
-    const excludeFilter =
-      excludeIds.length > 0
-        ? `AND t.id NOT IN (${excludeIds.map((_, i) => `$${i + 2}`).join(', ')})`
-        : '';
-
-    const blockedFilter =
-      blockedUserIds.length > 0
-        ? `AND u.id NOT IN (${blockedUserIds
-            .map((_, i) => `$${excludeIds.length + i + 2}`)
-            .join(', ')})`
-        : '';
-
-    const params: unknown[] = [
-      periodStart.toISOString(),
-      ...excludeIds,
-      ...blockedUserIds,
-    ];
-
-    const rows = await this.prisma.$queryRawUnsafe<RawTrendingTrack[]>(
-      `
-        SELECT
-          t.id,
-          t.title,
-          t."audioUrl"                              AS "audioUrl",
-          t."coverUrl"                              AS "coverUrl",
-          t."waveformUrl"                           AS "waveformUrl",
-          t."durationSeconds"                       AS "durationSeconds",
-          u.id                                      AS artist_id,
-          u.username                                AS artist_username,
-          u."display_name"                          AS artist_display_name,
-          u."avatar_url"                            AS artist_avatar_url,
-          (
-            SELECT COUNT(*) FROM "TrackLike" tl
-            WHERE tl."trackId" = t.id
-              AND tl."createdAt" >= $1::timestamptz
-          )                                         AS like_count,
-          (
-            SELECT COUNT(*) FROM "PlayHistory" ph
-            WHERE ph."trackId" = t.id
-              AND ph."playedAt" >= $1::timestamptz
-          )                                         AS play_count
-        FROM "Track" t
-        JOIN "User" u ON t."userId" = u.id
-        WHERE t."isDeleted" = false
-          AND t."isHidden"  = false
-          AND t."isPublic"  = true
-          AND u."is_suspended" = false
-          AND u."is_banned"    = false
-          AND u."is_deleted"   = false
-          ${excludeFilter}
-          ${blockedFilter}
-        ORDER BY (like_count * 2 + play_count) DESC
-        LIMIT ${poolSize}
-      `,
-      ...params,
-    );
-
-    // Fetch tags separately (raw SQL can't easily join array relations)
-    const trackIds = rows.map((r) => r.id);
-    const tagRows = await this.prisma.trackTag.findMany({
-      where: { trackId: { in: trackIds } },
-      select: { trackId: true, tag: true },
-    });
-    const tagMap = new Map<string, string[]>();
-    for (const t of tagRows) {
-      if (!tagMap.has(t.trackId)) tagMap.set(t.trackId, []);
-      tagMap.get(t.trackId)!.push(t.tag);
-    }
-
-    return this.shuffle(rows).map((row) => ({
-      id: row.id,
-      title: row.title,
-      audioUrl: row.audioUrl,
-      coverUrl: row.coverUrl,
-      waveformUrl: row.waveformUrl,
-      durationSeconds: row.durationSeconds,
-      likesCount: Number(row.like_count),
-      playsCount: Number(row.play_count),
-      tags: tagMap.get(row.id) ?? [],
-      genre: null, // not needed for trending fallback
-      artist: {
-        id: row.artist_id,
-        username: row.artist_username,
-        display_name: row.artist_display_name,
-        avatar_url: row.artist_avatar_url,
-      },
-      reason: 'Popular right now',
-      reasonType: ReasonType.TRENDING,
-    }));
   }
 }
