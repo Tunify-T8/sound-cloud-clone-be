@@ -390,6 +390,44 @@ async updateCollection(
   if (!collection) throw new NotFoundException('Collection not found');
   if (collection.userId !== userId) throw new NotFoundException('Collection not found');
 
+
+  if (dto.type !== undefined && dto.type !== collection.type) {
+    if (dto.type === CollectionType.ALBUM) {
+      // PLAYLIST → ALBUM: only ARTISTs allowed
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+
+      if (user?.role !== 'ARTIST') {
+        throw new ForbiddenException(
+          'Only artists can convert a playlist to an album',
+        );
+      }
+
+      // All tracks must belong to the owner
+      const foreignTracks = await this.prisma.collectionTrack.findMany({
+        where: {
+          collectionId,
+          track: {
+            userId: { not: userId },
+            isDeleted: false,
+          },
+        },
+        select: { trackId: true },
+      });
+
+      if (foreignTracks.length > 0) {
+        throw new BadRequestException(
+          `Cannot convert to album: ${foreignTracks.length} track(s) do not belong to you. ` +
+          `Remove them first before converting to an album.`,
+        );
+      }
+    }
+    // ALBUM → PLAYLIST: no restrictions, falls through
+  }
+
+
   // Handle privacy change
   let secretToken = collection.secretToken;
   if (dto.privacy !== undefined) {
@@ -410,12 +448,15 @@ async updateCollection(
     coverUrl = dto.coverUrl;
   }
 
+  
+
   const updated = await this.prisma.collection.update({
     where: { id: collectionId },
     data: {
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.privacy !== undefined && { isPublic: dto.privacy === 'public' }),
+      ...(dto.type !== undefined && { type: dto.type }),
       secretToken,
       coverUrl,
     },

@@ -1143,7 +1143,7 @@ export class UsersService {
           select: {
             content: true,
             createdAt: true,
-            read: true,
+            status: true,
             senderId: true,
           },
         },
@@ -1156,15 +1156,25 @@ export class UsersService {
     // total is the
     const total = conversations.length;
 
+    // Get unread counts for all conversations
+    const unreadCountsMap = new Map<string, number>();
+    for (const conv of conversations) {
+      const otherUserId = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
+      const unreadCount = await this.prisma.message.count({
+        where: {
+          conversationId: conv.id,
+          status: { not: 'READ' },
+          senderId: otherUserId,
+        },
+      });
+      unreadCountsMap.set(conv.id, unreadCount);
+    }
+
     // Format response
     const items = conversations.map((conv) => {
       const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
       const lastMessage = conv.messages[0];
-
-      // Count unread messages from the other user
-      const unreadCount = conv.messages.filter(
-        (msg) => !msg.read && msg.senderId !== userId,
-      ).length;
+      const unreadCount = unreadCountsMap.get(conv.id) || 0;
 
       return {
         conversationId: conv.id,
@@ -1255,7 +1265,7 @@ export class UsersService {
   async getUnreadMessagesCount(userId: string) {
     const count = await this.prisma.message.count({
       where: {
-        read: false,
+        status: { not: 'READ' },
         senderId: { not: userId },
         conversation: {
           OR: [{ user1Id: userId }, { user2Id: userId }],

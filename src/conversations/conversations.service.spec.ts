@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationsService } from './conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('ConversationsService', () => {
   let service: ConversationsService;
@@ -28,8 +29,9 @@ describe('ConversationsService', () => {
     trackId: null,
     collectionId: null,
     userId: null,
-    read: false,
+    status: 'SENT',
     createdAt: new Date(),
+    updatedAt: new Date(),
     track: null,
     collection: null,
     sharedUser: null,
@@ -88,12 +90,21 @@ describe('ConversationsService', () => {
       $transaction: jest.fn(),
     };
 
+    const mockNotificationsService = {
+      createNotification: jest.fn(),
+      sendNotification: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationsService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: NotificationsService,
+          useValue: mockNotificationsService,
         },
       ],
     }).compile();
@@ -427,10 +438,13 @@ describe('ConversationsService', () => {
 
   // ───── createMessage ───────────────────────────────────────────
   describe('createMessage', () => {
-    it('should create a TEXT message', async () => {
+    it('should create a TEXT message with SENT status', async () => {
       mockPrismaService.conversation.findUnique.mockResolvedValue(mockConversation);
       mockPrismaService.userBlock.findMany.mockResolvedValue([]);
-      mockPrismaService.message.create.mockResolvedValue(mockMessage);
+      mockPrismaService.message.create.mockResolvedValue({
+        ...mockMessage,
+        status: 'SENT',
+      });
       mockPrismaService.conversation.update.mockResolvedValue(mockConversation);
 
       const result = await service.createMessage(
@@ -442,12 +456,14 @@ describe('ConversationsService', () => {
 
       expect(result.type).toBe('TEXT');
       expect(result.content).toBe('Hello there!');
+      expect(result.status).toBe('SENT');
       expect(mockPrismaService.message.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             type: 'TEXT',
             content: 'Hello there!',
             trackId: null,
+            status: 'SENT',
           }),
         }),
       );
@@ -456,7 +472,10 @@ describe('ConversationsService', () => {
     it('should create a TRACK_LIKE message', async () => {
       mockPrismaService.conversation.findUnique.mockResolvedValue(mockConversation);
       mockPrismaService.userBlock.findMany.mockResolvedValue([]);
-      mockPrismaService.message.create.mockResolvedValue(mockTrackMessage);
+      mockPrismaService.message.create.mockResolvedValue({
+        ...mockTrackMessage,
+        status: 'SENT',
+      });
       mockPrismaService.conversation.update.mockResolvedValue(mockConversation);
 
       const result = await service.createMessage(
@@ -469,6 +488,7 @@ describe('ConversationsService', () => {
 
       expect(result.type).toBe('TRACK_LIKE');
       expect(result.trackId).toBe('track-123');
+      expect(result.status).toBe('SENT');
     });
 
     it('should create a USER share message', async () => {
@@ -478,6 +498,7 @@ describe('ConversationsService', () => {
         ...mockMessage,
         type: 'USER',
         userId: 'shared-user-456',
+        status: 'SENT',
       });
       mockPrismaService.conversation.update.mockResolvedValue(mockConversation);
 
@@ -493,6 +514,7 @@ describe('ConversationsService', () => {
 
       expect(result.type).toBe('USER');
       expect(result.userId).toBe('shared-user-456');
+      expect(result.status).toBe('SENT');
     });
 
     it('should throw NotFoundException when conversation not found', async () => {
@@ -575,7 +597,7 @@ describe('ConversationsService', () => {
       });
       mockPrismaService.message.update.mockResolvedValue({
         ...mockMessage,
-        read: true,
+        status: 'READ',
       });
 
       const result = await service.markMessageAsRead(
@@ -584,10 +606,10 @@ describe('ConversationsService', () => {
         'conv-123',
       );
 
-      expect(result.read).toBe(true);
+      expect(result.status).toBe('READ');
       expect(mockPrismaService.message.update).toHaveBeenCalledWith({
         where: { id: 'msg-123' },
-        data: { read: true },
+        data: { status: 'READ' },
       });
     });
 
@@ -623,14 +645,191 @@ describe('ConversationsService', () => {
     });
   });
 
+  // ───── markMessageAsDelivered ──────────────────────────────────
+  describe('markMessageAsDelivered', () => {
+    it('should mark message as delivered', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'other-user-456',
+      });
+      mockPrismaService.message.update.mockResolvedValue({
+        ...mockMessage,
+        status: 'DELIVERED',
+      });
+
+      const result = await service.markMessageAsDelivered(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+
+      expect(result.status).toBe('DELIVERED');
+      expect(mockPrismaService.message.update).toHaveBeenCalledWith({
+        where: { id: 'msg-123' },
+        data: { status: 'DELIVERED' },
+      });
+    });
+
+    it('should throw NotFoundException when message not found', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.markMessageAsDelivered('user-123', 'msg-999', 'conv-123'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when user is the sender', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'user-123',
+      });
+
+      await expect(
+        service.markMessageAsDelivered('user-123', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw ForbiddenException when user is not part of conversation', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+      });
+
+      await expect(
+        service.markMessageAsDelivered('unauthorized-user', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ───── markMessageAsUnread ────────────────────────────────────
+  describe('markMessageAsUnread', () => {
+    it('should mark message as unread (sent)', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'other-user-456',
+        status: 'READ',
+      });
+      mockPrismaService.message.update.mockResolvedValue({
+        ...mockMessage,
+        status: 'SENT',
+      });
+
+      const result = await service.markMessageAsUnread(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+
+      expect(result.status).toBe('SENT');
+      expect(mockPrismaService.message.update).toHaveBeenCalledWith({
+        where: { id: 'msg-123' },
+        data: { status: 'SENT' },
+      });
+    });
+
+    it('should throw NotFoundException when message not found', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.markMessageAsUnread('user-123', 'msg-999', 'conv-123'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when user is the sender', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'user-123',
+      });
+
+      await expect(
+        service.markMessageAsUnread('user-123', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw ForbiddenException when user is not part of conversation', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+      });
+
+      await expect(
+        service.markMessageAsUnread('unauthorized-user', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ───── markMessageAsUndelivered ───────────────────────────────
+  describe('markMessageAsUndelivered', () => {
+    it('should mark message as undelivered (revert to sent)', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'other-user-456',
+        status: 'DELIVERED',
+      });
+      mockPrismaService.message.update.mockResolvedValue({
+        ...mockMessage,
+        status: 'SENT',
+      });
+
+      const result = await service.markMessageAsUndelivered(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+
+      expect(result.status).toBe('SENT');
+      expect(mockPrismaService.message.update).toHaveBeenCalledWith({
+        where: { id: 'msg-123' },
+        data: { status: 'SENT' },
+      });
+    });
+
+    it('should throw NotFoundException when message not found', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.markMessageAsUndelivered('user-123', 'msg-999', 'conv-123'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when user is the sender', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+        senderId: 'user-123',
+      });
+
+      await expect(
+        service.markMessageAsUndelivered('user-123', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw ForbiddenException when user is not part of conversation', async () => {
+      mockPrismaService.message.findUnique.mockResolvedValue({
+        ...mockMessage,
+        conversation: mockConversation,
+      });
+
+      await expect(
+        service.markMessageAsUndelivered('unauthorized-user', 'msg-123', 'conv-123'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   // ───── formatMessage ───────────────────────────────────────────
   describe('formatMessage', () => {
-    it('should format TEXT message correctly', async () => {
+    it('should format TEXT message correctly with status', async () => {
       const result = await service.formatMessage(mockMessage);
 
       expect(result.id).toBe('msg-123');
       expect(result.type).toBe('TEXT');
       expect(result.text).toBe('Hello there!');
+      expect(result.status).toBe('SENT');
       expect(result.attachment.id).toBeNull();
     });
 
@@ -643,6 +842,7 @@ describe('ConversationsService', () => {
       const result = await service.formatMessage(mockTrackMessage);
 
       expect(result.type).toBe('TRACK_LIKE');
+      expect(result.status).toBe('SENT');
       expect(result.attachment.id).toBe('track-123');
       expect(result.attachment.preview.artistName).toBe('artistname');
     });
@@ -657,6 +857,7 @@ describe('ConversationsService', () => {
       const result = await service.formatMessage(userMessage);
 
       expect(result.type).toBe('USER');
+      expect(result.status).toBe('SENT');
       expect(result.attachment.id).toBe('shared-user-456');
       expect(result.attachment.preview.username).toBe('shareduser');
     });
@@ -665,6 +866,7 @@ describe('ConversationsService', () => {
       const playlistMessage = {
         ...mockMessage,
         type: 'PLAYLIST',
+        status: 'DELIVERED',
         collection: {
           id: 'playlist-123',
           title: 'My Playlist',
@@ -675,8 +877,24 @@ describe('ConversationsService', () => {
       const result = await service.formatMessage(playlistMessage);
 
       expect(result.type).toBe('PLAYLIST');
+      expect(result.status).toBe('DELIVERED');
       expect(result.attachment.id).toBe('playlist-123');
       expect(result.attachment.preview.title).toBe('My Playlist');
+    });
+
+    it('should include all message statuses', async () => {
+      const statusesToTest: Array<'SENT' | 'DELIVERED' | 'READ' | 'UNDELIVERED'> = [
+        'SENT',
+        'DELIVERED',
+        'READ',
+        'UNDELIVERED',
+      ];
+
+      for (const status of statusesToTest) {
+        const msg = { ...mockMessage, status };
+        const result = await service.formatMessage(msg);
+        expect(result.status).toBe(status);
+      }
     });
   });
 });

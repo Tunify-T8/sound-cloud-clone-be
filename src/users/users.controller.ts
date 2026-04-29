@@ -154,6 +154,7 @@ export class UsersController {
   // ─── GET /:id/liked-tracks ───────────────────────────────────────
   // returns liked tracks of a specific user
   @Get(':id/liked-tracks')
+  @UseGuards(JwtAccessGuard)
   getLikedTracksByUser(
     @Param('id') id: string,
     @Query('page') page?: number,
