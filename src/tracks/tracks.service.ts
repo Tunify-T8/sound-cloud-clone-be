@@ -565,7 +565,7 @@ export class TracksService {
       where: { followingId: track.userId },
     });
 
-    const isFollowed: Boolean = (await this.prisma.follow.findFirst({
+    const isFollowed: boolean = (await this.prisma.follow.findFirst({
       where: { followingId: track.userId, followerId: userId },
     }))
       ? true
@@ -1654,7 +1654,6 @@ export class TracksService {
     startTrackId?: string,
     shuffle?: boolean,
     repeat?: string,
-    userId?: string, // ← add this param (needed for feed auth context)
   ) {
     let queueTracks: QueueTrack[] = [];
 
