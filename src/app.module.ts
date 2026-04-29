@@ -32,6 +32,8 @@ import { AdminSearchController } from './admin-search/admin-search.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { HelperService } from './helper/helper.service';
+import { HelperController } from './helper/helper.controller';
 
 @Module({
   imports: [
@@ -59,7 +61,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     ConversationsModule,
     SubscriptionsModule,
   ],
-  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController, AdminSearchController],
-  providers: [AppService, SearchIndexService, OpensearchService, ReportsService, AdminReportsService, AdminUsersService, AdminContentService, AdminAnalyticsService],
+  controllers: [AppController, AdminReportsController, ReportsController, AdminUsersController, AdminContentController, AdminAnalyticsController, AdminSearchController, HelperController],
+  providers: [AppService, SearchIndexService, OpensearchService, ReportsService, AdminReportsService, AdminUsersService, AdminContentService, AdminAnalyticsService, HelperService],
 })
 export class AppModule {}
