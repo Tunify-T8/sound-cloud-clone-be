@@ -1953,4 +1953,38 @@ export class TracksService {
       expiresInSeconds: 600,
     };
   }
+
+  async getTrackPlayStats(trackId: string) {
+  // 1. validate track exists
+  const track = await this.prisma.track.findUnique({
+    where: { id: trackId, isDeleted: false },
+  });
+
+  if (!track) {
+    throw new NotFoundException('Track not found');
+  }
+
+  // 2. aggregate counts in parallel (faster)
+  const [totalPlays, completedPlays] = await Promise.all([
+    this.prisma.playHistory.count({
+      where: {
+        trackId,
+        isHidden: false,
+      },
+    }),
+    this.prisma.playHistory.count({
+      where: {
+        trackId,
+        completed: true, 
+        isHidden: false,
+      },
+    }),
+  ]);
+
+  return {
+    trackId,
+    totalPlays,
+    completedPlays,
+  };
+}
 }
