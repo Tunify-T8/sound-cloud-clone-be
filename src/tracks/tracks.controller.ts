@@ -63,7 +63,6 @@ export class TracksController {
       dto.startTrackId,
       dto.shuffle,
       dto.repeat,
-      req.user?.userId ?? '',
     );
   }
 
