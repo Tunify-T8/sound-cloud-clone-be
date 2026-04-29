@@ -3,7 +3,11 @@ import { CollectionsService } from './collections.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { SearchIndexService } from '../search-index/search-index.service';
-import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { CollectionType } from '@prisma/client';
 
 describe('CollectionsService', () => {
@@ -29,6 +33,7 @@ describe('CollectionsService', () => {
       count: jest.fn(),
     },
     collectionLike: {
+      findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
       delete: jest.fn(),
@@ -36,6 +41,12 @@ describe('CollectionsService', () => {
     },
     track: {
       findFirst: jest.fn(),
+    },
+    repost: {
+      count: jest.fn(),
+    },
+    follow: {
+      count: jest.fn(),
     },
     subscription: {
       findFirst: jest.fn(),
@@ -73,24 +84,49 @@ describe('CollectionsService', () => {
   // ─── CREATE COLLECTION ─────────────────────────────────────────
   describe('create', () => {
     const userId = 'u1';
-    const dto = { title: 'My Playlist', description: '', type: CollectionType.PLAYLIST, privacy: 'public' as const };
+    const dto = {
+      title: 'My Playlist',
+      description: '',
+      type: CollectionType.PLAYLIST,
+      privacy: 'public' as const,
+    };
 
     it('should throw BadRequest if free user exceeds collection limit', async () => {
       mockPrisma.subscription.findFirst.mockResolvedValue(null);
       mockPrisma.collection.count.mockResolvedValue(10);
-      await expect(service.create(userId, dto, undefined)).rejects.toThrow(BadRequestException);
+      await expect(service.create(userId, dto, undefined)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw Forbidden if non-artist tries to create album', async () => {
-      mockPrisma.subscription.findFirst.mockResolvedValue({ plan: { name: 'PRO' } });
+      mockPrisma.subscription.findFirst.mockResolvedValue({
+        plan: { name: 'PRO', playlistLimit: 100 },
+      });
+      mockPrisma.collection.count.mockResolvedValue(0);
       const albumDto = { ...dto, type: CollectionType.ALBUM };
       mockPrisma.user.findUnique.mockResolvedValue({ role: 'LISTENER' });
-      await expect(service.create(userId, albumDto, undefined)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.create(userId, albumDto, undefined),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('should create a public playlist successfully', async () => {
-      mockPrisma.subscription.findFirst.mockResolvedValue({ plan: { name: 'PRO' } });
-      const created = { id: 'c1', title: 'My Playlist', description: '', coverUrl: null, isPublic: true, type: CollectionType.PLAYLIST, secretToken: null, createdAt: new Date(), updatedAt: new Date() };
+      mockPrisma.subscription.findFirst.mockResolvedValue({
+        plan: { name: 'PRO', playlistLimit: 100 },
+      });
+      mockPrisma.collection.count.mockResolvedValue(0);
+      const created = {
+        id: 'c1',
+        title: 'My Playlist',
+        description: '',
+        coverUrl: null,
+        isPublic: true,
+        type: CollectionType.PLAYLIST,
+        secretToken: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       mockPrisma.collection.create.mockResolvedValue(created);
       mockSearchIndex.indexCollection.mockResolvedValue(null);
 
@@ -110,10 +146,24 @@ describe('CollectionsService', () => {
     });
 
     it('should create a private playlist with a secretToken', async () => {
-      mockPrisma.subscription.findFirst.mockResolvedValue({ plan: { name: 'PRO' } });
+      mockPrisma.subscription.findFirst.mockResolvedValue({
+        plan: { name: 'PRO', playlistLimit: 100 },
+      });
+      mockPrisma.collection.count.mockResolvedValue(0);
       const privateDto = { ...dto, privacy: 'private' as const };
-      const created = { id: 'c1', title: 'My Playlist', isPublic: false, secretToken: 'abc123', createdAt: new Date(), updatedAt: new Date() };
+      const created = {
+        id: 'c1',
+        title: 'My Playlist',
+        description: '',
+        coverUrl: null,
+        isPublic: false,
+        type: CollectionType.PLAYLIST,
+        secretToken: 'abc123',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       mockPrisma.collection.create.mockResolvedValue(created);
+      mockSearchIndex.indexCollection.mockResolvedValue(null);
 
       const result = await service.create(userId, privateDto, undefined);
       expect(result.secretToken).toBeDefined();
@@ -124,10 +174,25 @@ describe('CollectionsService', () => {
   describe('getMyCollections', () => {
     it('should return paginated collections', async () => {
       const collections = [
-        { id: 'c1', title: 'P1', description: null, coverUrl: null, isPublic: true, type: CollectionType.PLAYLIST, secretToken: null, createdAt: new Date(), updatedAt: new Date(), _count: { tracks: 2, likes: 1 } },
+        {
+          id: 'c1',
+          title: 'P1',
+          description: null,
+          coverUrl: null,
+          isPublic: true,
+          type: CollectionType.PLAYLIST,
+          secretToken: null,
+          userId: 'u1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          _count: { tracks: 2, likes: 1 },
+        },
       ];
       mockPrisma.collection.findMany.mockResolvedValue(collections);
       mockPrisma.collection.count.mockResolvedValue(1);
+      mockPrisma.collectionLike.findMany.mockResolvedValue([]);
+      mockPrisma.repost.count.mockResolvedValue(0);
+      mockPrisma.follow.count.mockResolvedValue(0);
 
       const result = await service.getMyCollections('u1', 1, 10);
       expect(result.data.length).toBe(1);
@@ -139,16 +204,58 @@ describe('CollectionsService', () => {
   // ─── GET COLLECTION BY ID ──────────────────────────────────────
   describe('getCollectionById', () => {
     it('should return public collection to anyone', async () => {
-      const collection = { id: 'c1', isPublic: true, userId: 'u1', isDeleted: false, title: 'Test', description: null, type: CollectionType.PLAYLIST, coverUrl: null, createdAt: new Date(), updatedAt: new Date(), _count: { tracks: 1, likes: 0 }, user: { id: 'u1', username: 'test', displayName: 'Test User', avatarUrl: null } };
+      const collection = {
+        id: 'c1',
+        isPublic: true,
+        userId: 'u1',
+        isDeleted: false,
+        title: 'Test',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: { tracks: 1, likes: 0 },
+        user: {
+          id: 'u1',
+          username: 'test',
+          displayName: 'Test User',
+          avatarUrl: null,
+          _count: { followers: 5 },
+        },
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.repost.count.mockResolvedValue(0);
+      mockPrisma.collectionLike.findFirst.mockResolvedValue(null);
 
       const result = await service.getCollectionById('c1', 'u2');
       expect(result).toBeDefined();
     });
 
     it('should return private collection to owner', async () => {
-      const collection = { id: 'c1', isPublic: false, userId: 'u1', isDeleted: false, title: 'Test', description: null, type: CollectionType.PLAYLIST, coverUrl: null, createdAt: new Date(), updatedAt: new Date(), _count: { tracks: 1, likes: 0 }, user: { id: 'u1', username: 'test', displayName: 'Test User', avatarUrl: null } };
+      const collection = {
+        id: 'c1',
+        isPublic: false,
+        userId: 'u1',
+        isDeleted: false,
+        title: 'Test',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: { tracks: 1, likes: 0 },
+        user: {
+          id: 'u1',
+          username: 'test',
+          displayName: 'Test User',
+          avatarUrl: null,
+          _count: { followers: 5 },
+        },
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.repost.count.mockResolvedValue(0);
+      mockPrisma.collectionLike.findFirst.mockResolvedValue(null);
 
       const result = await service.getCollectionById('c1', 'u1');
       expect(result).toBeDefined();
@@ -156,20 +263,43 @@ describe('CollectionsService', () => {
 
     it('should throw 404 for private collection accessed by stranger', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.getCollectionById('c1', 'u2')).rejects.toThrow(NotFoundException);
+      await expect(service.getCollectionById('c1', 'u2')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw 404 if collection not found', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.getCollectionById('nonexistent', undefined)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getCollectionById('nonexistent', undefined),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── GET COLLECTION BY TOKEN ───────────────────────────────────
   describe('getCollectionByToken', () => {
     it('should return collection for valid token', async () => {
-      const collection = { id: 'c1', secretToken: 'tok123', isPublic: false, title: 'Test', description: null, type: CollectionType.PLAYLIST, coverUrl: null, createdAt: new Date(), updatedAt: new Date(), _count: { tracks: 1, likes: 0 }, user: { id: 'u1', username: 'test', displayName: 'Test User', avatarUrl: null } };
+      const collection = {
+        id: 'c1',
+        secretToken: 'tok123',
+        isPublic: false,
+        title: 'Test',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: { tracks: 1, likes: 0 },
+        user: {
+          id: 'u1',
+          username: 'test',
+          displayName: 'Test User',
+          avatarUrl: null,
+          _count: { followers: 3 },
+        },
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.repost.count.mockResolvedValue(0);
 
       const result = await service.getCollectionByToken('tok123');
       expect(result).toBeDefined();
@@ -177,30 +307,57 @@ describe('CollectionsService', () => {
 
     it('should throw 404 for invalid token', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.getCollectionByToken('badtoken')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getCollectionByToken('badtoken'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── SHARE URLS ───────────────────────────────────────────────
   describe('getShareUrl', () => {
     it('should generate token path for private collections', async () => {
-      const collection = { id: 'c1', userId: 'u1', isDeleted: false, isPublic: false, secretToken: 'tok123', title: 'Private', description: null, type: CollectionType.PLAYLIST, coverUrl: null };
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: false,
+        secretToken: 'tok123',
+        title: 'Private',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
 
       const result = await service.getShareUrl('c1', 'u1');
-
-      expect(result.shareUrl).toBe('https://tunify.duckdns.org/collections/token/tok123');
+      expect(result.shareUrl).toBe(
+        'https://tunify.duckdns.org/collections/token/tok123',
+      );
       expect(result.appUrl).toBe('tunify://collections/token/tok123');
     });
 
     it('should generate new token path when private collection has no token', async () => {
-      const collection = { id: 'c1', userId: 'u1', isDeleted: false, isPublic: false, secretToken: null, title: 'Private', description: null, type: CollectionType.PLAYLIST, coverUrl: null };
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: false,
+        secretToken: null,
+        title: 'Private',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
-      mockPrisma.collection.update.mockResolvedValue({ ...collection, secretToken: 'newtok' });
+      mockPrisma.collection.update.mockResolvedValue({
+        ...collection,
+        secretToken: 'newtok',
+      });
 
       const result = await service.getShareUrl('c1', 'u1');
-
-      expect(result.shareUrl).toContain('https://tunify.duckdns.org/collections/token/');
+      expect(result.shareUrl).toContain(
+        'https://tunify.duckdns.org/collections/token/',
+      );
       expect(result.appUrl).toContain('tunify://collections/token/');
       expect(mockPrisma.collection.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
@@ -211,18 +368,160 @@ describe('CollectionsService', () => {
 
   // ─── UPDATE COLLECTION ─────────────────────────────────────────
   describe('updateCollection', () => {
-    it('should update collection for owner', async () => {
-      const collection = { id: 'c1', userId: 'u1', isDeleted: false, isPublic: true, secretToken: null, title: 'Old', description: null, type: CollectionType.PLAYLIST, coverUrl: null, createdAt: new Date(), updatedAt: new Date() };
+    it('should update collection title for owner', async () => {
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: true,
+        secretToken: null,
+        title: 'Old',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
-      mockPrisma.collection.update.mockResolvedValue({ ...collection, title: 'Updated', updatedAt: new Date() });
+      mockPrisma.collection.update.mockResolvedValue({
+        ...collection,
+        title: 'Updated',
+        updatedAt: new Date(),
+      });
 
-      const result = await service.updateCollection('c1', 'u1', { title: 'Updated' }, undefined);
+      const result = await service.updateCollection(
+        'c1',
+        'u1',
+        { title: 'Updated' },
+        undefined,
+      );
       expect(result.title).toBe('Updated');
     });
 
     it('should throw 404 if not owner', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.updateCollection('c1', 'u2', { title: 'X' }, undefined)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.updateCollection('c1', 'u2', { title: 'X' }, undefined),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw Forbidden when listener tries to convert playlist to album', async () => {
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: true,
+        secretToken: null,
+        title: 'My Playlist',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'LISTENER' });
+
+      await expect(
+        service.updateCollection(
+          'c1',
+          'u1',
+          { type: CollectionType.ALBUM },
+          undefined,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw BadRequest when playlist has foreign tracks on album conversion', async () => {
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: true,
+        secretToken: null,
+        title: 'My Playlist',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'ARTIST' });
+      mockPrisma.collectionTrack.findMany.mockResolvedValue([
+        { trackId: 't2' },
+      ]);
+
+      await expect(
+        service.updateCollection(
+          'c1',
+          'u1',
+          { type: CollectionType.ALBUM },
+          undefined,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should convert playlist to album successfully when all tracks belong to owner', async () => {
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: true,
+        secretToken: null,
+        title: 'My Playlist',
+        description: null,
+        type: CollectionType.PLAYLIST,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.user.findUnique.mockResolvedValue({ role: 'ARTIST' });
+      mockPrisma.collectionTrack.findMany.mockResolvedValue([]);
+      mockPrisma.collection.update.mockResolvedValue({
+        ...collection,
+        type: CollectionType.ALBUM,
+        updatedAt: new Date(),
+      });
+
+      const result = await service.updateCollection(
+        'c1',
+        'u1',
+        { type: CollectionType.ALBUM },
+        undefined,
+      );
+      expect(result.type).toBe(CollectionType.ALBUM);
+    });
+
+    it('should convert album to playlist freely without any checks', async () => {
+      const collection = {
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+        isPublic: true,
+        secretToken: null,
+        title: 'My Album',
+        description: null,
+        type: CollectionType.ALBUM,
+        coverUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockPrisma.collection.findFirst.mockResolvedValue(collection);
+      mockPrisma.collection.update.mockResolvedValue({
+        ...collection,
+        type: CollectionType.PLAYLIST,
+        updatedAt: new Date(),
+      });
+
+      const result = await service.updateCollection(
+        'c1',
+        'u1',
+        { type: CollectionType.PLAYLIST },
+        undefined,
+      );
+      expect(result.type).toBe(CollectionType.PLAYLIST);
     });
   });
 
@@ -232,7 +531,9 @@ describe('CollectionsService', () => {
       const collection = { id: 'c1', userId: 'u1', isDeleted: false };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
       mockPrisma.collectionLike.deleteMany.mockResolvedValue({ count: 0 });
-      mockPrisma.collectionTrack.deleteMany = jest.fn().mockResolvedValue({ count: 0 });
+      mockPrisma.collectionTrack.deleteMany = jest
+        .fn()
+        .mockResolvedValue({ count: 0 });
       mockPrisma.collection.delete.mockResolvedValue(collection);
 
       const result = await service.deleteCollection('c1', 'u1');
@@ -241,17 +542,43 @@ describe('CollectionsService', () => {
 
     it('should throw 404 if not owner', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.deleteCollection('c1', 'u2')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.deleteCollection('c1', 'u2'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── GET COLLECTION TRACKS ─────────────────────────────────────
   describe('getCollectionTracks', () => {
     it('should return tracks for public collection', async () => {
-      const collection = { id: 'c1', isPublic: true, userId: 'u1', isDeleted: false };
+      const collection = {
+        id: 'c1',
+        isPublic: true,
+        userId: 'u1',
+        isDeleted: false,
+      };
       mockPrisma.collection.findFirst.mockResolvedValue(collection);
       mockPrisma.collectionTrack.findMany.mockResolvedValue([
-        { id: 'ct1', position: 1, addedAt: new Date(), track: { id: 't1', title: 'Track 1', coverUrl: null, durationSeconds: 180, isPublic: true, user: { id: 'u1', username: 'alfredo', avatarUrl: null } } },
+        {
+          id: 'ct1',
+          position: 1,
+          addedAt: new Date(),
+          track: {
+            id: 't1',
+            title: 'Track 1',
+            coverUrl: null,
+            durationSeconds: 180,
+            isPublic: true,
+            genreId: null,
+            _count: { playHistory: 5 },
+            user: {
+              id: 'u1',
+              username: 'alfredo',
+              displayName: null,
+              avatarUrl: null,
+            },
+          },
+        },
       ]);
       mockPrisma.collectionTrack.count.mockResolvedValue(1);
 
@@ -261,7 +588,9 @@ describe('CollectionsService', () => {
 
     it('should throw 404 for private collection accessed by stranger', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.getCollectionTracks('c1', 'u2', 1, 10)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getCollectionTracks('c1', 'u2', 1, 10),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -272,11 +601,28 @@ describe('CollectionsService', () => {
     const dto = { trackId: 't1' };
 
     it('should add track successfully', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: collectionId, userId, type: CollectionType.PLAYLIST, isDeleted: false });
-      mockPrisma.track.findFirst.mockResolvedValue({ id: 't1', userId, isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: collectionId,
+        userId,
+        type: CollectionType.PLAYLIST,
+        isDeleted: false,
+      });
+      mockPrisma.track.findFirst.mockResolvedValue({
+        id: 't1',
+        userId,
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findFirst.mockResolvedValue(null);
-      mockPrisma.collectionTrack.aggregate.mockResolvedValue({ _max: { position: 2 } });
-      mockPrisma.collectionTrack.create.mockResolvedValue({ id: 'ct1', collectionId, trackId: 't1', position: 3, addedAt: new Date() });
+      mockPrisma.collectionTrack.aggregate.mockResolvedValue({
+        _max: { position: 2 },
+      });
+      mockPrisma.collectionTrack.create.mockResolvedValue({
+        id: 'ct1',
+        collectionId,
+        trackId: 't1',
+        position: 3,
+        addedAt: new Date(),
+      });
 
       const result = await service.addTrack(collectionId, userId, dto);
       expect(result.position).toBe(3);
@@ -284,34 +630,82 @@ describe('CollectionsService', () => {
 
     it('should throw 404 if collection not found or not owner', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.addTrack(collectionId, userId, dto)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.addTrack(collectionId, userId, dto),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw 404 if track not found', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: collectionId, userId, type: CollectionType.PLAYLIST, isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: collectionId,
+        userId,
+        type: CollectionType.PLAYLIST,
+        isDeleted: false,
+      });
       mockPrisma.track.findFirst.mockResolvedValue(null);
-      await expect(service.addTrack(collectionId, userId, dto)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.addTrack(collectionId, userId, dto),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw 400 if track already in collection', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: collectionId, userId, type: CollectionType.PLAYLIST, isDeleted: false });
-      mockPrisma.track.findFirst.mockResolvedValue({ id: 't1', userId, isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: collectionId,
+        userId,
+        type: CollectionType.PLAYLIST,
+        isDeleted: false,
+      });
+      mockPrisma.track.findFirst.mockResolvedValue({
+        id: 't1',
+        userId,
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findFirst.mockResolvedValue({ id: 'ct1' });
-      await expect(service.addTrack(collectionId, userId, dto)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.addTrack(collectionId, userId, dto),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw 400 if album track does not belong to owner', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: collectionId, userId, type: CollectionType.ALBUM, isDeleted: false });
-      mockPrisma.track.findFirst.mockResolvedValue({ id: 't1', userId: 'other-user', isDeleted: false });
-      await expect(service.addTrack(collectionId, userId, dto)).rejects.toThrow(BadRequestException);
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: collectionId,
+        userId,
+        type: CollectionType.ALBUM,
+        isDeleted: false,
+      });
+      mockPrisma.track.findFirst.mockResolvedValue({
+        id: 't1',
+        userId: 'other-user',
+        isDeleted: false,
+      });
+      await expect(
+        service.addTrack(collectionId, userId, dto),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should set position to 1 if collection is empty', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: collectionId, userId, type: CollectionType.PLAYLIST, isDeleted: false });
-      mockPrisma.track.findFirst.mockResolvedValue({ id: 't1', userId, isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: collectionId,
+        userId,
+        type: CollectionType.PLAYLIST,
+        isDeleted: false,
+      });
+      mockPrisma.track.findFirst.mockResolvedValue({
+        id: 't1',
+        userId,
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findFirst.mockResolvedValue(null);
-      mockPrisma.collectionTrack.aggregate.mockResolvedValue({ _max: { position: null } });
-      mockPrisma.collectionTrack.create.mockResolvedValue({ id: 'ct1', collectionId, trackId: 't1', position: 1, addedAt: new Date() });
+      mockPrisma.collectionTrack.aggregate.mockResolvedValue({
+        _max: { position: null },
+      });
+      mockPrisma.collectionTrack.create.mockResolvedValue({
+        id: 'ct1',
+        collectionId,
+        trackId: 't1',
+        position: 1,
+        addedAt: new Date(),
+      });
 
       const result = await service.addTrack(collectionId, userId, dto);
       expect(result.position).toBe(1);
@@ -321,8 +715,16 @@ describe('CollectionsService', () => {
   // ─── REMOVE TRACK ──────────────────────────────────────────────
   describe('removeTrack', () => {
     it('should remove track and re-normalize positions', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', userId: 'u1', isDeleted: false });
-      mockPrisma.collectionTrack.findFirst.mockResolvedValue({ id: 'ct1', collectionId: 'c1', trackId: 't1' });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+      });
+      mockPrisma.collectionTrack.findFirst.mockResolvedValue({
+        id: 'ct1',
+        collectionId: 'c1',
+        trackId: 't1',
+      });
       mockPrisma.collectionTrack.delete.mockResolvedValue({ id: 'ct1' });
       mockPrisma.collectionTrack.findMany.mockResolvedValue([
         { id: 'ct2', position: 2 },
@@ -336,49 +738,74 @@ describe('CollectionsService', () => {
 
     it('should throw 404 if collection not found', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.removeTrack('c1', 'u1', { trackId: 't1' })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.removeTrack('c1', 'u1', { trackId: 't1' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw 404 if track not in collection', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', userId: 'u1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findFirst.mockResolvedValue(null);
-      await expect(service.removeTrack('c1', 'u1', { trackId: 't1' })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.removeTrack('c1', 'u1', { trackId: 't1' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── REORDER TRACKS ────────────────────────────────────────────
   describe('reorderTracks', () => {
     it('should reorder tracks successfully', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', userId: 'u1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findMany.mockResolvedValue([
         { id: 'ct1', trackId: 't1' },
         { id: 'ct2', trackId: 't2' },
       ]);
       mockPrisma.$transaction.mockResolvedValue([]);
 
-      const result = await service.reorderTracks('c1', 'u1', { trackIds: ['t2', 't1'] });
+      const result = await service.reorderTracks('c1', 'u1', {
+        trackIds: ['t2', 't1'],
+      });
       expect(result).toEqual({ message: 'Tracks reordered successfully' });
     });
 
     it('should throw 404 if collection not found', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.reorderTracks('c1', 'u1', { trackIds: ['t1'] })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.reorderTracks('c1', 'u1', { trackIds: ['t1'] }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw 400 if trackIds mismatch', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', userId: 'u1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        userId: 'u1',
+        isDeleted: false,
+      });
       mockPrisma.collectionTrack.findMany.mockResolvedValue([
         { id: 'ct1', trackId: 't1' },
         { id: 'ct2', trackId: 't2' },
       ]);
-      await expect(service.reorderTracks('c1', 'u1', { trackIds: ['t1'] })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorderTracks('c1', 'u1', { trackIds: ['t1'] }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   // ─── LIKE COLLECTION ───────────────────────────────────────────
   describe('likeCollection', () => {
     it('should like collection successfully', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        isDeleted: false,
+      });
       mockPrisma.collectionLike.findFirst.mockResolvedValue(null);
       mockPrisma.collectionLike.create.mockResolvedValue({ id: 'l1' });
 
@@ -387,21 +814,31 @@ describe('CollectionsService', () => {
     });
 
     it('should throw 400 if already liked', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        isDeleted: false,
+      });
       mockPrisma.collectionLike.findFirst.mockResolvedValue({ id: 'l1' });
-      await expect(service.likeCollection('c1', 'u1')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.likeCollection('c1', 'u1'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw 404 if collection not found', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.likeCollection('nonexistent', 'u1')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.likeCollection('nonexistent', 'u1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── UNLIKE COLLECTION ─────────────────────────────────────────
   describe('unlikeCollection', () => {
     it('should unlike collection successfully', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        isDeleted: false,
+      });
       mockPrisma.collectionLike.findFirst.mockResolvedValue({ id: 'l1' });
       mockPrisma.collectionLike.delete.mockResolvedValue({ id: 'l1' });
 
@@ -410,21 +847,32 @@ describe('CollectionsService', () => {
     });
 
     it('should throw 404 if not liked', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        isDeleted: false,
+      });
       mockPrisma.collectionLike.findFirst.mockResolvedValue(null);
-      await expect(service.unlikeCollection('c1', 'u1')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.unlikeCollection('c1', 'u1'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw 404 if collection not found', async () => {
       mockPrisma.collection.findFirst.mockResolvedValue(null);
-      await expect(service.unlikeCollection('nonexistent', 'u1')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.unlikeCollection('nonexistent', 'u1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   // ─── GET EMBED ─────────────────────────────────────────────────
   describe('getEmbed', () => {
     it('should return embed code for public collection', async () => {
-      mockPrisma.collection.findFirst.mockResolvedValue({ id: 'c1', isPublic: true, isDeleted: false });
+      mockPrisma.collection.findFirst.mockResolvedValue({
+        id: 'c1',
+        isPublic: true,
+        isDeleted: false,
+      });
 
       const result = await service.getEmbed('c1');
       expect(result.embedCode).toContain('c1');
