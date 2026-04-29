@@ -3,9 +3,11 @@ import {
   IsOptional,
   IsIn,
   MaxLength,
-  IsNotEmpty ,
+  IsNotEmpty,
   IsUrl,
 } from 'class-validator';
+import { CollectionType } from '@prisma/client';
+
 
 export class UpdateCollectionDto {
   @IsString()
@@ -26,4 +28,8 @@ export class UpdateCollectionDto {
   @IsUrl()
   @IsOptional()
   coverUrl?: string;
+  @IsIn([CollectionType.PLAYLIST, CollectionType.ALBUM])
+  @IsOptional()
+  type?: CollectionType;
+
 }
