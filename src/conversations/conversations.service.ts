@@ -78,6 +78,7 @@ export class ConversationsService {
 
     const messages = await this.prisma.message.findMany({
       where: { conversationId },
+      orderBy: { createdAt: 'desc' },
       skip: skip,
       take: validLimit,
       include: {
