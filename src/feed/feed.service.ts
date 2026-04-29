@@ -683,4 +683,19 @@ export class FeedService {
       personalized,
     };
   }
+
+  private async getBlockedUserIds(userId: string): Promise<string[]> {
+    const blocks = await this.prisma.userBlock.findMany({
+      where: {
+        OR: [{ blockerId: userId }, { blockedId: userId }],
+      },
+      select: { blockerId: true, blockedId: true },
+    });
+    const ids = new Set<string>();
+    for (const b of blocks) {
+      if (b.blockerId !== userId) ids.add(b.blockerId);
+      if (b.blockedId !== userId) ids.add(b.blockedId);
+    }
+    return Array.from(ids);
+  }
 }
