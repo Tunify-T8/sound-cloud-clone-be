@@ -19,8 +19,8 @@ const trackSelect = {
     select: {
       id: true,
       username: true,
-      display_name: true,
-      avatar_url: true,
+      displayName: true,
+      avatarUrl: true,
       isCertified: true,
     },
   },
@@ -40,8 +40,8 @@ type TrackWithRelations = {
   user: {
     id: string;
     username: string;
-    display_name: string | null;
-    avatar_url: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
     isCertified: boolean;
   };
   _count: {
@@ -289,9 +289,9 @@ export class RecommendationsService {
       isPublic: true,
       ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
       user: {
-        is_suspended: false,
-        is_banned: false,
-        is_deleted: false,
+        isSuspended: false,
+        isBanned: false,
+        isDeleted: false,
         ...(blockedUserIds.length > 0 ? { id: { notIn: blockedUserIds } } : {}),
       },
     };
@@ -309,10 +309,10 @@ export class RecommendationsService {
     return {
       trackId: track.id,
       artistId: track.user.id,
-      artistAvatarUrl: track.user.avatar_url,
+      artistAvatarUrl: track.user.avatarUrl,
       artistIsCertified: track.user.isCertified,
       title: track.title,
-      artist: track.user.display_name ?? track.user.username,
+      artist: track.user.displayName ?? track.user.username,
       genre: track.genre?.label ?? null,
       durationInSeconds: track.durationSeconds,
       coverUrl: track.coverUrl,
