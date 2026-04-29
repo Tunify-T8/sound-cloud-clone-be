@@ -1814,6 +1814,12 @@ export class TracksService {
         throw new BadRequestException('Invalid context type');
     }
 
+    // Deduplicate by trackId, preserving order
+    const seen = new Set<string>();
+    queueTracks = queueTracks.filter(
+      (t) => !seen.has(t.trackId) && seen.add(t.trackId),
+    );
+
     if (queueTracks.length === 0) {
       return {
         queue: [],
