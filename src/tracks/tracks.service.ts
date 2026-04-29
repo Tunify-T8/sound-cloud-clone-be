@@ -16,7 +16,7 @@ import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 import { NotificationType, ReferenceType } from '@prisma/client';
 import { FeedService } from '../feed/feed.service';
-//import { SearchIndexService } from '../search-index/search-index.service';
+import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
   status: 'playable' | 'preview' | 'blocked';
@@ -39,7 +39,7 @@ export class TracksService {
     private audio: AudioService,
     private prisma: PrismaService,
     private feedService: FeedService,
-    //private readonly searchIndexService: SearchIndexService,
+    private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -316,7 +316,7 @@ export class TracksService {
       throw new NotFoundException('Track not found after creation');
     }
 
-    //await this.searchIndexService.indexTrack(track.id);
+    await this.searchIndexService.indexTrack(track.id);
 
     // Return formatted response matching getTrack() format
     return {
@@ -905,7 +905,7 @@ export class TracksService {
         })
       : null;
 
-    //await this.searchIndexService.indexTrack(trackId);
+    await this.searchIndexService.indexTrack(trackId);
 
     // 10. Return formatted response matching create() and getTrack() format
     return {
@@ -962,7 +962,7 @@ export class TracksService {
       },
     });
 
-    //await this.searchIndexService.removeTrack(trackId);
+    await this.searchIndexService.removeTrack(trackId);
 
     return { message: 'Track deleted successfully' };
   }
