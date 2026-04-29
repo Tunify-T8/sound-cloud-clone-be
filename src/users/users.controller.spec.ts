@@ -398,24 +398,36 @@ describe('UsersController', () => {
 
   // ── getPopularTracks ──────────────────────────────────────────
   describe('getPopularTracks', () => {
-    it('should call service with userId and limit', async () => {
-      mockUsersService.getPopularTracks.mockResolvedValue([]);
+    it('should call service with userId and page', async () => {
+      mockUsersService.getPopularTracks.mockResolvedValue({
+        tracks: [],
+        page: 1,
+        limit: 10,
+        hasMore: false,
+      });
 
-      await controller.getPopularTracks(mockJwtPayload, 5);
+      await controller.getPopularTracks(mockJwtPayload, 1, 5);
 
       expect(mockUsersService.getPopularTracks).toHaveBeenCalledWith(
         'user-123',
+        1,
         5,
       );
     });
 
-    it('should call service with default limit when not provided', async () => {
-      mockUsersService.getPopularTracks.mockResolvedValue([]);
+    it('should call service with default values when not provided', async () => {
+      mockUsersService.getPopularTracks.mockResolvedValue({
+        tracks: [],
+        page: 1,
+        limit: 10,
+        hasMore: false,
+      });
 
-      await controller.getPopularTracks(mockJwtPayload, undefined);
+      await controller.getPopularTracks(mockJwtPayload, undefined, undefined);
 
       expect(mockUsersService.getPopularTracks).toHaveBeenCalledWith(
         'user-123',
+        undefined,
         undefined,
       );
     });
@@ -789,11 +801,11 @@ describe('UsersController', () => {
         uploadMinutesUsed: 75,
         uploadMinutesRemaining: 125,
       };
-      mockUsersService.getUploadMinutes.mockResolvedValue(mockResponse);
+      mockUsersService.getUploadStats.mockResolvedValue(mockResponse);
 
       const result = await controller.getUploadMinutes('user-456');
 
-      expect(mockUsersService.getUploadMinutes).toHaveBeenCalledWith(
+      expect(mockUsersService.getUploadStats).toHaveBeenCalledWith(
         'user-456',
       );
       expect(result.uploadMinutesRemaining).toBe(125);
@@ -806,7 +818,7 @@ describe('UsersController', () => {
         uploadMinutesUsed: 0,
         uploadMinutesRemaining: 99,
       };
-      mockUsersService.getUploadMinutes.mockResolvedValue(mockResponse);
+      mockUsersService.getUploadStats.mockResolvedValue(mockResponse);
 
       const result = await controller.getUploadMinutes('user-456');
 
