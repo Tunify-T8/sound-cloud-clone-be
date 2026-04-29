@@ -4,7 +4,6 @@ import { IsInt, IsOptional, Min } from 'class-validator';
 export enum ReasonType {
   FOLLOW = 'FOLLOW',
   TASTE = 'TASTE',
-  TAG = 'TAG',
   GENRE = 'GENRE',
   TRENDING = 'TRENDING',
 }
