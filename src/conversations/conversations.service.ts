@@ -151,6 +151,7 @@ export class ConversationsService {
         type: message.type,
         text: message.content,
         createdAt: message.createdAt,
+        status: message.status,
         attachment: {
           id: attachment,
           type: type,
@@ -366,7 +367,7 @@ export class ConversationsService {
             ? collectionId
             : null,
         userId: type === 'USER' ? sharedUserId : null,
-        read: false,
+        status: 'SENT',
       },
       include: {
         track: {
@@ -465,7 +466,112 @@ export class ConversationsService {
 
     const updatedMessage = await this.prisma.message.update({
       where: { id: messageId },
-      data: { read: true },
+      data: { status: 'READ' },
+    });
+
+    return updatedMessage;
+  }
+
+  async markMessageAsDelivered(
+    userId: string,
+    messageId: string,
+    conversationId: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: true },
+    });
+
+    if (!message || message.conversationId !== conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is in conversation
+    if (
+      message.conversation.user1Id !== userId &&
+      message.conversation.user2Id !== userId
+    ) {
+      throw new ForbiddenException('Not part of this conversation');
+    }
+
+    // Only update if user is not the sender
+    if (message.senderId === userId) {
+      throw new BadRequestException('Cannot mark your own message as delivered');
+    }
+
+    const updatedMessage = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: 'DELIVERED' },
+    });
+
+    return updatedMessage;
+  }
+
+  async markMessageAsUnread(
+    userId: string,
+    messageId: string,
+    conversationId: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: true },
+    });
+
+    if (!message || message.conversationId !== conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is in conversation
+    if (
+      message.conversation.user1Id !== userId &&
+      message.conversation.user2Id !== userId
+    ) {
+      throw new ForbiddenException('Not part of this conversation');
+    }
+
+    // Only update if user is not the sender
+    if (message.senderId === userId) {
+      throw new BadRequestException('Cannot mark your own message as unread');
+    }
+
+    const updatedMessage = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: 'SENT' },
+    });
+
+    return updatedMessage;
+  }
+
+  async markMessageAsUndelivered(
+    userId: string,
+    messageId: string,
+    conversationId: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: true },
+    });
+
+    if (!message || message.conversationId !== conversationId) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Verify user is in conversation
+    if (
+      message.conversation.user1Id !== userId &&
+      message.conversation.user2Id !== userId
+    ) {
+      throw new ForbiddenException('Not part of this conversation');
+    }
+
+    // Only update if user is not the sender
+    if (message.senderId === userId) {
+      throw new BadRequestException('Cannot mark your own message as undelivered');
+    }
+
+    const updatedMessage = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: 'SENT' },
     });
 
     return updatedMessage;
@@ -513,7 +619,7 @@ export class ConversationsService {
       type: message.type,
       text: message.content,
       createdAt: message.createdAt,
-      read: message.read,
+      status: message.status,
       attachment: {
         id: attachment,
         type: message.type,

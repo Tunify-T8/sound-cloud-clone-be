@@ -174,9 +174,42 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   /**
+   * Mark message as delivered
+   */
+  @SubscribeMessage('message:delivered')
+  async handleMarkMessageDelivered(
+    @ConnectedSocket() socket: AuthSocket,
+    @MessageBody() data: { messageId: string; conversationId: string },
+  ) {
+    if (!socket.userId) {
+      socket.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const { messageId, conversationId } = data;
+
+    try {
+      // Delegate to service
+      await this.conversationsService.markMessageAsDelivered(socket.userId, messageId, conversationId);
+
+      // Broadcast delivery status
+      const roomName = `conversation:${conversationId}`;
+      this.server.to(roomName).emit('message:delivered', {
+        conversationId,
+        messageId,
+      });
+
+      socket.emit('delivered:success', { messageId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as delivered';
+      socket.emit('error', { message: errorMessage });
+    }
+  }
+
+  /**
    * Mark message as read
    */
-  @SubscribeMessage('message:markRead')
+  @SubscribeMessage('message:read')
   async handleMarkMessageRead(
     @ConnectedSocket() socket: AuthSocket,
     @MessageBody() data: { messageId: string; conversationId: string },
@@ -192,9 +225,9 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
       // Delegate to service
       await this.conversationsService.markMessageAsRead(socket.userId, messageId, conversationId);
 
-      // Broadcast read status
+      // Broadcast read status to other users only
       const roomName = `conversation:${conversationId}`;
-      this.server.to(roomName).emit('message:read', {
+      socket.broadcast.to(roomName).emit('message:read', {
         conversationId,
         messageId,
       });
@@ -202,6 +235,84 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
       socket.emit('read:success', { messageId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as read';
+      socket.emit('error', { message: errorMessage });
+    }
+  }
+
+  /**
+   * Mark message as read (legacy alias)
+   */
+  @SubscribeMessage('message:markRead')
+  async handleMarkMessageReadLegacy(
+    @ConnectedSocket() socket: AuthSocket,
+    @MessageBody() data: { messageId: string; conversationId: string },
+  ) {
+    // Delegate to the new handler
+    return this.handleMarkMessageRead(socket, data);
+  }
+
+  /**
+   * Mark message as unread
+   */
+  @SubscribeMessage('message:unread')
+  async handleMarkMessageUnread(
+    @ConnectedSocket() socket: AuthSocket,
+    @MessageBody() data: { messageId: string; conversationId: string },
+  ) {
+    if (!socket.userId) {
+      socket.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const { messageId, conversationId } = data;
+
+    try {
+      // Delegate to service
+      await this.conversationsService.markMessageAsUnread(socket.userId, messageId, conversationId);
+
+      // Broadcast unread status
+      const roomName = `conversation:${conversationId}`;
+      this.server.to(roomName).emit('message:unread', {
+        conversationId,
+        messageId,
+      });
+
+      socket.emit('unread:success', { messageId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as unread';
+      socket.emit('error', { message: errorMessage });
+    }
+  }
+
+  /**
+   * Mark message as undelivered
+   */
+  @SubscribeMessage('message:undelivered')
+  async handleMarkMessageUndelivered(
+    @ConnectedSocket() socket: AuthSocket,
+    @MessageBody() data: { messageId: string; conversationId: string },
+  ) {
+    if (!socket.userId) {
+      socket.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const { messageId, conversationId } = data;
+
+    try {
+      // Delegate to service
+      await this.conversationsService.markMessageAsUndelivered(socket.userId, messageId, conversationId);
+
+      // Broadcast undelivered status
+      const roomName = `conversation:${conversationId}`;
+      this.server.to(roomName).emit('message:undelivered', {
+        conversationId,
+        messageId,
+      });
+
+      socket.emit('undelivered:success', { messageId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as undelivered';
       socket.emit('error', { message: errorMessage });
     }
   }
@@ -219,8 +330,9 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     const { conversationId } = data;
     const roomName = `conversation:${conversationId}`;
 
+    console.log('[WebSocket] Typing start from user:', socket.userId, 'in room:', roomName);
     // Broadcast typing indicator to other participants
-    socket.to(roomName).emit('typing:active', {
+    socket.broadcast.to(roomName).emit('typing:active', {
       conversationId,
       userId: socket.userId,
     });
@@ -236,7 +348,8 @@ export class ConversationsGateway implements OnGatewayConnection, OnGatewayDisco
     const { conversationId } = data;
     const roomName = `conversation:${conversationId}`;
 
-    socket.to(roomName).emit('typing:inactive', {
+    console.log('[WebSocket] Typing stop from user:', socket.userId, 'in room:', roomName);
+    socket.broadcast.to(roomName).emit('typing:inactive', {
       conversationId,
       userId: socket.userId,
     });
