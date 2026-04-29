@@ -25,6 +25,11 @@ describe('ConversationsGateway', () => {
     to: jest.fn(() => ({
       emit: jest.fn(),
     })),
+    broadcast: {
+      to: jest.fn(() => ({
+        emit: jest.fn(),
+      })),
+    },
   };
 
   const mockServer = {
@@ -38,6 +43,9 @@ describe('ConversationsGateway', () => {
       getMessages: jest.fn(),
       createMessage: jest.fn(),
       markMessageAsRead: jest.fn(),
+      markMessageAsDelivered: jest.fn(),
+      markMessageAsUnread: jest.fn(),
+      markMessageAsUndelivered: jest.fn(),
       formatMessage: jest.fn(),
     };
 
@@ -251,7 +259,7 @@ describe('ConversationsGateway', () => {
         undefined,
         undefined,
       );
-      expect(mockServer.to).toHaveBeenCalledWith('conversation:conv-123');
+      expect(socket.broadcast.to).toHaveBeenCalledWith('conversation:conv-123');
     });
 
     it('should send a TRACK_LIKE message', async () => {
@@ -380,7 +388,26 @@ describe('ConversationsGateway', () => {
   });
 
   // ───── handleMarkMessageRead ───────────────────────────────────
-  describe('message:markRead', () => {
+  describe('message:markRead (legacy alias)', () => {
+    it('should delegate to handleMarkMessageRead', async () => {
+      mockConversationsService.markMessageAsRead.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageReadLegacy(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockConversationsService.markMessageAsRead).toHaveBeenCalledWith(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+    });
+  });
+
+  // ───── handleMarkMessageRead (new message:read event) ───────────
+  describe('message:read', () => {
     it('should mark message as read', async () => {
       mockConversationsService.markMessageAsRead.mockResolvedValue({});
 
@@ -397,19 +424,25 @@ describe('ConversationsGateway', () => {
       );
     });
 
-    it('should broadcast read status to room', async () => {
+    it('should broadcast read status to other users only (socket.broadcast)', async () => {
       mockConversationsService.markMessageAsRead.mockResolvedValue({});
+      const broadcastMock = { to: jest.fn().mockReturnValue({ emit: jest.fn() }) };
 
-      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      const socket = { 
+        ...mockSocket, 
+        userId: 'user-123',
+        broadcast: broadcastMock,
+      } as any;
+      
       await gateway.handleMarkMessageRead(socket, {
         messageId: 'msg-123',
         conversationId: 'conv-123',
       });
 
-      expect(mockServer.to).toHaveBeenCalledWith('conversation:conv-123');
+      expect(socket.broadcast.to).toHaveBeenCalledWith('conversation:conv-123');
     });
 
-    it('should emit read:success on success', async () => {
+    it('should emit read:success to sender only', async () => {
       mockConversationsService.markMessageAsRead.mockResolvedValue({});
 
       const socket = { ...mockSocket, userId: 'user-123' } as any;
@@ -451,6 +484,174 @@ describe('ConversationsGateway', () => {
     });
   });
 
+  // ───── handleMarkMessageDelivered ──────────────────────────────
+  describe('message:delivered', () => {
+    it('should mark message as delivered', async () => {
+      mockConversationsService.markMessageAsDelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageDelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockConversationsService.markMessageAsDelivered).toHaveBeenCalledWith(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+    });
+
+    it('should broadcast delivery status to all users in room', async () => {
+      mockConversationsService.markMessageAsDelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageDelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockServer.to).toHaveBeenCalledWith('conversation:conv-123');
+    });
+
+    it('should emit delivered:success to sender', async () => {
+      mockConversationsService.markMessageAsDelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageDelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('delivered:success', {
+        messageId: 'msg-123',
+      });
+    });
+
+    it('should emit error when unauthorized', async () => {
+      const socket = { ...mockSocket, userId: undefined } as any;
+
+      await gateway.handleMarkMessageDelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('error', expect.any(Object));
+    });
+  });
+
+  // ───── handleMarkMessageUnread ─────────────────────────────────
+  describe('message:unread', () => {
+    it('should mark message as unread', async () => {
+      mockConversationsService.markMessageAsUnread.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUnread(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockConversationsService.markMessageAsUnread).toHaveBeenCalledWith(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+    });
+
+    it('should broadcast unread status to all users in room', async () => {
+      mockConversationsService.markMessageAsUnread.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUnread(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockServer.to).toHaveBeenCalledWith('conversation:conv-123');
+    });
+
+    it('should emit unread:success to sender', async () => {
+      mockConversationsService.markMessageAsUnread.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUnread(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('unread:success', {
+        messageId: 'msg-123',
+      });
+    });
+
+    it('should emit error when unauthorized', async () => {
+      const socket = { ...mockSocket, userId: undefined } as any;
+
+      await gateway.handleMarkMessageUnread(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('error', expect.any(Object));
+    });
+  });
+
+  // ───── handleMarkMessageUndelivered ────────────────────────────
+  describe('message:undelivered', () => {
+    it('should mark message as undelivered', async () => {
+      mockConversationsService.markMessageAsUndelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUndelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockConversationsService.markMessageAsUndelivered).toHaveBeenCalledWith(
+        'user-123',
+        'msg-123',
+        'conv-123',
+      );
+    });
+
+    it('should broadcast undelivered status to all users in room', async () => {
+      mockConversationsService.markMessageAsUndelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUndelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(mockServer.to).toHaveBeenCalledWith('conversation:conv-123');
+    });
+
+    it('should emit undelivered:success to sender', async () => {
+      mockConversationsService.markMessageAsUndelivered.mockResolvedValue({});
+
+      const socket = { ...mockSocket, userId: 'user-123' } as any;
+      await gateway.handleMarkMessageUndelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('undelivered:success', {
+        messageId: 'msg-123',
+      });
+    });
+
+    it('should emit error when unauthorized', async () => {
+      const socket = { ...mockSocket, userId: undefined } as any;
+
+      await gateway.handleMarkMessageUndelivered(socket, {
+        messageId: 'msg-123',
+        conversationId: 'conv-123',
+      });
+
+      expect(socket.emit).toHaveBeenCalledWith('error', expect.any(Object));
+    });
+  });
+
   // ───── handleTypingStart ───────────────────────────────────────
   describe('typing:start', () => {
     it('should broadcast typing indicator to room', async () => {
@@ -459,7 +660,7 @@ describe('ConversationsGateway', () => {
         conversationId: 'conv-123',
       });
 
-      expect(socket.to).toHaveBeenCalledWith('conversation:conv-123');
+      expect(socket.broadcast.to).toHaveBeenCalledWith('conversation:conv-123');
     });
 
     it('should not broadcast when user is not authenticated', async () => {
@@ -468,21 +669,22 @@ describe('ConversationsGateway', () => {
         conversationId: 'conv-123',
       });
 
-      expect(socket.to).not.toHaveBeenCalled();
+      expect(socket.broadcast.to).not.toHaveBeenCalled();
     });
 
     it('should emit typing:active event', async () => {
+      const broadcastMock = { to: jest.fn().mockReturnValue({ emit: jest.fn() }) };
       const socket = {
         ...mockSocket,
         userId: 'user-123',
-        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+        broadcast: broadcastMock,
       } as any;
 
       await gateway.handleTypingStart(socket, {
         conversationId: 'conv-123',
       });
 
-      const emitFn = socket.to().emit;
+      const emitFn = socket.broadcast.to().emit;
       expect(emitFn).toHaveBeenCalledWith(
         'typing:active',
         expect.objectContaining({
@@ -501,21 +703,22 @@ describe('ConversationsGateway', () => {
         conversationId: 'conv-123',
       });
 
-      expect(socket.to).toHaveBeenCalledWith('conversation:conv-123');
+      expect(socket.broadcast.to).toHaveBeenCalledWith('conversation:conv-123');
     });
 
     it('should emit typing:inactive event', async () => {
+      const broadcastMock = { to: jest.fn().mockReturnValue({ emit: jest.fn() }) };
       const socket = {
         ...mockSocket,
         userId: 'user-123',
-        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+        broadcast: broadcastMock,
       } as any;
 
       await gateway.handleTypingStop(socket, {
         conversationId: 'conv-123',
       });
 
-      const emitFn = socket.to().emit;
+      const emitFn = socket.broadcast.to().emit;
       expect(emitFn).toHaveBeenCalledWith(
         'typing:inactive',
         expect.objectContaining({
@@ -531,7 +734,7 @@ describe('ConversationsGateway', () => {
         conversationId: 'conv-123',
       });
 
-      expect(socket.to).not.toHaveBeenCalled();
+      expect(socket.broadcast.to).not.toHaveBeenCalled();
     });
   });
 
