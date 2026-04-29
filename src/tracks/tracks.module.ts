@@ -8,6 +8,7 @@ import { BullModule } from '@nestjs/bull';
 import { AuthModule } from '../auth/auth.module';
 import { SearchModule } from '../search/search.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { FeedModule } from 'src/feed/feed.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     StorageModule,
     AudioModule,
     SearchModule,
+    FeedModule,
     BullModule.registerQueue({ name: 'tracks' }),
     NotificationsModule
   ],

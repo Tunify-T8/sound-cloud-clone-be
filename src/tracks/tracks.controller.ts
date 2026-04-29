@@ -53,13 +53,17 @@ export class TracksController {
 
   @Post('playback-context')
   @UseGuards(JwtAccessGuard)
-  async buildContext(@Body() dto: PlaybackContextDto) {
+  async buildContext(
+    @Request() req: AuthRequest,
+    @Body() dto: PlaybackContextDto,
+  ) {
     return this.tracksService.buildPlaybackContext(
       dto.contextType,
       dto.contextId,
       dto.startTrackId,
       dto.shuffle,
       dto.repeat,
+      req.user?.userId ?? '',
     );
   }
 
@@ -74,7 +78,8 @@ export class TracksController {
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
           new FileTypeValidator({
-            fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/,
+            fileType:
+              /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/,
           }),
         ],
       }),
@@ -235,7 +240,10 @@ export class TracksController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/ }),
+          new FileTypeValidator({
+            fileType:
+              /audio\/(mpeg|wav|flac|aiff|ogg|aac|x-flac|x-aiff|webm)|video\/webm/,
+          }),
         ],
       }),
     )
