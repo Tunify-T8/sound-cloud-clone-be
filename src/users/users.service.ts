@@ -877,16 +877,9 @@ export class UsersService {
       where: {
         userId,
         status: 'ACTIVE',
-        endedAt: null,
-        plan: {
-          is: {
-            name: { in: ['free', 'artist', 'artist-pro'] },
-            isActive: true,
-          },
-        },
       },
       include: { plan: true },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
     });
 
     let plan = subscription?.plan;
