@@ -46,6 +46,7 @@ export class TracksService {
 
   private async resolvePlayability(
     track: {
+      userId: string;
       transcodingStatus: TranscodingStatus;
       isDeleted: boolean;
       isHidden: boolean;
@@ -83,7 +84,7 @@ export class TracksService {
 
     // 4. Private track — check token
     if (!track.isPublic) {
-      if (!privateToken || privateToken !== track.privateToken) {
+      if (userId !== track.userId && (!privateToken || privateToken !== track.privateToken)) {
         return { status: 'blocked', blockedReason: 'private_no_token' };
       }
     }
