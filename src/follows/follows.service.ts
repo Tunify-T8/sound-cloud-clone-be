@@ -5,17 +5,35 @@ import {
   BadRequestException,
   ForbiddenException,
   Optional,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma ,NotificationType, ReferenceType} from '@prisma/client';
+import { Prisma, NotificationType, ReferenceType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 @Injectable()
 export class FollowsService {
+  private readonly logger = new Logger(FollowsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly searchIndexService: SearchIndexService,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  private async tryIndexUser(userId: string): Promise<void> {
+    if (!userId) return;
+
+    try {
+      await this.searchIndexService.indexUser(userId);
+    } catch (error) {
+      this.logger.warn(
+        'Search index unavailable — skipping user indexing',
+        error,
+      );
+    }
+  }
 
   async followUser(followerId: string, followingId: string) {
     if (followerId === followingId) {
@@ -60,6 +78,12 @@ export class FollowsService {
       throw error; // rethrow other unexpected errors
     }
 
+    // Best-effort reindex: requested to update both users
+    await Promise.all([
+      this.tryIndexUser(followerId),
+      this.tryIndexUser(followingId),
+    ]);
+
     // ── Notify the target user ──
     await this.notifications?.createNotification({
       recipientId: followingId, // the person being followed
@@ -88,6 +112,12 @@ export class FollowsService {
     await this.prisma.follow.delete({
       where: { id: existing.id },
     });
+
+    // Best-effort reindex: requested to update both users
+    await Promise.all([
+      this.tryIndexUser(followerId),
+      this.tryIndexUser(followingId),
+    ]);
 
     return { message: 'Unfollowed successfully' };
   }
@@ -129,6 +159,12 @@ export class FollowsService {
       data: { blockerId, blockedId },
     });
 
+    // Best-effort reindex: block can remove follow edges between both users
+    await Promise.all([
+      this.tryIndexUser(blockerId),
+      this.tryIndexUser(blockedId),
+    ]);
+
     return { message: 'User blocked successfully' };
   }
 
@@ -144,6 +180,12 @@ export class FollowsService {
     await this.prisma.userBlock.delete({
       where: { id: existing.id },
     });
+
+    // As requested: reindex both users on unblock as well.
+    await Promise.all([
+      this.tryIndexUser(blockerId),
+      this.tryIndexUser(blockedId),
+    ]);
 
     return { message: 'User unblocked successfully' };
   }
