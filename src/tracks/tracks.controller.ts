@@ -136,6 +136,14 @@ export class TracksController {
     return this.tracksService.getStatus(trackId);
   }
 
+  @Get(':id/play-stats')
+@UseGuards(JwtAccessGuard)
+async getPlayStats(
+  @Param('id', ParseUUIDPipe) trackId: string,
+) {
+  return this.tracksService.getTrackPlayStats(trackId);
+}
+
   @Get(':id')
   @UseGuards(JwtAccessGuard)
   async getTrack(
