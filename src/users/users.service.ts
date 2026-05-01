@@ -2,7 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrivateUserDto } from './dto/private-user.dto';
@@ -877,16 +877,9 @@ export class UsersService {
       where: {
         userId,
         status: 'ACTIVE',
-        endedAt: null,
-        plan: {
-          is: {
-            name: { in: ['free', 'artist', 'artist-pro'] },
-            isActive: true,
-          },
-        },
       },
       include: { plan: true },
-      orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
     });
 
     let plan = subscription?.plan;
@@ -929,8 +922,7 @@ export class UsersService {
         message: 'You have reached the upload limit for your plan.',
       });
     }
-    
-    
+
     return {
       tier: plan?.name ?? 'free',
       uploadMinutesLimit: isUnlimited ? -1 : monthlyLimitMinutes,
@@ -966,7 +958,8 @@ export class UsersService {
 
     return {
       tier: subscription?.plan?.name ?? 'free',
-      uploadMinutesLimit: uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
+      uploadMinutesLimit:
+        uploadMinutesLimit === -1 ? 'unlimited' : uploadMinutesLimit,
       uploadMinutesUsed,
       uploadMinutesRemaining: Math.max(
         uploadMinutesLimit - uploadMinutesUsed,
@@ -975,7 +968,10 @@ export class UsersService {
       adFree: subscription?.plan?.adFree ?? false,
       offlineListening: subscription?.plan?.allowOfflineListening ?? false,
       playbackAccess: subscription?.plan?.playbackAccess ?? false,
-      playlistLimit: subscription?.plan?.playlistLimit === -1 ? 'unlimited' : subscription?.plan?.playlistLimit ?? 3, 
+      playlistLimit:
+        subscription?.plan?.playlistLimit === -1
+          ? 'unlimited'
+          : (subscription?.plan?.playlistLimit ?? 3),
       canReplaceFiles: subscription?.plan?.allowReplace ?? false,
       canScheduleRelease: subscription?.plan?.allowScheduledRelease ?? false,
       canAccessAdvancedTab: subscription?.plan?.allowAdvancedTabAccess ?? false,
@@ -1015,16 +1011,13 @@ export class UsersService {
   //   };
   // }
 
-
-
-
-async getUserCollections(
-  username: string,
-  requesterId: string | undefined,
-  page: number = 1,
-  limit: number = 10,
-  type?: CollectionType,
-) {
+  async getUserCollections(
+    username: string,
+    requesterId: string | undefined,
+    page: number = 1,
+    limit: number = 10,
+    type?: CollectionType,
+  ) {
     // 1. Find user by username
     const user = await this.prisma.user.findUnique({
       where: { username },
@@ -1143,7 +1136,7 @@ async getUserCollections(
           select: {
             content: true,
             createdAt: true,
-            read: true,
+            status: true,
             senderId: true,
           },
         },
@@ -1153,19 +1146,28 @@ async getUserCollections(
       take: validLimit,
     });
 
-      // total is the 
-      const total = conversations.length
-    
+    // total is the
+    const total = conversations.length;
+
+    // Get unread counts for all conversations
+    const unreadCountsMap = new Map<string, number>();
+    for (const conv of conversations) {
+      const otherUserId = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
+      const unreadCount = await this.prisma.message.count({
+        where: {
+          conversationId: conv.id,
+          status: { not: 'READ' },
+          senderId: otherUserId,
+        },
+      });
+      unreadCountsMap.set(conv.id, unreadCount);
+    }
 
     // Format response
     const items = conversations.map((conv) => {
       const otherUser = conv.user1Id === userId ? conv.user2 : conv.user1;
       const lastMessage = conv.messages[0];
-
-      // Count unread messages from the other user
-      const unreadCount = conv.messages.filter(
-        (msg) => !msg.read && msg.senderId !== userId,
-      ).length;
+      const unreadCount = unreadCountsMap.get(conv.id) || 0;
 
       return {
         conversationId: conv.id,
@@ -1222,20 +1224,20 @@ async getUserCollections(
       throw new NotFoundException('Other user not found');
     }
 
-    if(otherUser.allowMessages === false)
-    {
+    if (otherUser.allowMessages === false) {
       // Check if the other user follows the user trying to create the conversation
       const follows = await this.prisma.follow.findFirst({
-        where: { 
-          followerId: otherUserId,  // Does otherUser follow...
-          followingId: userId,      // ...userId?
+        where: {
+          followerId: otherUserId, // Does otherUser follow...
+          followingId: userId, // ...userId?
         },
       });
 
       // If otherUser doesn't follow userId, throw an error
-      if(!follows)
-      {
-        throw new BadRequestException('Cannot create conversation. The user only allows messages from people they follow.');
+      if (!follows) {
+        throw new BadRequestException(
+          'Cannot create conversation. The user only allows messages from people they follow.',
+        );
       }
     }
 
@@ -1256,7 +1258,7 @@ async getUserCollections(
   async getUnreadMessagesCount(userId: string) {
     const count = await this.prisma.message.count({
       where: {
-        read: false,
+        status: { not: 'READ' },
         senderId: { not: userId },
         conversation: {
           OR: [{ user1Id: userId }, { user2Id: userId }],
@@ -1265,6 +1267,20 @@ async getUserCollections(
     });
 
     return { unreadCount: count };
+  }
+
+  async getGenres() {
+    return this.prisma.genre.findMany({
+      where: {
+        tracks: {
+          some: {}, // means: at least one track exists
+        },
+      },
+      select: {
+        id: true,
+        label: true,
+      },
+    });
   }
 
   // get total number of:

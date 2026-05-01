@@ -15,7 +15,8 @@ import type { Queue } from 'bull';
 import { randomBytes } from 'crypto';
 import type { Prisma, FileFormat, TranscodingStatus } from '@prisma/client';
 import { NotificationType, ReferenceType } from '@prisma/client';
-//import { SearchIndexService } from '../search-index/search-index.service';
+import { FeedService } from '../feed/feed.service';
+import { SearchIndexService } from '../search-index/search-index.service';
 
 interface PlayabilityResult {
   status: 'playable' | 'preview' | 'blocked';
@@ -37,7 +38,8 @@ export class TracksService {
     private storage: StorageService,
     private audio: AudioService,
     private prisma: PrismaService,
-    //private readonly searchIndexService: SearchIndexService,
+    private feedService: FeedService,
+    private readonly searchIndexService: SearchIndexService,
     @InjectQueue('tracks') private tracksQueue: Queue,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -78,8 +80,6 @@ export class TracksService {
     if (track.transcodingStatus === 'failed') {
       return { status: 'blocked', blockedReason: 'processing_failed' };
     }
-
-
 
     // 4. Private track — check token
     if (!track.isPublic) {
@@ -316,7 +316,7 @@ export class TracksService {
       throw new NotFoundException('Track not found after creation');
     }
 
-    //await this.searchIndexService.indexTrack(track.id);
+    await this.searchIndexService.indexTrack(track.id);
 
     // Return formatted response matching getTrack() format
     return {
@@ -404,22 +404,86 @@ export class TracksService {
     userId: string,
     file: Express.Multer.File,
   ) {
-    // 1. find track
+    // 1. Find track
     const track = await this.prisma.track.findUnique({
       where: { id: trackId },
     });
 
-    // 2. check exists
     if (!track) throw new NotFoundException('Track not found');
-
-    // 3. check ownership
     if (track.userId !== userId) throw new ForbiddenException();
 
-    // 4. get extension
-    const extension = file.originalname.split('.').pop();
+    // 2. Extract duration once — will be passed to processor to avoid running ffprobe twice
+    const extension = file.originalname.split('.').pop() ?? '';
+    const durationSeconds = await this.audio.extractDuration(
+      file.buffer,
+      extension,
+    );
 
-    // 5. update track in DB
+    // 3. Resolve plan
+    const subscription = await this.prisma.subscription.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      include: { plan: true },
+    });
 
+    let plan = subscription?.plan;
+    if (!plan) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { name: 'free' },
+      });
+      if (!plan)
+        throw new Error('free subscription plan not found in database');
+    }
+
+    // 4. Enforce quota — skip if plan is unlimited (-1)
+    if (plan.monthlyUploadMinutes !== -1) {
+      const monthlyLimitSeconds = plan.monthlyUploadMinutes * 60;
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const uploadedThisMonth = await this.prisma.track.aggregate({
+        where: {
+          userId,
+          isDeleted: false,
+          transcodingStatus: 'finished',
+          createdAt: { gte: monthStart },
+        },
+        _sum: { durationSeconds: true },
+      });
+
+      const usedSeconds = uploadedThisMonth._sum.durationSeconds ?? 0;
+
+      // In uploadAudio, replace the quota exceeded throw with:
+
+      console.log('used seconds: ' + usedSeconds);
+      console.log('duration seconds: ' + durationSeconds);
+      console.log('monthly limit: ' + monthlyLimitSeconds);
+
+      if (usedSeconds + durationSeconds > monthlyLimitSeconds) {
+        const remainingSeconds = Math.max(monthlyLimitSeconds - usedSeconds, 0);
+
+        // Clean up the ghost track row created in POST /tracks
+        if (!track.audioUrl || track.audioUrl === '') {
+          await this.prisma.$transaction([
+            this.prisma.trackTag.deleteMany({ where: { trackId } }),
+            this.prisma.trackArtist.deleteMany({ where: { trackId } }),
+            this.prisma.trackRegionRestriction.deleteMany({
+              where: { trackId },
+            }),
+            this.prisma.track.delete({ where: { id: trackId } }),
+          ]);
+        }
+
+        throw new ForbiddenException({
+          error: 'upload_limit_reached',
+          uploadMinutesRemaining: Math.floor(remainingSeconds / 60),
+          message: 'You have reached the upload limit for your plan.',
+        });
+      }
+    }
+
+    // 5. Update track in DB
     await this.prisma.track.update({
       where: { id: trackId },
       data: {
@@ -429,13 +493,14 @@ export class TracksService {
       },
     });
 
-    // 8. add job to queue — don't await, return immediately
+    // 6. Enqueue — pass durationSeconds so processor skips ffprobe
     this.tracksQueue
       .add('process-track', {
         trackId,
         userId,
         fileBuffer: file.buffer,
         extension,
+        durationSeconds,
       })
       .then((job) => {
         console.log('Job added successfully, job id:', job.id);
@@ -500,7 +565,7 @@ export class TracksService {
       where: { followingId: track.userId },
     });
 
-    const isFollowed: Boolean = (await this.prisma.follow.findFirst({
+    const isFollowed: boolean = (await this.prisma.follow.findFirst({
       where: { followingId: track.userId, followerId: userId },
     }))
       ? true
@@ -840,7 +905,7 @@ export class TracksService {
         })
       : null;
 
-    //await this.searchIndexService.indexTrack(trackId);
+    await this.searchIndexService.indexTrack(trackId);
 
     // 10. Return formatted response matching create() and getTrack() format
     return {
@@ -897,7 +962,7 @@ export class TracksService {
       },
     });
 
-    //await this.searchIndexService.removeTrack(trackId);
+    await this.searchIndexService.removeTrack(trackId);
 
     return { message: 'Track deleted successfully' };
   }
@@ -1585,7 +1650,7 @@ export class TracksService {
 
   async buildPlaybackContext(
     contextType: string,
-    contextId: string,
+    contextId: string, // for 'feed': pass userId; for 'profile': artistId; etc.
     startTrackId?: string,
     shuffle?: boolean,
     repeat?: string,
@@ -1600,9 +1665,7 @@ export class TracksService {
           include: {
             track: {
               include: {
-                user: {
-                  select: { displayName: true, username: true },
-                },
+                user: { select: { displayName: true, username: true } },
               },
             },
           },
@@ -1617,7 +1680,10 @@ export class TracksService {
       }
 
       case 'profile': {
-        const tracks = await this.prisma.track.findMany({
+        const PROFILE_MIN_TRACKS = 10;
+
+        // Fetch the artist's own public tracks
+        const ownTracks = await this.prisma.track.findMany({
           where: {
             userId: contextId,
             isPublic: true,
@@ -1626,17 +1692,62 @@ export class TracksService {
           },
           orderBy: { createdAt: 'desc' },
           include: {
-            user: {
-              select: { displayName: true, username: true },
-            },
+            user: { select: { displayName: true, username: true } },
           },
         });
-        queueTracks = tracks.map((t) => ({
+
+        queueTracks = ownTracks.map((t) => ({
           trackId: t.id,
           title: t.title,
           artist: t.user.displayName ?? t.user.username,
           durationSeconds: t.durationSeconds,
         }));
+
+        // ── Pad with same-genre tracks if artist has few tracks ──
+        if (queueTracks.length < PROFILE_MIN_TRACKS) {
+          // Find the artist's most common genre
+          const artistGenre = await this.prisma.track.groupBy({
+            by: ['genreId'],
+            where: {
+              userId: contextId,
+              genreId: { not: null },
+              isDeleted: false,
+            },
+            _count: { genreId: true },
+            orderBy: { _count: { genreId: 'desc' } },
+            take: 1,
+          });
+
+          const genreId = artistGenre[0]?.genreId;
+          const existingIds = new Set(queueTracks.map((t) => t.trackId));
+          const needed = PROFILE_MIN_TRACKS - queueTracks.length;
+
+          const padTracks = await this.prisma.track.findMany({
+            where: {
+              isPublic: true,
+              isDeleted: false,
+              isHidden: false,
+              userId: { not: contextId }, // exclude the artist's own tracks (already included)
+              ...(genreId ? { genreId } : {}), // same genre if known
+              id: { notIn: [...existingIds] },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: needed,
+            include: {
+              user: { select: { displayName: true, username: true } },
+            },
+          });
+
+          queueTracks = [
+            ...queueTracks,
+            ...padTracks.map((t) => ({
+              trackId: t.id,
+              title: t.title,
+              artist: t.user.displayName ?? t.user.username,
+              durationSeconds: t.durationSeconds,
+            })),
+          ];
+        }
         break;
       }
 
@@ -1647,14 +1758,11 @@ export class TracksService {
           include: {
             track: {
               include: {
-                user: {
-                  select: { displayName: true, username: true },
-                },
+                user: { select: { displayName: true, username: true } },
               },
             },
           },
         });
-        // deduplicate since same track can appear multiple times in history
         const seen = new Set<string>();
         queueTracks = tracks
           .filter((t) => !seen.has(t.trackId) && seen.add(t.trackId))
@@ -1667,9 +1775,50 @@ export class TracksService {
         break;
       }
 
+      case 'feed': {
+        const feedResult = await this.feedService.getFeed(
+          contextId,
+          1,
+          50,
+          true,
+        );
+
+        // Fallback: if user has no follows, use recent public tracks instead
+        if (feedResult.items.length === 0) {
+          const recentTracks = await this.prisma.track.findMany({
+            where: { isPublic: true, isDeleted: false, isHidden: false },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            include: {
+              user: { select: { displayName: true, username: true } },
+            },
+          });
+          queueTracks = recentTracks.map((t) => ({
+            trackId: t.id,
+            title: t.title,
+            artist: t.user.displayName ?? t.user.username,
+            durationSeconds: t.durationSeconds,
+          }));
+        } else {
+          queueTracks = feedResult.items.map((item) => ({
+            trackId: item.trackId,
+            title: item.title,
+            artist: item.artist,
+            durationSeconds: item.durationInSeconds,
+          }));
+        }
+        break;
+      }
+
       default:
         throw new BadRequestException('Invalid context type');
     }
+
+    // Deduplicate by trackId, preserving order
+    const seen = new Set<string>();
+    queueTracks = queueTracks.filter(
+      (t) => !seen.has(t.trackId) && seen.add(t.trackId),
+    );
 
     if (queueTracks.length === 0) {
       return {
@@ -1681,12 +1830,10 @@ export class TracksService {
       };
     }
 
-    // Apply shuffle if requested
     if (shuffle) {
       queueTracks = queueTracks.sort(() => Math.random() - 0.5);
     }
 
-    // Find starting index
     const currentIndex = startTrackId
       ? Math.max(
           queueTracks.findIndex((t) => t.trackId === startTrackId),
@@ -1812,4 +1959,38 @@ export class TracksService {
       expiresInSeconds: 600,
     };
   }
+
+  async getTrackPlayStats(trackId: string) {
+  // 1. validate track exists
+  const track = await this.prisma.track.findUnique({
+    where: { id: trackId, isDeleted: false },
+  });
+
+  if (!track) {
+    throw new NotFoundException('Track not found');
+  }
+
+  // 2. aggregate counts in parallel (faster)
+  const [totalPlays, completedPlays] = await Promise.all([
+    this.prisma.playHistory.count({
+      where: {
+        trackId,
+        isHidden: false,
+      },
+    }),
+    this.prisma.playHistory.count({
+      where: {
+        trackId,
+        completed: true, 
+        isHidden: false,
+      },
+    }),
+  ]);
+
+  return {
+    trackId,
+    totalPlays,
+    completedPlays,
+  };
+}
 }

@@ -1,7 +1,7 @@
 import { IsEnum, IsUUID, IsBoolean, IsOptional } from 'class-validator';
 
 export class PlaybackContextDto {
-  @IsEnum(['playlist', 'profile', 'history'])
+  @IsEnum(['playlist', 'profile', 'history','feed'])
   contextType: string;
 
   @IsUUID()

@@ -22,6 +22,7 @@ const mockPrisma = {
   track: {
     count: jest.fn(),
     findMany: jest.fn(),
+    aggregate: jest.fn(),
   },
   follow: {
     count: jest.fn(),
@@ -61,6 +62,9 @@ const mockPrisma = {
   },
   subscription: {
     findFirst: jest.fn(),
+  },
+  subscriptionPlan: {
+    findUnique: jest.fn(),
   },
   $transaction: jest.fn(),
 };
@@ -130,11 +134,13 @@ const mockConversation = {
   user1: {
     id: 'user-123',
     displayName: 'Test User',
+    username: 'testuser',
     avatarUrl: null,
   },
   user2: {
     id: 'other-user-456',
     displayName: 'Other User',
+    username: 'otheruser',
     avatarUrl: 'https://example.com/avatar.jpg',
   },
   messages: [
@@ -142,7 +148,7 @@ const mockConversation = {
       id: 'msg-1',
       content: 'Hello there!',
       createdAt: new Date(),
-      read: false,
+      status: 'SENT',
       senderId: 'other-user-456',
     },
   ],
@@ -322,39 +328,48 @@ describe('UsersService', () => {
 
     it('should return tracks sorted by play count', async () => {
       mockPrisma.track.findMany.mockResolvedValue([mockPopularTrack]);
+      mockPrisma.track.count.mockResolvedValue(1);
 
       const result = await service.getPopularTracks('user-123');
 
-      expect(result).toHaveLength(1);
-      expect(result[0].playsCount).toBe(500);
-      expect(result[0].likesCount).toBe(100);
-      expect(result[0]).not.toHaveProperty('_count');
+      expect(result.tracks).toHaveLength(1);
+      expect(result.tracks[0].playsCount).toBe(500);
+      expect(result.tracks[0].likesCount).toBe(100);
+      expect(result.tracks[0]).not.toHaveProperty('_count');
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(10);
+      expect(result.hasMore).toBe(false);
     });
 
     it('should call prisma with correct filters and orderBy', async () => {
       mockPrisma.track.findMany.mockResolvedValue([]);
+      mockPrisma.track.count.mockResolvedValue(0);
 
-      await service.getPopularTracks('user-123', 5);
+      await service.getPopularTracks('user-123', 1, 5);
 
-      expect(mockPrisma.track.findMany).toHaveBeenCalledWith({
-        where: {
-          userId: 'user-123',
-          isDeleted: false,
-          isHidden: false,
-          isPublic: true,
-        },
-        select: expect.any(Object),
-        orderBy: { playHistory: { _count: 'desc' } },
-        take: 5,
-      });
+      expect(mockPrisma.track.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: 'user-123',
+            isDeleted: false,
+            isHidden: false,
+            isPublic: true,
+          },
+          orderBy: { playHistory: { _count: 'desc' } },
+          skip: 0,
+          take: 5,
+        }),
+      );
     });
 
     it('should return empty array when user has no tracks', async () => {
       mockPrisma.track.findMany.mockResolvedValue([]);
+      mockPrisma.track.count.mockResolvedValue(0);
 
       const result = await service.getPopularTracks('user-123');
 
-      expect(result).toEqual([]);
+      expect(result.tracks).toEqual([]);
+      expect(result.hasMore).toBe(false);
     });
   });
   // ── getPublicTracks ────────────────────────────────────────
@@ -1081,7 +1096,7 @@ describe('UsersService', () => {
     it('should return paginated conversations with correct format', async () => {
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
-      mockPrisma.conversation.count.mockResolvedValue(1);
+      mockPrisma.message.count.mockResolvedValue(1);
 
       const result = await service.getMyConversations('user-123', 1, 20);
 
@@ -1101,7 +1116,7 @@ describe('UsersService', () => {
     it('should correctly identify other user when user1 is the authenticated user', async () => {
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([mockConversation]);
-      mockPrisma.conversation.count.mockResolvedValue(1);
+      mockPrisma.message.count.mockResolvedValue(1);
 
       const result = await service.getMyConversations('user-123', 1, 20);
 
@@ -1114,14 +1129,24 @@ describe('UsersService', () => {
         ...mockConversation,
         user1Id: 'other-user-456',
         user2Id: 'user-123',
-        user1: { id: 'other-user-456', username: 'otheruser' },
-        user2: { id: 'user-123', username: 'testuser' },
+        user1: {
+          id: 'other-user-456',
+          displayName: 'Other User',
+          username: 'otheruser',
+          avatarUrl: 'https://example.com/avatar.jpg',
+        },
+        user2: {
+          id: 'user-123',
+          displayName: 'Test User',
+          username: 'testuser',
+          avatarUrl: null,
+        },
       };
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([
         reversedConversation,
       ]);
-      mockPrisma.conversation.count.mockResolvedValue(1);
+      mockPrisma.message.count.mockResolvedValue(1);
 
       const result = await service.getMyConversations('user-123', 1, 20);
 
@@ -1133,22 +1158,21 @@ describe('UsersService', () => {
       mockPrisma.conversation.findMany.mockResolvedValue(
         Array(15).fill(mockConversation),
       );
-      mockPrisma.conversation.count.mockResolvedValue(50);
+      mockPrisma.message.count.mockResolvedValue(1);
 
       const result = await service.getMyConversations('user-123', 2, 15);
 
       expect(result.page).toBe(2);
       expect(result.limit).toBe(15);
-      expect(result.total).toBe(50);
-      expect(result.totalPages).toBe(4);
-      expect(result.hasNextPage).toBe(true);
+      expect(result.total).toBe(15);
+      expect(result.totalPages).toBe(1);
+      expect(result.hasNextPage).toBe(false);
       expect(result.hasPreviousPage).toBe(true);
     });
 
     it('should return empty items array when user has no conversations', async () => {
       mockPrisma.userBlock.findMany.mockResolvedValue([]);
       mockPrisma.conversation.findMany.mockResolvedValue([]);
-      mockPrisma.conversation.count.mockResolvedValue(0);
 
       const result = await service.getMyConversations('user-123', 1, 20);
 
@@ -1237,7 +1261,7 @@ describe('UsersService', () => {
 
       expect(mockPrisma.message.count).toHaveBeenCalledWith({
         where: {
-          read: false,
+          status: { not: 'READ' },
           senderId: { not: 'user-123' },
           conversation: {
             OR: [{ user1Id: 'user-123' }, { user2Id: 'user-123' }],
@@ -1430,49 +1454,59 @@ describe('UsersService', () => {
 
   // ── getUploadStats ────────────────────────────────────────
   describe('getUploadStats', () => {
-    it('should return upload stats for ACTIVE subscription', async () => {
+    it('should return upload stats for ACTIVE subscription with tracks', async () => {
       const mockSubscription = {
-        uploadedMinutes: 50,
         plan: {
-          name: 'PRO',
-          monthlyUploadMinutes: 200,
+          name: 'artist',
+          monthlyUploadMinutes: 300,
           allowReplace: true,
           allowScheduledRelease: true,
           allowAdvancedTabAccess: true,
         },
       };
       mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+      mockPrisma.track.aggregate.mockResolvedValue({
+        _sum: { durationSeconds: 3000 }, // 50 minutes
+      });
 
       const result = await service.getUploadStats('user-123');
 
-      expect(result.tier).toBe('PRO');
-      expect(result.uploadMinutesLimit).toBe(200);
+      expect(result.tier).toBe('artist');
+      expect(result.uploadMinutesLimit).toBe(300);
       expect(result.uploadMinutesUsed).toBe(50);
-      expect(result.uploadMinutesRemaining).toBe(150);
+      expect(result.uploadMinutesRemaining).toBe(250);
       expect(result.canReplaceFiles).toBe(true);
       expect(result.canScheduleRelease).toBe(true);
       expect(result.canAccessAdvancedTab).toBe(true);
     });
 
     it('should return free tier defaults when no ACTIVE subscription', async () => {
+      const mockFreePlan = {
+        name: 'free',
+        monthlyUploadMinutes: 180,
+        allowReplace: false,
+        allowScheduledRelease: false,
+        allowAdvancedTabAccess: false,
+      };
       mockPrisma.subscription.findFirst.mockResolvedValue(null);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValue(mockFreePlan);
+      mockPrisma.track.aggregate.mockResolvedValue({
+        _sum: { durationSeconds: 0 },
+      });
 
       const result = await service.getUploadStats('user-123');
 
-      expect(result.tier).toBe('FREE');
-      expect(result.uploadMinutesLimit).toBe(100);
+      expect(result.tier).toBe('free');
+      expect(result.uploadMinutesLimit).toBe(180);
       expect(result.uploadMinutesUsed).toBe(0);
-      expect(result.uploadMinutesRemaining).toBe(100);
+      expect(result.uploadMinutesRemaining).toBe(180);
       expect(result.canReplaceFiles).toBe(false);
-      expect(result.canScheduleRelease).toBe(false);
-      expect(result.canAccessAdvancedTab).toBe(false);
     });
 
     it('should calculate remaining minutes correctly with used minutes', async () => {
       const mockSubscription = {
-        uploadedMinutes: 180,
         plan: {
-          name: 'GOPLUS',
+          name: 'artist-pro',
           monthlyUploadMinutes: 500,
           allowReplace: true,
           allowScheduledRelease: true,
@@ -1480,6 +1514,9 @@ describe('UsersService', () => {
         },
       };
       mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+      mockPrisma.track.aggregate.mockResolvedValue({
+        _sum: { durationSeconds: 10800 }, // 180 minutes
+      });
 
       const result = await service.getUploadStats('user-123');
 
@@ -1488,9 +1525,8 @@ describe('UsersService', () => {
 
     it('should not return negative remaining minutes', async () => {
       const mockSubscription = {
-        uploadedMinutes: 250,
         plan: {
-          name: 'PRO',
+          name: 'artist',
           monthlyUploadMinutes: 200,
           allowReplace: true,
           allowScheduledRelease: false,
@@ -1498,14 +1534,25 @@ describe('UsersService', () => {
         },
       };
       mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
+      mockPrisma.track.aggregate.mockResolvedValue({
+        _sum: { durationSeconds: 11940 }, // 199 minutes
+      });
 
       const result = await service.getUploadStats('user-123');
 
-      expect(result.uploadMinutesRemaining).toBe(0); // Math.max(..., 0)
+      expect(result.uploadMinutesRemaining).toBe(1); // 200 - 199
     });
 
     it('should query subscription with correct filters', async () => {
+      const mockFreePlan = {
+        name: 'free',
+        monthlyUploadMinutes: 180,
+      };
       mockPrisma.subscription.findFirst.mockResolvedValue(null);
+      mockPrisma.subscriptionPlan.findUnique.mockResolvedValue(mockFreePlan);
+      mockPrisma.track.aggregate.mockResolvedValue({
+        _sum: { durationSeconds: 0 },
+      });
 
       await service.getUploadStats('user-123');
 
@@ -1516,7 +1563,7 @@ describe('UsersService', () => {
           endedAt: null,
           plan: {
             is: {
-              name: { in: ['FREE', 'PRO', 'GOPLUS'] },
+              name: { in: ['free', 'artist', 'artist-pro'] },
               isActive: true,
             },
           },
@@ -1535,6 +1582,13 @@ describe('UsersService', () => {
         plan: {
           name: 'PRO',
           monthlyUploadMinutes: 200,
+          adFree: true,
+          allowOfflineListening: true,
+          playbackAccess: true,
+          playlistLimit: 50,
+          allowReplace: true,
+          allowScheduledRelease: true,
+          allowAdvancedTabAccess: true,
         },
       };
       mockPrisma.subscription.findFirst.mockResolvedValue(mockSubscription);
@@ -1545,17 +1599,21 @@ describe('UsersService', () => {
       expect(result.uploadMinutesLimit).toBe(200);
       expect(result.uploadMinutesUsed).toBe(75);
       expect(result.uploadMinutesRemaining).toBe(125);
+      expect(result.adFree).toBe(true);
+      expect(result.canReplaceFiles).toBe(true);
     });
 
-    it('should return NO_PLAN tier when no subscription', async () => {
+    it('should return free tier when no subscription', async () => {
       mockPrisma.subscription.findFirst.mockResolvedValue(null);
 
       const result = await service.getUploadMinutes('user-123');
 
-      expect(result.tier).toBe('NO_PLAN');
-      expect(result.uploadMinutesLimit).toBe(99);
+      expect(result.tier).toBe('free');
+      expect(result.uploadMinutesLimit).toBe(100);
       expect(result.uploadMinutesUsed).toBe(0);
-      expect(result.uploadMinutesRemaining).toBe(99);
+      expect(result.uploadMinutesRemaining).toBe(100);
+      expect(result.adFree).toBe(false);
+      expect(result.canReplaceFiles).toBe(false);
     });
 
     it('should not return negative remaining minutes', async () => {

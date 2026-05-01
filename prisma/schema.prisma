@@ -484,7 +484,7 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String         @id @default(uuid())
   conversationId String
   senderId       String
   
@@ -497,8 +497,9 @@ model Message {
   collectionId   String?             // For PLAYLIST, ALBUM
   userId         String?             // For USER
   
+  status         MessageStatus @default(SENT)
   createdAt      DateTime     @default(now())
-  read           Boolean      @default(false)
+  updatedAt      DateTime     @updatedAt  @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
   sender       User         @relation(fields: [senderId], references: [id])
@@ -769,6 +770,12 @@ enum MessageType {
   PLAYLIST
   ALBUM
   UPLOAD
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
 }
 
 enum ReferenceType {
