@@ -52,7 +52,7 @@ export class AuthService {
     role: string,
   ): string {
     return this.jwtService.sign(
-      { sub: userId, email, role },
+      { sub: userId, email: email.toLowerCase(), role },
       {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
         expiresIn: this.configService.get<string>(
@@ -65,7 +65,7 @@ export class AuthService {
   // ─── Helper: Generate JWT Refresh Token ──────────────────────────
   private generateRefreshToken(userId: string, email: string): string {
     return this.jwtService.sign(
-      { sub: userId, email },
+      { sub: userId, email: email.toLowerCase() },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.configService.get<string>(
@@ -107,6 +107,8 @@ export class AuthService {
 
   // ─── Register ────────────────────────────────────────────────────
   async register(dto: RegisterDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 0. Verify CAPTCHA — reject bots before touching the DB
     await this.verifyCaptcha(dto.captchaToken);
 
@@ -276,6 +278,8 @@ export class AuthService {
   // ─── Verify Email ───────────────────────────────────────────────
 
   async verifyEmail(dto: VerifyEmailDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 1. Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -358,6 +362,8 @@ export class AuthService {
   // If exists but soft-deleted → treat as new user, allow registration
   // If not exists → give green light to continue registration
   async checkEmail(dto: CheckEmailDto) {
+    dto.email = dto.email.toLowerCase();
+
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -377,6 +383,8 @@ export class AuthService {
 
   // ─── Resend Verification ──────────────────────────────────────────
   async resendVerification(dto: ResendVerificationDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 1. Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -427,6 +435,8 @@ export class AuthService {
 
   // ─── Login ────────────────────────────────────────────────────────
   async login(dto: LoginDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 1. Find user
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -713,6 +723,8 @@ export class AuthService {
 
   // ─── Forgot Password ──────────────────────────────────────────────
   async forgotPassword(dto: ForgotPasswordDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 1. Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -825,6 +837,8 @@ export class AuthService {
 
   // ─── Reset Password ───────────────────────────────────────────────
   async resetPassword(dto: ResetPasswordDto) {
+    dto.email = dto.email.toLowerCase();
+
     // 1. Check newPassword === confirmPassword
     if (dto.newPassword !== dto.confirmPassword) {
       throw new BadRequestException('Passwords do not match');
