@@ -376,7 +376,7 @@ export class ConversationsService {
 
         const updatedMessage = await this.prisma.message.update({
             where: { id: messageId },
-            data: { read: true },
+            data: { status: 'READ' },
         });
 
         return updatedMessage;
