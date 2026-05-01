@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { SearchIndexService } from 'src/search-index/search-index.service';
 
 describe('FollowsService', () => {
   let service: FollowsService;
@@ -31,11 +32,16 @@ describe('FollowsService', () => {
     },
   };
 
+  const mockSearchIndexService = {
+    indexUser: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FollowsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: SearchIndexService, useValue: mockSearchIndexService },
       ],
     }).compile();
 
