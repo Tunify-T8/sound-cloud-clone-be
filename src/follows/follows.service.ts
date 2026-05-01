@@ -425,96 +425,102 @@ export class FollowsService {
     };
   }
 
-  // ── Get suggested artists only ────────────────────────────────
-  async getSuggestedArtists(userId: string, page: number, limit: number) {
-    const skip = (page - 1) * limit;
+ async getSuggestedArtists(userId: string, page: number, limit: number) {
+  const skip = (page - 1) * limit;
 
-    const following = await this.prisma.follow.findMany({
-      where: { followerId: userId },
-      select: { followingId: true },
-    });
-    const followingIds = following.map((f) => f.followingId);
+  // Step 1: Get IDs the user is already following
+  const following = await this.prisma.follow.findMany({
+    where: { followerId: userId },
+    select: { followingId: true },
+  });
+  const followingIds = following.map((f) => f.followingId);
 
-    const blocks = await this.prisma.userBlock.findMany({
-      where: {
-        OR: [{ blockerId: userId }, { blockedId: userId }],
+  // Step 2: Get IDs involved in any block (both directions)
+  const blocks = await this.prisma.userBlock.findMany({
+    where: {
+      OR: [{ blockerId: userId }, { blockedId: userId }],
+    },
+    select: { blockerId: true, blockedId: true },
+  });
+  const blockedIds = blocks.map((b) =>
+    b.blockerId === userId ? b.blockedId : b.blockerId,
+  );
+
+  // Step 3: Build full exclusion list (self + following + blocked)
+  const excludedIds = [...new Set([userId, ...followingIds, ...blockedIds])];
+
+  // Step 4: Friends-of-friends — who are the people I follow also following?
+  const friendsOfFriends = await this.prisma.follow.findMany({
+    where: {
+      followerId: { in: followingIds },
+      followingId: { notIn: excludedIds },
+    },
+    select: { followingId: true },
+  });
+
+  const suggestedIds = [
+    ...new Set(friendsOfFriends.map((f) => f.followingId)),
+  ];
+
+  // Step 5: Build the shared where clause once — single source of truth
+  const whereClause = {
+    isDeleted: false,
+    isActive: true,
+    isBanned: false,
+    isSuspended: false,
+    role: 'ARTIST' as const,
+    ...(suggestedIds.length > 0
+      ? { id: { in: suggestedIds, notIn: excludedIds } }
+      : { id: { notIn: excludedIds } }), // <-- your original had a bug here too
+  };
+
+  // Step 6: Fetch users + total count in parallel
+  const [users, total] = await Promise.all([
+    this.prisma.user.findMany({
+      where: whereClause,
+      skip,
+      take: limit,
+      orderBy: { followers: { _count: 'desc' } },
+      select: {
+        id: true,
+        username: true,
+        avatarUrl: true,
+        coverUrl: true,
+        role: true,
+        isCertified: true,
+        _count: {
+          select: {
+            followers: true,
+            tracks: {
+              where: {
+                isPublic: true,
+                isDeleted: false,
+                isHidden: false,
+              },
+            },
+          },
+        },
       },
-      select: { blockerId: true, blockedId: true },
-    });
-    const blockedIds = blocks.map((b) =>
-      b.blockerId === userId ? b.blockedId : b.blockerId,
-    );
+    }),
+    this.prisma.user.count({ where: whereClause }),
+  ]);
 
-    const excludedIds = [...new Set([userId, ...followingIds, ...blockedIds])];
-
-    const friendsOfFriends = await this.prisma.follow.findMany({
-      where: {
-        followerId: { in: followingIds },
-        followingId: { notIn: excludedIds },
-      },
-      select: { followingId: true },
-    });
-
-    const suggestedIds = [
-      ...new Set(friendsOfFriends.map((f) => f.followingId)),
-    ];
-
-    const [users, total] = await Promise.all([
-      this.prisma.user.findMany({
-        where: {
-          id: { notIn: excludedIds },
-          isDeleted: false,
-          isActive: true,
-          isBanned: false,
-          isSuspended: false,
-          role: 'ARTIST',
-          ...(suggestedIds.length > 0
-            ? { id: { in: suggestedIds, notIn: excludedIds } }
-            : {}),
-        },
-        skip,
-        take: limit,
-        orderBy: { followers: { _count: 'desc' } },
-        select: {
-          id: true,
-          username: true,
-          avatarUrl: true,
-          coverUrl: true,
-          role: true,
-          isCertified: true,
-          _count: { select: { followers: true } },
-        },
-      }),
-      this.prisma.user.count({
-        where: {
-          id: { notIn: excludedIds },
-          isDeleted: false,
-          isActive: true,
-          isBanned: false,
-          isSuspended: false,
-          role: 'ARTIST',
-          ...(suggestedIds.length > 0
-            ? { id: { in: suggestedIds, notIn: excludedIds } }
-            : {}),
-        },
-      }),
-    ]);
-
-    return {
-      data: users.map((u) => ({
-        id: u.id,
-        username: u.username,
-        avatarUrl: u.avatarUrl,
-        coverUrl: u.coverUrl,
-        role: u.role,
-        isCertified: u.isCertified,
-        followersCount: u._count.followers,
-        isFollowing: false,
-      })),
-      page,
-      limit,
-      total,
-      hasMore: skip + users.length < total,
-    };
-  }
+  return {
+    data: users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      coverUrl: u.coverUrl,
+      role: u.role,
+      isCertified: u.isCertified,
+      followersCount: u._count.followers,
+      trackCount: u._count.tracks,
+      isFollowing: false,
+    })),
+    page,
+    limit,
+    total,
+    hasMore: skip + users.length < total,
+  };
+}
 }
