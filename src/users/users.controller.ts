@@ -45,6 +45,14 @@ export class UsersController {
     return this.usersService.getCurrentUser(user.userId);
   }
 
+  @Get('me/analytics')
+  @UseGuards(JwtAccessGuard)
+  getAnalytics(
+    @usersDecorator.CurrentUser() user: usersDecorator.JwtPayload,
+  ) {
+    return this.usersService.getAnalytics(user.userId);
+  }
+
   @Get('me/conversations')
   @UseGuards(JwtAccessGuard)
   getMyConversations(

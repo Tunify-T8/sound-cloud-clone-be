@@ -46,6 +46,7 @@ export class TracksService {
 
   private async resolvePlayability(
     track: {
+      userId: string;
       transcodingStatus: TranscodingStatus;
       isDeleted: boolean;
       isHidden: boolean;
@@ -83,7 +84,7 @@ export class TracksService {
 
     // 4. Private track — check token
     if (!track.isPublic) {
-      if (!privateToken || privateToken !== track.privateToken) {
+      if (userId !== track.userId && (!privateToken || privateToken !== track.privateToken)) {
         return { status: 'blocked', blockedReason: 'private_no_token' };
       }
     }
@@ -1853,9 +1854,10 @@ export class TracksService {
   async getListeningHistory(userId: string, page: number, limit: number) {
     const skip = (page - 1) * limit;
 
+    //hide tracks that was deleted, check for isDeleted
     const [history, total] = await Promise.all([
       this.prisma.playHistory.findMany({
-        where: { userId, isHidden: false },
+        where: { userId, isHidden: false, track: { isDeleted: false } },
         orderBy: { playedAt: 'desc' },
         skip,
         take: limit,
@@ -1883,7 +1885,7 @@ export class TracksService {
         },
       }),
       this.prisma.playHistory.findMany({
-        where: { userId, isHidden: false },
+        where: { userId, isHidden: false, track: { isDeleted: false } },
         distinct: ['trackId'],
         select: { trackId: true },
       }),

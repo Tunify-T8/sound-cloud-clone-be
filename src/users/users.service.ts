@@ -1282,4 +1282,40 @@ export class UsersService {
       },
     });
   }
+
+  // get total number of:
+  // - plays
+  // - likes
+  // - reposts
+  // - comments
+  async getAnalytics(userId: string) {
+    const [plays, likes, reposts, comments] = await Promise.all([
+      this.prisma.playHistory.count({
+        where: { 
+          track: { userId: userId }, 
+          isHidden: false,
+      },
+      }),
+      this.prisma.trackLike.count({
+        where: { 
+          track: { userId: userId } 
+        },
+      }),
+      this.prisma.repost.count({
+        where: { 
+          track: { userId: userId }
+        },
+      }),
+      this.prisma.comment.count({
+        where: { 
+          track: { userId: userId },
+          isDeleted: false,
+        },
+      }),
+    ]);
+
+    return { plays, likes, reposts, comments };
+
+  }
+
 }
