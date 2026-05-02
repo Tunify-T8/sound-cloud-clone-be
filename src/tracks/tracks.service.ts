@@ -1863,6 +1863,7 @@ export class TracksService {
         distinct: ['trackId'], // show each track once, most recent play
         include: {
           track: {
+            where: { isDeleted: false },
             include: {
               genre: true,
               user: {
