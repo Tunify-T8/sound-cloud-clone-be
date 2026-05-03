@@ -301,6 +301,8 @@ export class FeedService {
       WHERE t."isDeleted" = false
         AND t."isHidden"  = false
         AND t."isPublic"  = true
+        AND u."isSuspended" = false
+        AND u."isBanned"    = false
         ${genreFilter}
       ORDER BY score DESC
       LIMIT 10
@@ -377,6 +379,7 @@ export class FeedService {
     if (!hasHistory) {
       return this.getRecentUploads(skip, limit, page, genreId, false);
     }
+    const blockedUserIds = await this.getBlockedUserIds(userId);
 
     // get user's top 3 genres from play history
     const topGenres = (await this.prisma.$queryRawUnsafe<RawTopGenre[]>(
@@ -418,6 +421,14 @@ export class FeedService {
             ? genreId // explicit genre filter takes priority
             : { in: topGenreIds },
           id: { notIn: heardIds.length > 0 ? heardIds : undefined },
+          user: {
+            isSuspended: false,
+            isBanned: false,
+            isDeleted: false,
+            ...(blockedUserIds.length > 0
+              ? { id: { notIn: blockedUserIds } }
+              : {}),
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -447,13 +458,28 @@ export class FeedService {
           isPublic: true,
           genreId: genreId ? genreId : { in: topGenreIds },
           id: { notIn: heardIds.length > 0 ? heardIds : undefined },
+          user: {
+            isSuspended: false,
+            isBanned: false,
+            isDeleted: false,
+            ...(blockedUserIds.length > 0
+              ? { id: { notIn: blockedUserIds } }
+              : {}),
+          },
         },
       }),
     ]);
 
     // not enough personalized results → fall back to recent uploads
     if (tracks.length === 0) {
-      return this.getRecentUploads(skip, limit, page, genreId, false);
+      return this.getRecentUploads(
+        skip,
+        limit,
+        page,
+        genreId,
+        false,
+        blockedUserIds,
+      );
     }
 
     return {
@@ -631,12 +657,19 @@ export class FeedService {
     page: number,
     genreId: string | undefined,
     personalized: boolean,
+    blockedUserIds: string[] = [],
   ): Promise<DiscoverListDto> {
     const where = {
       isDeleted: false,
       isHidden: false,
       isPublic: true,
       ...(genreId ? { genreId } : {}),
+      user: {
+        isSuspended: false,
+        isBanned: false,
+        isDeleted: false,
+        ...(blockedUserIds.length > 0 ? { id: { notIn: blockedUserIds } } : {}),
+      },
     };
 
     const [tracks, total] = await Promise.all([

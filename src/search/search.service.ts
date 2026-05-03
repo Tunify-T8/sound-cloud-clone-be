@@ -65,6 +65,7 @@ interface UserSource {
   location: string | null;
   isCertified: boolean;
   followersCount: number;
+  avatarUrl: string | null;
 }
 
 @Injectable()
@@ -261,11 +262,9 @@ export class SearchService {
     const filter: unknown[] = [];
     if (location) filter.push({ term: { 'location.keyword': location } });
     if (verifiedOnly) filter.push({ term: { isCertified: true } });
+    filter.push({ term: { isSuspended: false } });
     if (minFollowers !== undefined) {
-      filter.push(
-        { range: { followersCount: { gte: minFollowers } } },
-        { term: { isSuspended: false } },
-      );
+      filter.push({ range: { followersCount: { gte: minFollowers } } });
     }
 
     const sortClause =
@@ -332,6 +331,7 @@ export class SearchService {
             id: true,
             title: true,
             durationSeconds: true,
+            coverUrl: true,
             user: { select: { username: true, displayName: true } },
           },
         },
@@ -343,6 +343,7 @@ export class SearchService {
         id: ct.track.id,
         title: ct.track.title,
         artist: ct.track.user.displayName ?? ct.track.user.username,
+        coverUrl: ct.track.coverUrl,
         durationSeconds: ct.track.durationSeconds,
       }),
     );
@@ -373,6 +374,7 @@ export class SearchService {
       location: hit._source.location,
       isCertified: hit._source.isCertified,
       followersCount: hit._source.followersCount,
+      avatarUrl: hit._source.avatarUrl,
       isFollowing: followingSet.size > 0 ? followingSet.has(hit._id) : null,
       score: hit._score,
     };
@@ -444,16 +446,19 @@ export class SearchService {
         id: h._id,
         title: h._source.title,
         artist: h._source.artistDisplayName ?? h._source.artistUsername,
+        coverUrl: h._source.coverUrl,
       })),
       users: usersRes.hits.hits.map((h) => ({
         id: h._id,
         username: h._source.username,
         displayName: h._source.displayName,
+        avatarUrl: h._source.avatarUrl,
       })),
       collections: collectionsRes.hits.hits.map((h) => ({
         id: h._id,
         title: h._source.title,
         artist: h._source.artistDisplayName ?? h._source.artistUsername,
+        coverUrl: h._source.coverUrl,
       })),
     };
   }
