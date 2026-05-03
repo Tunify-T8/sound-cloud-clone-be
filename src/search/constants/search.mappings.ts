@@ -43,6 +43,7 @@ export const usersIndexMapping = {
       role: { type: 'keyword' },
       followersCount: { type: 'integer' },
       createdAt: { type: 'date' },
+      avatarUrl: { type: 'keyword', index: false },
     },
   },
 };

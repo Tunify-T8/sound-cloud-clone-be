@@ -177,6 +177,7 @@ export class SearchIndexService {
         role: true,
         createdAt: true,
         _count: { select: { followers: true } },
+        avatarUrl: true,
       },
     });
 
@@ -193,6 +194,7 @@ export class SearchIndexService {
       role: user.role,
       followersCount: user._count.followers,
       createdAt: user.createdAt.toISOString(),
+      avatarUrl: user.avatarUrl ?? null,
     });
   }
 
@@ -214,6 +216,7 @@ export class SearchIndexService {
         role: true,
         createdAt: true,
         _count: { select: { followers: true } },
+        avatarUrl: true,
       },
     });
 
@@ -231,6 +234,7 @@ export class SearchIndexService {
         role: u.role,
         followersCount: u._count.followers,
         createdAt: u.createdAt.toISOString(),
+        avatarUrl: u.avatarUrl ?? null,
       },
     ]);
 
