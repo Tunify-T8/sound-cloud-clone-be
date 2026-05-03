@@ -116,6 +116,7 @@ export class CollectionTrackPreviewDto {
   title: string;
   artist: string;
   durationSeconds: number;
+  coverUrl: string | null;
 }
 
 export class TrackSearchResultDto {
@@ -155,6 +156,7 @@ export class UserSearchResultDto {
   location: string | null;
   isCertified: boolean;
   followersCount: number;
+  avatarUrl: string | null;
   isFollowing: boolean | null; // null when logged out
   score: number;
 }
@@ -203,7 +205,22 @@ export class AutocompleteDto {
 }
 
 export class AutocompleteResultDto {
-  tracks!: { id: string; title: string; artist: string }[];
-  users!: { id: string; username: string; displayName: string | null }[];
-  collections!: { id: string; title: string; artist: string }[];
+  tracks!: {
+    id: string;
+    title: string;
+    artist: string;
+    coverUrl: string | null;
+  }[];
+  users!: {
+    id: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  }[];
+  collections!: {
+    id: string;
+    title: string;
+    artist: string;
+    coverUrl: string | null;
+  }[];
 }
